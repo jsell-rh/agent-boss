@@ -181,6 +181,22 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
   border-radius:var(--radius-sm);margin:8px 0;white-space:pre;
 }
 
+.agent-free-text{font-size:12px;color:var(--text2);line-height:1.6;margin-top:6px;max-height:400px;overflow-y:auto;padding-right:4px}
+.agent-free-text::-webkit-scrollbar{width:4px}
+.agent-free-text::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.free-heading{font-weight:700;color:var(--text);margin:8px 0 4px}
+.free-h1,.free-h2{font-size:13px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.free-h3{font-size:12px;color:var(--cyan)}
+.free-h4{font-size:11px;color:var(--text2)}
+.free-para{margin:3px 0;line-height:1.6}
+.free-para strong,.agent-free-text li strong{color:var(--text);font-weight:600}
+.free-code{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--text3);overflow-x:auto;margin:6px 0;line-height:1.5}
+.free-inline-code{background:var(--bg);padding:1px 4px;border-radius:3px;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--cyan)}
+.free-table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}
+.free-table td{padding:3px 8px;border:1px solid var(--border);color:var(--text2)}
+.free-table tr:first-child td{font-weight:600;color:var(--text);background:var(--bg3)}
+.free-table td strong{color:var(--text)}
+
 .archive-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin-top:20px}
 .archive-header{
   padding:12px 16px;border-bottom:1px solid var(--border);
@@ -416,10 +432,15 @@ function render(data){
       o += renderBugs(a);
     } else if (a.free_text && a.free_text.indexOf('PR Sequence') > -1){
       o += renderMergePlan(a);
-    } else if (a.items && a.items.length > 0){
-      o += '<ul class="agent-items">';
-      a.items.forEach(function(it){ o += '<li>' + esc(it) + '</li>'; });
-      o += '</ul>';
+    } else {
+      if (a.items && a.items.length > 0){
+        o += '<ul class="agent-items">';
+        a.items.forEach(function(it){ o += '<li>' + esc(it) + '</li>'; });
+        o += '</ul>';
+      }
+      if (a.free_text){
+        o += renderFreeText(a.free_text);
+      }
     }
 
     if (a.next_steps) o += '<div class="agent-next"><strong>Next </strong>' + esc(a.next_steps) + '</div>';
@@ -483,6 +504,57 @@ function renderBugs(a){
     a.items.forEach(function(it){ h += '<li>' + esc(it) + '</li>'; });
     h += '</ul>';
   }
+  return h;
+}
+
+function renderFreeText(text){
+  var lines = text.split('\n');
+  var h = '<div class="agent-free-text">';
+  var inCode = false, inTable = false, inList = false;
+  for (var i = 0; i < lines.length; i++){
+    var ln = lines[i];
+    if (ln.indexOf('```') === 0){
+      if (inList){ h += '</ul>'; inList = false; }
+      if (inTable){ h += '</table>'; inTable = false; }
+      if (inCode){ h += '</code></pre>'; inCode = false; }
+      else { h += '<pre class="free-code"><code>'; inCode = true; }
+      continue;
+    }
+    if (inCode){ h += esc(ln) + '\n'; continue; }
+    if (/^\|.+\|$/.test(ln)){
+      if (/^\|[\s\-:|]+\|$/.test(ln)) continue;
+      if (!inTable){ if (inList){ h += '</ul>'; inList = false; } h += '<table class="free-table">'; inTable = true; }
+      var cells = ln.split('|').filter(function(c,idx,arr){ return idx > 0 && idx < arr.length - 1; });
+      h += '<tr>';
+      cells.forEach(function(c){ h += '<td>' + esc(c.trim()).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') + '</td>'; });
+      h += '</tr>';
+      continue;
+    }
+    if (inTable){ h += '</table>'; inTable = false; }
+    if (/^#{1,4}\s/.test(ln)){
+      if (inList){ h += '</ul>'; inList = false; }
+      var lvl = ln.match(/^(#{1,4})/)[1].length;
+      var title = ln.replace(/^#{1,4}\s+/, '').replace(/\*\*/g, '');
+      h += '<div class="free-heading free-h' + lvl + '">' + esc(title) + '</div>';
+      continue;
+    }
+    if (/^\s*[-*]\s/.test(ln) || /^\s*\d+\.\s/.test(ln)){
+      if (!inList){ h += '<ul class="agent-items">'; inList = true; }
+      var item = ln.replace(/^\s*[-*]\s+/, '').replace(/^\s*\d+\.\s+/, '');
+      h += '<li>' + esc(item).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code class="free-inline-code">$1</code>') + '</li>';
+      continue;
+    }
+    if (ln.trim() === ''){
+      if (inList){ h += '</ul>'; inList = false; }
+      continue;
+    }
+    if (inList){ h += '</ul>'; inList = false; }
+    h += '<p class="free-para">' + esc(ln).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code class="free-inline-code">$1</code>') + '</p>';
+  }
+  if (inCode) h += '</code></pre>';
+  if (inTable) h += '</table>';
+  if (inList) h += '</ul>';
+  h += '</div>';
   return h;
 }
 
