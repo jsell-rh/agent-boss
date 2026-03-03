@@ -140,6 +140,44 @@ func (c *Client) DeleteSpace() error {
 	return nil
 }
 
+func (c *Client) FetchIgnition(agentName string, tmuxSession string) (string, error) {
+	url := c.spacePrefix() + "/ignition/" + agentName
+	if tmuxSession != "" {
+		url += "?tmux_session=" + tmuxSession
+	}
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("fetch ignition: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	return string(body), nil
+}
+
+func (c *Client) TriggerBroadcast() (string, error) {
+	resp, err := c.httpClient.Post(c.spacePrefix()+"/broadcast", "application/json", nil)
+	if err != nil {
+		return "", fmt.Errorf("trigger broadcast: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusAccepted {
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	return string(body), nil
+}
+
 type SpaceSummary struct {
 	Name       string    `json:"name"`
 	AgentCount int       `json:"agent_count"`

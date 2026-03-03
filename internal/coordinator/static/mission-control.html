@@ -47,9 +47,25 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 }
 .space-tab.active .tab-count{background:var(--blue-bg);color:var(--blue)}
 
+.sub-nav{display:flex;gap:0;padding:0 28px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.sub-tab{
+  padding:8px 18px 10px;font-size:12px;font-weight:500;color:var(--text3);
+  border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;
+  transition:color .15s,border-color .15s;
+}
+.sub-tab:hover{color:var(--text)}
+.sub-tab.active{color:var(--cyan);border-bottom-color:var(--cyan);font-weight:600}
+
 .page{padding:20px 28px 40px;width:100%}
 
 .top-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
+.overview-table{width:100%;border-collapse:collapse;font-size:11px}
+.overview-table th{text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);color:var(--text2);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.overview-table td{padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text2)}
+.overview-table tr:hover td{background:var(--bg3)}
+.overview-table .ov-name{color:#fff;font-weight:600}
+.overview-table .ov-branch{font-family:monospace;color:var(--cyan);font-size:10px}
+.overview-table .ov-pr{color:var(--blue);font-weight:600;font-size:10px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .card-header{
   padding:12px 16px 10px;border-bottom:1px solid var(--border);
@@ -59,42 +75,128 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .card-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
 .card-body{padding:14px 16px}
 
-.overview-body{font-size:12px;color:var(--text2);line-height:1.7}
-.overview-body p{margin-bottom:8px}
-.overview-body strong{color:var(--text);font-weight:600}
+.mid-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
 
-.protocol-rule{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;font-size:12px;color:var(--text2);line-height:1.7}
-.protocol-num{
-  min-width:18px;height:18px;border-radius:50%;background:var(--blue-bg);
-  color:var(--blue);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;margin-top:1px;
-}
-.protocol-rule strong{color:var(--text)}
+.broadcast-card{border-color:var(--cyan);border-width:1px}
+.broadcast-card .card-header{background:var(--cyan-bg);border-bottom-color:rgba(57,210,192,.2)}
+.broadcast-card .card-title{color:var(--cyan)}
 
-.endpoint-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px}
-.endpoint-method{
-  padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;font-family:monospace;
-  min-width:36px;text-align:center;
-}
-.method-post{background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,.2)}
-.method-get{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(77,158,255,.2)}
-.endpoint-path{font-family:"SF Mono",SFMono-Regular,Menlo,monospace;color:var(--text2);font-size:11px}
+.tmux-table{width:100%;border-collapse:collapse;font-size:11px}
+.tmux-table th{text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);color:var(--text2);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.tmux-table td{padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text2);font-size:11px}
+.tmux-table tr:hover td{background:var(--bg3)}
 
-.contracts-card .card-body{max-height:260px;overflow-y:auto}
+.tmux-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.tmux-dot-idle{background:var(--green)}
+.tmux-dot-busy{background:var(--yellow)}
+.tmux-dot-offline{background:var(--text3)}
+.tmux-dot-unreg{background:var(--border2)}
+.tmux-dot-waiting{background:var(--red);animation:pulse-glow 1.5s ease-in-out infinite}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.status-dot-active{background:var(--green)}
+.status-dot-done{background:var(--blue)}
+.status-dot-blocked{background:var(--red)}
+.status-dot-idle{background:var(--text3)}
+.status-dot-error{background:var(--red)}
+.status-dot-waiting{background:var(--red);animation:pulse-glow 1.5s ease-in-out infinite}
 
-.orders-card{border-color:var(--yellow);border-width:1px}
-.orders-card .card-header{background:var(--yellow-bg);border-bottom-color:rgba(210,153,34,.2)}
-.orders-card .card-title{color:var(--yellow)}
-.order-item{
-  display:flex;align-items:flex-start;gap:10px;padding:8px 0;
-  border-bottom:1px solid var(--border);font-size:13px;
+.btn{
+  padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:6px;
 }
-.order-item:last-child{border-bottom:none}
-.order-agent{
-  min-width:44px;font-weight:700;font-size:11px;padding:2px 0;
-  text-align:center;border-radius:4px;flex-shrink:0;
+.btn:hover{background:var(--bg4);border-color:var(--blue)}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--blue-bg);border-color:rgba(77,158,255,.3);color:var(--blue)}
+.btn-primary:hover{background:rgba(77,158,255,.15);border-color:var(--blue)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:3px 8px;font-size:10px;border-radius:4px}
+.btn-agent-poke{
+  background:rgba(57,210,192,.06);border-color:rgba(57,210,192,.2);color:var(--cyan);
+  padding:3px 8px;font-size:10px;border-radius:4px;
 }
-.order-text{color:var(--text2);line-height:1.5}
+.btn-agent-poke:hover{background:rgba(57,210,192,.15);border-color:var(--cyan)}
+
+.broadcast-log{
+  max-height:140px;overflow-y:auto;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;
+  font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px;padding:8px;
+  background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border);
+}
+.broadcast-log::-webkit-scrollbar{width:4px}
+.broadcast-log::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.broadcast-log .log-ok{color:var(--green)}
+.broadcast-log .log-skip{color:var(--yellow)}
+.broadcast-log .log-err{color:var(--red)}
+.broadcast-log .log-info{color:var(--blue)}
+
+.protocol-card{border-color:var(--purple);border-width:1px}
+.protocol-card .card-header{background:var(--purple-bg);border-bottom-color:rgba(163,113,247,.2)}
+.protocol-card .card-title{color:var(--purple)}
+.protocol-body{max-height:300px;overflow-y:auto;font-size:12px;color:var(--text2);line-height:1.6}
+.protocol-body::-webkit-scrollbar{width:4px}
+.protocol-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.boss-inbox{border-color:var(--yellow);border-width:1px}
+.boss-inbox .card-header{background:var(--yellow-bg);border-bottom-color:rgba(210,153,34,.2)}
+.boss-inbox .card-title{color:var(--yellow)}
+.inbox-item{
+  padding:8px 12px;border-bottom:1px solid var(--border);display:flex;
+  align-items:flex-start;gap:10px;font-size:12px;
+}
+.inbox-item:last-child{border-bottom:none}
+.inbox-agent{
+  min-width:44px;font-weight:700;font-size:10px;padding:2px 0;
+  text-align:center;border-radius:4px;flex-shrink:0;color:var(--yellow);
+  background:rgba(210,153,34,.08);
+}
+.inbox-text{color:var(--text2);line-height:1.5;flex:1}
+.inbox-reply-btn{
+  background:none;border:1px solid rgba(210,153,34,.2);color:var(--yellow);
+  width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:13px;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;
+  transition:all .15s;line-height:1;flex-shrink:0;
+}
+.inbox-reply-btn:hover{background:rgba(210,153,34,.12);border-color:var(--yellow)}
+.inbox-reply-form{
+  display:flex;gap:6px;padding:6px 12px 8px;border-bottom:1px solid var(--border);
+  background:var(--bg3);
+}
+.inbox-reply-input{
+  flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  color:var(--text);font-size:12px;padding:6px 10px;font-family:inherit;
+  outline:none;resize:none;min-height:32px;max-height:120px;line-height:1.4;
+}
+.inbox-reply-input:focus{border-color:var(--yellow)}
+.inbox-reply-send{
+  padding:4px 12px;border-radius:var(--radius-sm);border:1px solid rgba(210,153,34,.3);
+  background:rgba(210,153,34,.1);color:var(--yellow);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .15s;white-space:nowrap;align-self:flex-end;
+}
+.inbox-reply-send:hover{background:rgba(210,153,34,.2);border-color:var(--yellow)}
+.inbox-reply-send:disabled{opacity:.4;cursor:not-allowed}
+
+.blocker-item{
+  padding:8px 12px;border-bottom:1px solid var(--border);display:flex;
+  align-items:flex-start;gap:10px;font-size:12px;
+}
+.blocker-item:last-child{border-bottom:none}
+.blocker-agent{
+  min-width:44px;font-weight:700;font-size:10px;padding:2px 0;
+  text-align:center;border-radius:4px;flex-shrink:0;color:var(--red);
+  background:rgba(248,81,73,.08);
+}
+.blocker-text{color:var(--text2);line-height:1.5}
+
+.event-log-card .card-body{padding:0}
+.event-log{
+  max-height:500px;overflow-y:auto;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;
+  font-size:10px;color:var(--text3);line-height:1.5;padding:10px 14px;
+}
+.event-log::-webkit-scrollbar{width:4px}
+.event-log::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.event-entry{padding:1px 0;border-bottom:1px solid rgba(36,45,61,.5)}
+.event-time{color:var(--text3);margin-right:8px}
+.event-msg{color:var(--text2)}
 
 .section-label{
   font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
@@ -109,14 +211,17 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .agent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:4px}
 .agent-card{
   background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
-  overflow:hidden;transition:border-color .15s;
+  overflow:hidden;transition:border-color .15s;max-height:640px;display:flex;flex-direction:column;
 }
 .agent-card:hover{border-color:var(--blue)}
+.agent-card.has-blocker{border-color:var(--red)}
+.agent-card.has-question{border-color:var(--yellow)}
 .agent-head{
   padding:12px 16px 10px;display:flex;align-items:center;justify-content:space-between;
   border-bottom:1px solid var(--border);
 }
 .agent-name{font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.agent-badges{display:flex;align-items:center;gap:6px}
 .agent-status{
   font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;
 }
@@ -126,16 +231,36 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .status-idle{background:rgba(92,101,120,.15);color:var(--text3);border:1px solid rgba(92,101,120,.2)}
 .status-error{background:var(--red-bg);color:var(--red);border:1px solid rgba(248,81,73,.25)}
 
+.tmux-badge{
+  font-size:9px;padding:2px 6px;border-radius:8px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;
+}
+.tmux-idle{background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,.2)}
+.tmux-busy{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,.2)}
+.tmux-offline{background:rgba(92,101,120,.1);color:var(--text3);border:1px solid rgba(92,101,120,.15)}
+
 .agent-summary{
   padding:10px 16px;font-size:13px;font-weight:500;color:var(--text);
-  background:var(--bg3);border-bottom:1px solid var(--border);line-height:1.5;
+  background:var(--bg3);border-bottom:1px solid var(--border);line-height:1.5;flex-shrink:0;
 }
-.agent-body{padding:12px 16px 14px}
+.agent-body{padding:12px 16px 14px;overflow-y:auto;flex:1;min-height:0}
+.agent-body::-webkit-scrollbar{width:4px}
+.agent-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.agent-meta{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
 .agent-phase{
   display:inline-block;font-size:10px;font-weight:600;text-transform:uppercase;
   letter-spacing:.5px;padding:2px 8px;border-radius:4px;
   background:var(--purple-bg);color:var(--purple);border:1px solid rgba(163,113,247,.2);
-  margin-bottom:8px;
+}
+.agent-branch{
+  display:inline-block;font-size:10px;font-weight:600;
+  letter-spacing:.3px;padding:2px 8px;border-radius:4px;
+  background:var(--cyan-bg);color:var(--cyan);border:1px solid rgba(57,210,192,.2);
+  font-family:monospace;
+}
+.agent-test-count{
+  display:inline-block;font-size:10px;font-weight:600;
+  padding:2px 8px;border-radius:4px;
+  background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,.2);
 }
 .agent-items{list-style:none;padding:0}
 .agent-items li{
@@ -160,26 +285,12 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 }
 .boss-q::before{content:"? BOSS";font-weight:700;font-size:10px;letter-spacing:.5px;display:block;margin-bottom:2px;opacity:.7}
 
-.bug-item{
-  background:var(--red-bg);border:1px solid rgba(248,81,73,.15);border-radius:var(--radius-sm);
-  padding:8px 12px;margin-bottom:6px;
+.agent-blocker{
+  background:var(--red-bg);border:1px solid rgba(248,81,73,.15);
+  border-radius:var(--radius-sm);padding:8px 12px;margin-top:8px;font-size:12px;
+  color:var(--red);line-height:1.5;
 }
-.bug-title{font-size:12px;font-weight:700;color:var(--red)}
-.bug-loc{font-size:10px;font-family:monospace;color:var(--text3);margin-top:2px}
-.bug-desc{font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5}
-
-.merge-plan{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-top:8px}
-.merge-plan h4{font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
-.merge-row{display:grid;grid-template-columns:50px 1fr 60px;gap:8px;padding:4px 0;font-size:11px;border-bottom:1px solid var(--border)}
-.merge-row:last-child{border-bottom:none}
-.merge-pr{font-weight:700;color:var(--blue)}
-.merge-desc{color:var(--text2)}
-.merge-files{color:var(--text3);text-align:right}
-.dep-graph{
-  font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:11px;
-  color:var(--text3);line-height:1.8;padding:8px 12px;background:var(--bg);
-  border-radius:var(--radius-sm);margin:8px 0;white-space:pre;
-}
+.agent-blocker::before{content:"BLOCKER";font-weight:700;font-size:10px;letter-spacing:.5px;display:block;margin-bottom:2px;opacity:.7}
 
 .agent-free-text{font-size:12px;color:var(--text2);line-height:1.6;margin-top:6px;max-height:400px;overflow-y:auto;padding-right:4px}
 .agent-free-text::-webkit-scrollbar{width:4px}
@@ -212,6 +323,70 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .empty-state{text-align:center;padding:80px 28px;color:var(--text3)}
 .empty-state h2{color:var(--text2);font-size:18px;margin-bottom:8px}
 .empty-state p{font-size:13px;max-width:420px;margin:0 auto}
+
+.pulse{animation:pulse-glow 2s ease-in-out infinite}
+@keyframes pulse-glow{0%,100%{opacity:1}50%{opacity:.5}}
+
+.stats-row{display:flex;gap:12px;margin-bottom:6px}
+.stat-chip{
+  font-size:10px;font-weight:600;padding:3px 10px;border-radius:10px;
+  display:inline-flex;align-items:center;gap:4px;
+}
+
+.agent-actions{display:flex;align-items:center;gap:6px;margin-top:8px}
+.ov-poke{width:20px;text-align:center;padding:2px !important}
+.btn-ov-poke{
+  background:none;border:1px solid rgba(57,210,192,.2);color:var(--cyan);
+  width:20px;height:20px;border-radius:4px;cursor:pointer;font-size:11px;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;
+  transition:all .15s;line-height:1;
+}
+.btn-ov-poke:hover{background:rgba(57,210,192,.12);border-color:var(--cyan)}
+.btn-ov-poke:disabled{opacity:.4;cursor:not-allowed}
+.btn-ov-poke.ov-poke-err{border-color:rgba(248,81,73,.3);color:var(--red)}
+.btn-ov-poke.ov-poke-err:hover{background:rgba(248,81,73,.12);border-color:var(--red)}
+.overview-table tr.needs-approval td{background:rgba(248,81,73,.06);cursor:pointer}
+.overview-table tr.needs-approval:hover td{background:rgba(248,81,73,.12)}
+.tmux-badge.tmux-waiting{background:var(--red-bg);color:var(--red);border:1px solid rgba(248,81,73,.2);animation:pulse-glow 1.5s ease-in-out infinite}
+.approval-popup{
+  position:fixed;z-index:200;background:var(--bg2);border:1px solid var(--red);
+  border-radius:var(--radius);padding:0;width:600px;max-width:90vw;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);pointer-events:auto;
+}
+.approval-popup-header{
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(248,81,73,.06);border-radius:var(--radius) var(--radius) 0 0;
+}
+.approval-popup-header .ap-agent{font-size:13px;font-weight:700;color:#fff}
+.approval-popup-header .ap-tool{font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.4px}
+.approval-popup-body{
+  padding:12px 14px;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;
+  font-size:12px;color:var(--text2);line-height:1.6;max-height:340px;overflow-y:auto;
+  white-space:pre-wrap;word-break:break-word;
+}
+.approval-popup-footer{
+  padding:10px 14px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:flex-end;gap:8px;
+}
+.btn-approve-confirm{
+  padding:5px 16px;border-radius:var(--radius-sm);border:1px solid rgba(248,81,73,.4);
+  background:rgba(248,81,73,.1);color:var(--red);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;
+}
+.btn-approve-confirm:hover{background:rgba(248,81,73,.2);border-color:var(--red)}
+.btn-approve-confirm:disabled{opacity:.4;cursor:not-allowed}
+.btn-approve-dismiss{
+  padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text3);font-size:12px;font-weight:500;
+  cursor:pointer;transition:all .15s;
+}
+.btn-approve-dismiss:hover{background:var(--bg4);color:var(--text)}
+
+.overview-table tr.is-done td{opacity:.45}
+.overview-table tr.is-done:hover td{opacity:.7}
+.agent-card.is-done{opacity:.5;border-color:var(--border)}
+.agent-card.is-done:hover{opacity:.75;border-color:var(--text3)}
 </style>
 </head>
 <body>
@@ -226,6 +401,8 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
   <nav class="space-nav" id="space-nav"></nav>
 </header>
 
+<div id="sub-nav-container"></div>
+
 <div class="page" id="page">
   <div style="text-align:center;padding:80px 0;color:var(--text3)">Loading...</div>
 </div>
@@ -233,11 +410,22 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 <script>
 var SPACE = null;
 var evtSource = null;
+var broadcastLog = [];
+var tmuxCache = null;
+var currentView = 'board';
+var approvalPollTimer = null;
+var inboxLocked = false;
+var cachedBoardData = null;
+var cachedInterruptMetrics = null;
+var cachedInterruptLog = null;
+var boardSkeletonReady = false;
+var dismissedTexts = {};
 
 (function(){
   var pathMatch = window.location.pathname.match(/^\/spaces\/([^\/]+)/);
   SPACE = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
-
+  var hashView = window.location.hash.replace('#','');
+  if (hashView === 'console') currentView = 'console';
   loadSpaceNav();
 })();
 
@@ -246,7 +434,6 @@ function loadSpaceNav(){
     .then(function(r){ return r.json(); })
     .then(function(spaces){
       spaces.sort(function(a,b){ return a.name.localeCompare(b.name); });
-
       var nav = document.getElementById('space-nav');
       var h = '';
       spaces.forEach(function(s){
@@ -259,11 +446,17 @@ function loadSpaceNav(){
       nav.innerHTML = h;
 
       if (SPACE) {
+        renderSubNav();
         loadSpace(SPACE);
       } else {
+        document.getElementById('sub-nav-container').innerHTML = '';
         renderSpaceList(spaces);
       }
     });
+}
+
+function renderSubNav(){
+  document.getElementById('sub-nav-container').innerHTML = '';
 }
 
 function renderSpaceList(spaces){
@@ -293,23 +486,370 @@ function renderSpaceList(spaces){
 }
 
 function loadSpace(name){
-  document.title = 'Mission Control — ' + name;
+  document.title = 'Mission Control \u2014 ' + name;
 
-  fetch('/spaces/' + encodeURIComponent(name) + '/', {headers:{'Accept':'application/json'}, cache:'no-store'})
-    .then(function(r){
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(render)
-    .catch(function(e){
-      document.getElementById('page').innerHTML =
-        '<div style="text-align:center;padding:80px 0;color:var(--red)">Failed to load ' + esc(name) + ': ' + esc(e.message) + '</div>';
-    });
+  var base = '/spaces/' + encodeURIComponent(name);
+  Promise.all([
+    fetch(base + '/', {headers:{'Accept':'application/json'}, cache:'no-store'}).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+    fetch(base + '/api/tmux-status').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+    fetch(base + '/api/events').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+    fetch(base + '/factory/metrics').then(function(r){ return r.json(); }).catch(function(){ return {total_interrupts:0,by_type:{},by_agent:{}}; }),
+    fetch(base + '/factory/interrupts').then(function(r){ return r.json(); }).catch(function(){ return []; })
+  ]).then(function(results){
+    tmuxCache = results[1];
+    renderBoard(results[0], results[1], results[2], results[3], results[4]);
+    startApprovalPolling();
+  }).catch(function(e){
+    document.getElementById('page').innerHTML =
+      '<div style="text-align:center;padding:80px 0;color:var(--red)">Failed to load ' + esc(name) + ': ' + esc(e.message) + '</div>';
+  });
 
   if (evtSource) evtSource.close();
   evtSource = new EventSource('/spaces/' + encodeURIComponent(name) + '/events');
   evtSource.addEventListener('agent_updated', function(){ loadSpace(SPACE); });
   evtSource.addEventListener('agent_removed', function(){ loadSpace(SPACE); });
+  evtSource.addEventListener('broadcast_progress', function(e){
+    try {
+      var p = JSON.parse(e.data);
+      var ts = new Date().toLocaleTimeString();
+      broadcastLog.push({time:ts, cls:'log-info', msg:p.message});
+      renderBroadcastLog();
+    } catch(ex){}
+  });
+  evtSource.addEventListener('tmux_liveness', function(e){
+    try {
+      var liveness = JSON.parse(e.data);
+      var anyApprovalChange = false;
+      liveness.forEach(function(entry){
+        var oldTmux = tmuxCache ? tmuxCache.find(function(t){ return t.agent === entry.agent; }) : null;
+        if (oldTmux && oldTmux.needs_approval !== entry.needs_approval) anyApprovalChange = true;
+        if (!oldTmux && entry.needs_approval) anyApprovalChange = true;
+
+        var badges = document.querySelectorAll('.tmux-badge');
+        badges.forEach(function(badge){
+          var card = badge.closest('.agent-card');
+          if (!card) return;
+          var nameEl = card.querySelector('.agent-name');
+          if (!nameEl) return;
+          var name = nameEl.textContent.trim();
+          if (name !== entry.agent) return;
+          if (!entry.exists){
+            badge.className = 'tmux-badge tmux-offline';
+            badge.textContent = 'offline';
+          } else if (entry.needs_approval){
+            badge.className = 'tmux-badge tmux-waiting';
+            badge.textContent = 'waiting';
+          } else if (entry.idle){
+            badge.className = 'tmux-badge tmux-idle';
+            badge.textContent = 'idle';
+          } else {
+            badge.className = 'tmux-badge tmux-busy';
+            badge.textContent = 'busy';
+          }
+        });
+
+        var dot = document.querySelector('.status-dot[data-agent="' + entry.agent + '"]');
+        if (dot) {
+          var tr = dot.closest('tr');
+          if (tr) {
+            if (entry.needs_approval) {
+              tr.className = 'needs-approval';
+              tr.style.cursor = 'pointer';
+              tr.onclick = function(ev){ showApprovalPopup(ev, entry.agent); };
+              dot.className = 'status-dot status-dot-waiting';
+            } else if (tr.className === 'needs-approval') {
+              tr.className = '';
+              tr.style.cursor = '';
+              tr.onclick = null;
+            }
+          }
+        }
+      });
+      if (anyApprovalChange && tmuxCache) {
+        liveness.forEach(function(entry){
+          var old = tmuxCache.find(function(t){ return t.agent === entry.agent; });
+          if (old) {
+            old.needs_approval = entry.needs_approval;
+            old.tool_name = entry.tool_name;
+            old.prompt_text = entry.prompt_text;
+            old.exists = entry.exists;
+            old.idle = entry.idle;
+          }
+        });
+      } else {
+        tmuxCache = liveness;
+      }
+    } catch(ex){}
+  });
+  evtSource.addEventListener('broadcast_complete', function(e){
+    try {
+      var result = JSON.parse(e.data);
+      var ts = new Date().toLocaleTimeString();
+      if (result.sent && result.sent.length > 0)
+        broadcastLog.push({time:ts, cls:'log-ok', msg:'Sent to: ' + result.sent.join(', ')});
+      if (result.skipped && result.skipped.length > 0)
+        broadcastLog.push({time:ts, cls:'log-skip', msg:'Skipped: ' + result.skipped.join(', ')});
+      if (result.errors && result.errors.length > 0)
+        result.errors.forEach(function(err){ broadcastLog.push({time:ts, cls:'log-err', msg:err}); });
+      if ((!result.sent || result.sent.length===0) && (!result.skipped || result.skipped.length===0) && (!result.errors || result.errors.length===0))
+        broadcastLog.push({time:ts, cls:'log-info', msg:'No targets found'});
+      renderBroadcastLog();
+    } catch(ex){}
+    document.querySelectorAll('.btn-agent-poke').forEach(function(b){ b.disabled = false; b.textContent = 'Check In'; });
+    document.querySelectorAll('.btn-ov-poke').forEach(function(b){
+      b.disabled = false; b.innerHTML = '&#x21bb;';
+      var ag = b.getAttribute('data-agent');
+      var isErr = false;
+      if (result.errors) result.errors.forEach(function(e){ if (e.indexOf(ag) !== -1) isErr = true; });
+      if (result.skipped) result.skipped.forEach(function(e){ if (e.indexOf(ag) !== -1) isErr = true; });
+      if (isErr) b.classList.add('ov-poke-err'); else b.classList.remove('ov-poke-err');
+    });
+    var btn = document.getElementById('broadcast-btn');
+    if (btn){ btn.disabled = false; btn.textContent = 'Broadcast All'; }
+    loadSpace(SPACE);
+  });
+}
+
+function triggerBroadcast(){
+  var btn = document.getElementById('broadcast-btn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Broadcasting...'; }
+  broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-info', msg:'Broadcast initiated...'});
+  renderBroadcastLog();
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/broadcast', {method:'POST'}).catch(function(e){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:'Failed: ' + e.message});
+    renderBroadcastLog();
+    if (btn){ btn.disabled = false; btn.textContent = 'Broadcast All'; }
+  });
+}
+
+function toggleReplyForm(qid, agentName){
+  var form = document.getElementById(qid);
+  if (!form) return;
+  var isHidden = form.style.display === 'none';
+  form.style.display = isHidden ? 'flex' : 'none';
+  if (isHidden) {
+    inboxLocked = true;
+    var input = document.getElementById(qid + '-input');
+    if (input) input.focus();
+  } else {
+    inboxLocked = false;
+    flushInbox();
+  }
+}
+
+function sendReply(agentName, qid, dismissSource, dismissIndex, dismissText){
+  var input = document.getElementById(qid + '-input');
+  var btn = document.getElementById(qid + '-btn');
+  if (!input || !input.value.trim()) return;
+  var msg = input.value.trim();
+  if (btn){ btn.disabled = true; btn.textContent = '...'; }
+  broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-info', msg:'Replying to ' + agentName + '...'});
+  renderBroadcastLog();
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/reply/' + encodeURIComponent(agentName), {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message: msg})
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+    return r.json();
+  }).then(function(data){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-ok', msg:'Reply sent to ' + agentName});
+    renderBroadcastLog();
+    input.value = '';
+    if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+    dismissInboxItem(agentName, dismissSource, dismissIndex, dismissText);
+  }).catch(function(e){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:'Reply to ' + agentName + ' failed: ' + e.message});
+    renderBroadcastLog();
+    if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+  });
+}
+
+function cancelReply(qid){
+  var form = document.getElementById(qid);
+  if (form) form.style.display = 'none';
+  inboxLocked = false;
+  flushInbox();
+}
+
+function dismissInboxItem(agentName, source, sourceIndex, text){
+  var key = agentName + '::' + text;
+  if (source === 'blocker') key = agentName + '::blocker::' + text;
+  dismissedTexts[key] = true;
+  if ((source === 'question' && sourceIndex >= 0) || source === 'blocker') {
+    fetch('/spaces/' + encodeURIComponent(SPACE) + '/dismiss/' + encodeURIComponent(agentName), {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type: source, index: sourceIndex})
+    }).then(function(r){
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-ok', msg:'Dismissed ' + source + ' from ' + agentName});
+      renderBroadcastLog();
+    }).catch(function(e){
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:'Dismiss failed: ' + e.message});
+      renderBroadcastLog();
+    });
+  }
+  inboxLocked = false;
+  flushInbox();
+}
+
+function flushInbox(){
+  if (cachedBoardData) {
+    var sorted = sortAgents(cachedBoardData.agents || {});
+    renderPanelInbox(cachedBoardData, sorted);
+  }
+}
+
+function pokeAgent(agentName, btnEl){
+  if (btnEl){ btnEl.disabled = true; btnEl.textContent = '...'; }
+  broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-info', msg:'Poking ' + agentName + '...'});
+  renderBroadcastLog();
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/broadcast/' + encodeURIComponent(agentName), {method:'POST'}).catch(function(e){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:agentName + ' poke failed: ' + e.message});
+    renderBroadcastLog();
+    if (btnEl){ btnEl.disabled = false; btnEl.textContent = 'Check In'; }
+  });
+}
+
+function approveAgent(agentName, btnEl){
+  if (btnEl){ btnEl.disabled = true; btnEl.textContent = '...'; }
+  broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-info', msg:'Approving ' + agentName + '...'});
+  renderBroadcastLog();
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/approve/' + encodeURIComponent(agentName), {method:'POST'})
+    .then(function(r){
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      return r.json();
+    })
+    .then(function(data){
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-ok', msg:agentName + ' approved (' + (data.tool || '') + ')'});
+      renderBroadcastLog();
+      if (btnEl){ btnEl.disabled = false; btnEl.textContent = 'Approve'; }
+      setTimeout(function(){ refreshTmux(); }, 1000);
+    })
+    .catch(function(e){
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:agentName + ' approve failed: ' + e.message});
+      renderBroadcastLog();
+      if (btnEl){ btnEl.disabled = false; btnEl.textContent = 'Approve'; }
+    });
+}
+
+function startApprovalPolling(){
+  if (approvalPollTimer) clearInterval(approvalPollTimer);
+  approvalPollTimer = setInterval(function(){
+    if (!SPACE) return;
+    fetch('/spaces/' + encodeURIComponent(SPACE) + '/api/tmux-status')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var changed = false;
+        if (tmuxCache) {
+          for (var i = 0; i < data.length; i++){
+            var old = null;
+            for (var j = 0; j < tmuxCache.length; j++){
+              if (tmuxCache[j].agent === data[i].agent){ old = tmuxCache[j]; break; }
+            }
+            if (!old || old.needs_approval !== data[i].needs_approval) changed = true;
+          }
+        } else { changed = true; }
+        tmuxCache = data;
+        if (changed) updateApprovalUI(data);
+      }).catch(function(){});
+  }, 1000);
+}
+
+function showApprovalPopup(event, agentName){
+  dismissApprovalPopup();
+  var tmux = null;
+  if (tmuxCache) for (var i = 0; i < tmuxCache.length; i++){ if (tmuxCache[i].agent === agentName){ tmux = tmuxCache[i]; break; } }
+  if (!tmux || !tmux.needs_approval) return;
+  var popup = document.createElement('div');
+  popup.className = 'approval-popup';
+  popup.id = 'approval-popup';
+  var promptLines = (tmux.prompt_text || 'Approve tool use').replace(/ \| /g, '\n');
+  popup.innerHTML = '<div class="approval-popup-header"><span class="ap-agent">' + esc(agentName) + '</span><span class="ap-tool">' + esc(tmux.tool_name || 'tool') + '</span></div>'
+    + '<div class="approval-popup-body">' + esc(promptLines) + '</div>'
+    + '<div class="approval-popup-footer"><button class="btn-approve-dismiss" onclick="dismissApprovalPopup()">Cancel</button><button class="btn-approve-confirm" id="ap-confirm-btn" onclick="confirmApproval(\'' + esc(agentName).replace(/'/g,"\\'") + '\')">Approve</button></div>';
+  document.body.appendChild(popup);
+  var rect = event.currentTarget.getBoundingClientRect();
+  var popupW = 600;
+  var popupH = 400;
+  var top = rect.top + window.scrollY;
+  var left = Math.round((window.innerWidth - popupW) / 2);
+  if (top + popupH > window.innerHeight + window.scrollY) top = Math.max(10, window.innerHeight + window.scrollY - popupH - 10);
+  popup.style.left = Math.max(10, left) + 'px';
+  popup.style.top = Math.max(10, top) + 'px';
+  setTimeout(function(){ document.addEventListener('click', dismissOnOutsideClick); }, 0);
+}
+
+function dismissApprovalPopup(){
+  var el = document.getElementById('approval-popup');
+  if (el) el.remove();
+  document.removeEventListener('click', dismissOnOutsideClick);
+}
+
+function dismissOnOutsideClick(e){
+  var popup = document.getElementById('approval-popup');
+  if (popup && !popup.contains(e.target)) dismissApprovalPopup();
+}
+
+function confirmApproval(agentName){
+  var btn = document.getElementById('ap-confirm-btn');
+  if (btn){ btn.disabled = true; btn.textContent = '...'; }
+  approveAgent(agentName, null);
+  setTimeout(dismissApprovalPopup, 500);
+}
+
+function updateApprovalUI(tmuxData){
+  if (!tmuxData || !SPACE) return;
+  loadSpace(SPACE);
+}
+
+function refreshTmux(){
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/api/tmux-status')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      tmuxCache = data;
+      renderTmuxTable(data);
+    }).catch(function(){});
+}
+
+function renderBroadcastLog(){
+  var el = document.getElementById('broadcast-log');
+  if (!el) return;
+  var h = '';
+  var recent = broadcastLog.slice(-30);
+  recent.forEach(function(entry){
+    h += '<div class="' + entry.cls + '">[' + esc(entry.time) + '] ' + esc(entry.msg) + '</div>';
+  });
+  el.innerHTML = h;
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderTmuxTable(tmuxData){
+  var el = document.getElementById('tmux-table-body');
+  if (!el) return;
+  var h = '';
+  if (!tmuxData || tmuxData.length === 0){
+    h = '<tr><td colspan="5" style="text-align:center;color:var(--text3);font-style:italic">No agents</td></tr>';
+  } else {
+    tmuxData.sort(function(a,b){ return a.agent.localeCompare(b.agent); });
+    tmuxData.forEach(function(t){
+      var dotCls, stLabel;
+      if (!t.registered){ dotCls='tmux-dot-unreg'; stLabel='unregistered'; }
+      else if (!t.exists){ dotCls='tmux-dot-offline'; stLabel='offline'; }
+      else if (t.idle){ dotCls='tmux-dot-idle'; stLabel='idle'; }
+      else { dotCls='tmux-dot-busy'; stLabel='busy'; }
+      var pokeCls = 'btn-ov-poke' + (t.registered && t.exists ? '' : ' ov-poke-err');
+      h += '<tr>';
+      h += '<td class="ov-poke"><button class="' + pokeCls + '" data-agent="' + esc(t.agent) + '" onclick="pokeAgent(\'' + esc(t.agent).replace(/'/g,"\\'") + '\', this)" title="Check in ' + esc(t.agent) + '">&#x21bb;</button></td>';
+      h += '<td style="color:#fff;font-weight:600">' + esc(t.agent) + '</td>';
+      h += '<td><span class="tmux-dot ' + dotCls + '"></span>' + stLabel + '</td>';
+      h += '<td style="font-family:monospace;font-size:10px;color:var(--cyan)">' + esc(t.session || '\u2014') + '</td>';
+      h += '<td style="font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(t.last_line || '') + '">' + esc(t.last_line || '\u2014') + '</td>';
+      h += '</tr>';
+    });
+  }
+  el.innerHTML = h;
 }
 
 function timeAgo(iso){
@@ -327,6 +867,15 @@ function esc(s){
   return d.innerHTML;
 }
 
+function buildMergeRequestUrl(repoUrl, pr){
+  if (!repoUrl || !pr) return '';
+  var num = pr.replace(/^#/, '');
+  if (!/^\d+$/.test(num)) return '';
+  var base = repoUrl.replace(/\/+$/, '');
+  if (base.indexOf('github.com') !== -1) return base + '/pull/' + num;
+  return base + '/-/merge_requests/' + num;
+}
+
 function extractBossQuestions(a){
   var qs = [];
   var all = (a.summary||'') + ' ' + (a.free_text||'') + ' ' + (a.next_steps||'');
@@ -340,96 +889,346 @@ function extractBossQuestions(a){
   return qs;
 }
 
-function render(data){
-  var agents = data.agents || {};
-  var names = Object.keys(agents).sort();
+function getTmuxStatus(agentName, tmuxData){
+  if (!tmuxData) return null;
+  for (var i = 0; i < tmuxData.length; i++){
+    if (tmuxData[i].agent === agentName) return tmuxData[i];
+  }
+  return null;
+}
 
-  var overlord = agents['Overlord'] || agents['overlord'] || null;
+function renderConsole(data, tmuxData, eventLog){
   var o = '';
 
-  o += '<div class="top-row">';
+  o += '<div class="mid-row">';
 
-  o += '<div class="card">';
-  o += '<div class="card-header"><span class="card-title">Project Overview</span></div>';
-  o += '<div class="card-body overview-body">';
-  o += '<p><strong>' + esc(data.name) + '</strong> &mdash; ' + names.length + ' agents coordinating via shared blackboard.</p>';
-  if (data.shared_contracts){
-    var scLines = data.shared_contracts.split('\n');
-    var purpose = '';
-    for (var i = 0; i < scLines.length && i < 5; i++){
-      if (scLines[i].indexOf('Space:') > -1){ purpose = scLines[i].replace(/.*Space:\s*/, '').trim(); break; }
-    }
-  }
+  o += '<div class="card broadcast-card">';
+  o += '<div class="card-header"><span class="card-title">Broadcast Console</span>';
+  o += '<div style="display:flex;gap:8px">';
+  o += '<button class="btn" onclick="refreshTmux()" title="Refresh tmux status">Refresh</button>';
+  o += '<button class="btn btn-primary" id="broadcast-btn" onclick="triggerBroadcast()">Broadcast All</button>';
+  o += '</div></div>';
+  o += '<div class="card-body" style="padding:10px 14px">';
+  o += '<table class="tmux-table"><thead><tr><th style="width:20px"></th><th>Agent</th><th>Status</th><th>Session</th><th>Last Output</th></tr></thead>';
+  o += '<tbody id="tmux-table-body"></tbody></table>';
+  o += '<div class="broadcast-log" id="broadcast-log" style="max-height:300px"></div>';
   o += '</div></div>';
 
-  o += '<div class="card contracts-card">';
-  o += '<div class="card-header"><span class="card-title">Communication Protocol</span></div>';
-  o += '<div class="card-body">';
-  var baseUrl = window.location.protocol + '//' + window.location.host;
-  o += '<div class="endpoint-row"><span class="endpoint-method method-post">POST</span><span class="endpoint-path">' + baseUrl + '/spaces/' + esc(data.name) + '/agent/{name}</span></div>';
-  o += '<div class="endpoint-row"><span class="endpoint-method method-get">GET</span><span class="endpoint-path">' + baseUrl + '/spaces/' + esc(data.name) + '/raw</span></div>';
-  o += '<div class="endpoint-row"><span class="endpoint-method method-get">GET</span><span class="endpoint-path">' + baseUrl + '/spaces/' + esc(data.name) + '/agent/{name}</span></div>';
-  o += '<div class="endpoint-row" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)"><span class="endpoint-method" style="background:var(--purple-bg);color:var(--purple);border:1px solid rgba(163,113,247,.2)">UI</span><span class="endpoint-path">' + baseUrl + '/spaces/' + encodeURIComponent(data.name) + '/</span></div>';
-  o += '<div style="margin-top:10px">';
-  o += '<div class="protocol-rule"><span class="protocol-num">1</span><span><strong>Read before write.</strong> GET /raw first.</span></div>';
-  o += '<div class="protocol-rule"><span class="protocol-num">2</span><span><strong>Own endpoint only.</strong> POST to your agent name.</span></div>';
-  o += '<div class="protocol-rule"><span class="protocol-num">3</span><span><strong>Tag questions</strong> with <code style="color:var(--yellow)">[?BOSS]</code></span></div>';
-  o += '<div class="protocol-rule"><span class="protocol-num">4</span><span><strong>Concise summaries.</strong> "{name}: {summary}"</span></div>';
-  o += '</div></div></div>';
-
-  o += '<div class="card orders-card">';
-  o += '<div class="card-header"><span class="card-title">Active Orders</span>';
-  if (overlord) o += '<span class="card-badge" style="background:var(--yellow-bg);color:var(--yellow)">' + esc(overlord.phase || '') + '</span>';
+  o += '<div class="card event-log-card">';
+  o += '<div class="card-header"><span class="card-title">Event Log</span>';
+  o += '<span class="card-badge" style="background:var(--bg3);color:var(--text3);border:1px solid var(--border)">' + (eventLog ? eventLog.length : 0) + '</span>';
   o += '</div>';
-  o += '<div class="card-body">';
-  if (overlord && overlord.sections && overlord.sections.length > 0){
-    overlord.sections.forEach(function(sec){
-      (sec.items || []).forEach(function(it){
-        var parts = it.split(':');
-        var tag = parts[0].trim();
-        var rest = parts.slice(1).join(':').trim();
-        var color = 'var(--text3)';
-        if (tag === 'API') color = 'var(--blue)';
-        else if (tag === 'BE') color = 'var(--green)';
-        else if (tag === 'TRex') color = 'var(--orange)';
-        o += '<div class="order-item">';
-        o += '<span class="order-agent" style="background:rgba(255,255,255,.04);color:' + color + '">' + esc(tag) + '</span>';
-        o += '<span class="order-text">' + esc(rest) + '</span>';
-        o += '</div>';
-      });
-    });
-  } else if (overlord && overlord.items){
-    overlord.items.forEach(function(it){
-      o += '<div class="order-item"><span class="order-text">' + esc(it) + '</span></div>';
+  o += '<div class="event-log" id="event-log" style="max-height:500px">';
+  if (eventLog && eventLog.length > 0){
+    eventLog.slice(-100).forEach(function(entry){
+      var m = entry.match(/^\[([^\]]+)\]\s*(.*)/);
+      if (m){
+        o += '<div class="event-entry"><span class="event-time">' + esc(m[1]) + '</span><span class="event-msg">' + esc(m[2]) + '</span></div>';
+      } else {
+        o += '<div class="event-entry"><span class="event-msg">' + esc(entry) + '</span></div>';
+      }
     });
   } else {
-    o += '<div style="color:var(--text3);font-size:12px;font-style:italic">No active orders</div>';
+    o += '<div style="color:var(--text3);font-style:italic;text-align:center;padding:20px 0">No events yet</div>';
   }
   o += '</div></div>';
   o += '</div>';
 
-  var roleOrder = ['Overlord','API','BE','FE','CP','Cluster','SDK','Trex','Helper'];
+  document.getElementById('page').innerHTML = o;
+  renderTmuxTable(tmuxData);
+  renderBroadcastLog();
+
+  var agents = data.agents || {};
+  var names = Object.keys(agents);
+  var dot = '<span class="header-dot" style="background:var(--green)"></span>';
+  document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
+  document.getElementById('last-update').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
+
+  var logEl = document.getElementById('event-log');
+  if (logEl) logEl.scrollTop = logEl.scrollHeight;
+}
+
+function sortAgents(agents){
+  var names = Object.keys(agents).sort();
+  var roleOrder = ['Overlord','API','BE','FE','CP','Cluster','SDK','Cli','Trex','Helper','Reviewer'];
   var sorted = roleOrder.filter(function(n){ return agents[n]; });
   names.forEach(function(n){ if (sorted.indexOf(n) === -1) sorted.push(n); });
+  return sorted;
+}
 
+function collectInboxData(agents, sorted){
+  var allQuestions = [];
+  var allBlockers = [];
+  sorted.forEach(function(name){
+    var a = agents[name];
+    var qs = a.questions || [];
+    qs.forEach(function(q, i){
+      var key = name + '::' + q;
+      if (!dismissedTexts[key]) allQuestions.push({agent:name, text:q, source:'question', sourceIndex:i});
+    });
+    var all = (a.summary||'') + ' ' + (a.free_text||'') + ' ' + (a.next_steps||'');
+    (a.items||[]).forEach(function(it){ all += ' ' + it; });
+    var re = /\[\?BOSS\][^\n]*/g, m;
+    while ((m = re.exec(all)) !== null){
+      var q = m[0].replace(/^\[\?BOSS\]\s*/, '');
+      var key = name + '::' + q;
+      if (!dismissedTexts[key] && !qs.some(function(eq){ return eq === q; })) {
+        allQuestions.push({agent:name, text:q, source:'text', sourceIndex:-1});
+      }
+    }
+    (a.blockers||[]).forEach(function(b, i){
+      var key = name + '::blocker::' + b;
+      if (!dismissedTexts[key]) allBlockers.push({agent:name, text:b, source:'blocker', sourceIndex:i});
+    });
+  });
+  return {questions: allQuestions, blockers: allBlockers};
+}
+
+function ensureBoardSkeleton(){
+  if (boardSkeletonReady) return;
+  var o = '<div class="top-row">';
+  o += '<div id="panel-overview"></div>';
+  o += '<div id="panel-inbox"></div>';
+  o += '<div id="panel-interrupts"></div>';
+  o += '</div>';
+  o += '<div id="panel-agents"></div>';
+  document.getElementById('page').innerHTML = o;
+  boardSkeletonReady = true;
+}
+
+function renderBoard(data, tmuxData, eventLog, interruptMetrics, interruptLog){
+  interruptMetrics = interruptMetrics || {total_interrupts:0,by_type:{},by_agent:{}};
+  interruptLog = interruptLog || [];
+  cachedBoardData = data;
+  cachedInterruptMetrics = interruptMetrics;
+  cachedInterruptLog = interruptLog;
+  var agents = data.agents || {};
+  var names = Object.keys(agents).sort();
+  var sorted = sortAgents(agents);
+
+  ensureBoardSkeleton();
+
+  renderPanelOverview(data, sorted, tmuxData);
+  if (!inboxLocked) renderPanelInbox(data, sorted);
+  renderPanelInterrupts(interruptMetrics, interruptLog);
+  renderPanelAgents(data, sorted, tmuxData);
+
+  var dot = '<span class="header-dot" style="background:var(--green)"></span>';
+  document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
+  document.getElementById('last-update').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
+  renderBroadcastLog();
+}
+
+function renderPanelOverview(data, sorted, tmuxData){
+  var agents = data.agents || {};
+  var o = '<div class="card">';
+  o += '<div class="card-header"><span class="card-title">Project Overview</span>';
+  o += '<div style="display:flex;gap:8px">';
+  o += '<button class="btn" onclick="refreshTmux()" title="Refresh tmux status">Refresh</button>';
+  o += '<button class="btn btn-primary" id="broadcast-btn" onclick="triggerBroadcast()">Broadcast All</button>';
+  o += '</div></div>';
+  o += '<div class="card-body" style="padding:8px 12px">';
+  o += '<table class="overview-table"><thead><tr><th class="ov-poke"></th><th>Agent</th><th>Status</th><th>Branch</th><th>Session</th><th>PR</th></tr></thead><tbody>';
+  sorted.forEach(function(name){
+    var a = agents[name];
+    var tmux = getTmuxStatus(name, tmuxData);
+    var dotCls, stLabel;
+    if (!tmux || !tmux.registered){ dotCls='tmux-dot-unreg'; stLabel='unregistered'; }
+    else if (!tmux.exists){ dotCls='tmux-dot-offline'; stLabel='offline'; }
+    else if (tmux.idle){ dotCls='tmux-dot-idle'; stLabel='idle'; }
+    else { dotCls='tmux-dot-busy'; stLabel='busy'; }
+    var isDone = (a.status === 'done');
+    var hasBlockerOv = a.blockers && a.blockers.length > 0;
+    var needsApproval = tmux && tmux.needs_approval;
+    var trCls = '';
+    if (needsApproval) trCls = ' class="needs-approval"';
+    else if (isDone) trCls = ' class="is-done"';
+    var trExtra = needsApproval ? ' onclick="showApprovalPopup(event, \'' + esc(name).replace(/'/g,"\\'") + '\')"' : '';
+    o += '<tr' + trCls + trExtra + '>';
+    var pokeOk = tmux && tmux.registered && tmux.exists;
+    var pokeCls = 'btn-ov-poke' + (pokeOk ? '' : ' ov-poke-err');
+    o += '<td class="ov-poke" style="white-space:nowrap">';
+    o += '<button class="' + pokeCls + '" data-agent="' + esc(name) + '" onclick="event.stopPropagation();pokeAgent(\'' + esc(name).replace(/'/g,"\\'") + '\', this)" title="Check in ' + esc(name) + '">&#x21bb;</button>';
+    o += '</td>';
+    o += '<td class="ov-name">' + esc(name) + '</td>';
+    var ovStatus = a.status || 'idle';
+    var dotKey = ovStatus;
+    if (needsApproval) dotKey = 'waiting';
+    else if (hasBlockerOv) dotKey = 'blocked';
+    var ovLabel = needsApproval ? 'waiting' : (hasBlockerOv ? 'blocked' : ovStatus);
+    o += '<td><span class="status-dot status-dot-' + dotKey + '" data-agent="' + esc(name) + '"></span>' + ovLabel;
+    if (needsApproval && tmux.tool_name) o += ' <span style="font-size:9px;color:var(--text3)">(' + esc(tmux.tool_name) + ')</span>';
+    o += '</td>';
+    o += '<td class="ov-branch">' + esc(a.branch || '\u2014') + '</td>';
+    o += '<td style="font-family:monospace;font-size:10px;color:var(--cyan)">' + esc(tmux && tmux.session ? tmux.session : '\u2014') + '</td>';
+    var prVal = a.pr || '\u2014';
+    var prUrl = buildMergeRequestUrl(a.repo_url, a.pr);
+    o += '<td class="ov-pr">' + (prUrl ? '<a href="' + esc(prUrl) + '" style="color:var(--blue);text-decoration:none" target="_blank">' + esc(prVal) + '</a>' : esc(prVal)) + '</td>';
+    o += '</tr>';
+  });
+  o += '</tbody></table>';
+  o += '<div class="broadcast-log" id="broadcast-log"></div>';
+  o += '</div></div>';
+  document.getElementById('panel-overview').innerHTML = o;
+}
+
+function renderPanelInbox(data, sorted){
+  var agents = data.agents || {};
+  var inbox = collectInboxData(agents, sorted);
+  var allQuestions = inbox.questions;
+  var allBlockers = inbox.blockers;
+  var o = '';
+  if (allQuestions.length > 0 || allBlockers.length > 0) {
+    o += '<div class="card boss-inbox">';
+    o += '<div class="card-header"><span class="card-title">Inbox</span>';
+    var inboxCount = allQuestions.length + allBlockers.length;
+    o += '<span class="card-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,.2)">' + inboxCount + '</span>';
+    o += '</div>';
+    o += '<div class="card-body" style="padding:0;max-height:260px;overflow-y:auto">';
+    allBlockers.forEach(function(b, bIdx){
+      var bid = 'inbox-b-' + b.agent.replace(/\W/g,'') + '-' + bIdx;
+      o += '<div class="inbox-item" id="' + bid + '-row">';
+      o += '<span class="blocker-agent">' + esc(b.agent) + '</span>';
+      o += '<span class="blocker-text" style="color:var(--red)">' + esc(b.text) + '</span>';
+      o += '<button class="inbox-reply-btn" style="color:var(--red);border-color:rgba(248,81,73,.2)" data-agent="' + esc(b.agent) + '" data-source="' + b.source + '" data-idx="' + b.sourceIndex + '" data-text="' + esc(b.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)" title="Delete">&times;</button>';
+      o += '</div>';
+    });
+    allQuestions.forEach(function(q, idx){
+      var qid = 'inbox-q-' + q.agent.replace(/\W/g,'') + '-' + idx;
+      o += '<div class="inbox-item" id="' + qid + '-row">';
+      o += '<span class="inbox-agent">' + esc(q.agent) + '</span>';
+      o += '<span class="inbox-text">' + esc(q.text) + '</span>';
+      o += '<button class="inbox-reply-btn" onclick="toggleReplyForm(\'' + qid + '-form\', \'' + esc(q.agent).replace(/'/g,"\\'") + '\')" title="Reply to ' + esc(q.agent) + '">&#x21B5;</button>';
+      o += '<button class="inbox-reply-btn" data-agent="' + esc(q.agent) + '" data-source="' + q.source + '" data-idx="' + q.sourceIndex + '" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)" title="Delete">&times;</button>';
+      o += '</div>';
+      o += '<div class="inbox-reply-form" id="' + qid + '-form" style="display:none" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '">';
+      o += '<textarea class="inbox-reply-input" id="' + qid + '-form-input" placeholder="Reply to ' + esc(q.agent) + '..." rows="1" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendReply(\'' + esc(q.agent).replace(/'/g,"\\'") + '\',\'' + qid + '-form\',\'' + q.source + '\',' + q.sourceIndex + ',this.parentElement.dataset.text)}"></textarea>';
+      o += '<button class="inbox-reply-send" id="' + qid + '-form-btn" onclick="sendReply(\'' + esc(q.agent).replace(/'/g,"\\'") + '\',\'' + qid + '-form\',\'' + q.source + '\',' + q.sourceIndex + ',this.parentElement.dataset.text)">Send</button>';
+      o += '<button class="inbox-reply-send" style="background:var(--bg);color:var(--text3);border-color:var(--border2)" onclick="cancelReply(\'' + qid + '-form\')">Cancel</button>';
+      o += '<button class="inbox-reply-send" style="background:rgba(248,81,73,.06);color:var(--red);border-color:rgba(248,81,73,.2)" data-agent="' + esc(q.agent) + '" data-source="' + q.source + '" data-idx="' + q.sourceIndex + '" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)">Delete</button>';
+      o += '</div>';
+    });
+    o += '</div></div>';
+  } else {
+    o += '<div class="card">';
+    o += '<div class="card-header"><span class="card-title">Inbox</span></div>';
+    o += '<div class="card-body"><div style="color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0">No questions or blockers</div></div>';
+    o += '</div>';
+  }
+  document.getElementById('panel-inbox').innerHTML = o;
+}
+
+function renderPanelInterrupts(interruptMetrics, interruptLog){
+  var o = '<div class="card" style="border-color:var(--cyan);border-width:1px">';
+  o += '<div class="card-header" style="background:var(--cyan-bg);border-bottom-color:rgba(57,210,192,.2)">';
+  o += '<span class="card-title" style="color:var(--cyan)">Interrupt Tracker</span>';
+  var totalInt = interruptMetrics.total_interrupts || 0;
+  o += '<span class="card-badge" style="background:var(--cyan-bg);color:var(--cyan);border:1px solid rgba(57,210,192,.2)">' + totalInt + '</span>';
+  o += '</div>';
+  o += '<div class="card-body" style="padding:8px 12px">';
+  if (totalInt > 0){
+    o += '<div class="stats-row">';
+    var byType = interruptMetrics.by_type || {};
+    if (byType.decision) o += '<span class="stat-chip" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,.2)">decision ' + byType.decision + '</span>';
+    if (byType.approval) o += '<span class="stat-chip" style="background:var(--red-bg);color:var(--red);border:1px solid rgba(248,81,73,.2)">approval ' + byType.approval + '</span>';
+    if (byType.staleness) o += '<span class="stat-chip" style="background:var(--orange-bg);color:var(--orange);border:1px solid rgba(219,109,40,.2)">staleness ' + byType.staleness + '</span>';
+    if (byType.sequencing) o += '<span class="stat-chip" style="background:var(--blue-bg);color:var(--blue);border:1px solid rgba(77,158,255,.2)">sequencing ' + byType.sequencing + '</span>';
+    if (byType.review) o += '<span class="stat-chip" style="background:var(--purple-bg);color:var(--purple);border:1px solid rgba(163,113,247,.2)">review ' + byType.review + '</span>';
+    o += '</div>';
+    var pending = interruptMetrics.pending_interrupts || 0;
+    var human = interruptMetrics.human_interrupts || 0;
+    var auto = interruptMetrics.auto_resolved || 0;
+    o += '<div style="font-size:11px;color:var(--text2);margin-top:4px">';
+    o += '<span style="color:var(--yellow)">' + pending + ' pending</span>';
+    o += ' &middot; <span style="color:var(--green)">' + auto + ' auto</span>';
+    o += ' &middot; <span style="color:var(--red)">' + human + ' human</span>';
+    o += '</div>';
+    var recent = interruptLog.slice(-5).reverse();
+    if (recent.length > 0){
+      o += '<div style="margin-top:8px;max-height:140px;overflow-y:auto">';
+      recent.forEach(function(intr){
+        var typeCls = 'var(--text3)';
+        if (intr.type === 'decision') typeCls = 'var(--yellow)';
+        else if (intr.type === 'approval') typeCls = 'var(--red)';
+        else if (intr.type === 'staleness') typeCls = 'var(--orange)';
+        var resolved = intr.resolution ? '&check;' : '&hellip;';
+        var resolvedColor = intr.resolution ? 'var(--green)' : 'var(--yellow)';
+        var q = intr.question || '';
+        if (q.length > 80) q = q.substring(0, 77) + '...';
+        o += '<div style="font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:baseline">';
+        o += '<span style="color:' + resolvedColor + '">' + resolved + '</span>';
+        o += '<span style="color:' + typeCls + ';font-weight:600;min-width:55px">' + esc(intr.type) + '</span>';
+        o += '<span style="color:var(--text);font-weight:600;min-width:30px">' + esc(intr.agent) + '</span>';
+        o += '<span style="color:var(--text3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(q) + '</span>';
+        o += '</div>';
+      });
+      o += '</div>';
+    }
+  } else {
+    o += '<div style="color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0">No interrupts recorded</div>';
+  }
+  o += '</div></div>';
+  document.getElementById('panel-interrupts').innerHTML = o;
+}
+
+function renderPanelAgents(data, sorted, tmuxData){
+  var agents = data.agents || {};
+  var names = Object.keys(agents).sort();
+  var o = '';
   o += '<div class="section-label">Agents<span class="section-count">' + names.length + '</span></div>';
   o += '<div class="agent-grid">';
 
   sorted.forEach(function(name){
     var a = agents[name];
     var bossQs = extractBossQuestions(a);
+    var hasBlocker = a.blockers && a.blockers.length > 0;
+    var hasQuestion = bossQs.length > 0;
 
-    o += '<div class="agent-card">';
+    var isDoneCard = (a.status === 'done');
+    var cardCls = 'agent-card';
+    if (isDoneCard) cardCls += ' is-done';
+    else if (hasQuestion) cardCls += ' has-question';
+
+    o += '<div class="' + cardCls + '">';
     o += '<div class="agent-head">';
     o += '<span class="agent-name">' + esc(name) + '</span>';
-    o += '<span class="agent-status status-' + (a.status || 'idle') + '">' + (a.status || 'idle') + '</span>';
-    o += '</div>';
+    o += '<div class="agent-badges">';
+
+    var tmux = getTmuxStatus(name, tmuxData);
+    var cardNeedsApproval = tmux && tmux.needs_approval;
+    if (tmux && tmux.registered){
+      if (tmux.exists){
+        if (cardNeedsApproval) o += '<span class="tmux-badge tmux-waiting">waiting</span>';
+        else if (tmux.idle) o += '<span class="tmux-badge tmux-idle">idle</span>';
+        else o += '<span class="tmux-badge tmux-busy">busy</span>';
+      } else {
+        o += '<span class="tmux-badge tmux-offline">offline</span>';
+      }
+    }
+
+    var cardStatus = a.status || 'idle';
+    var statusCls = 'status-' + cardStatus;
+    if (cardNeedsApproval) statusCls = 'status-blocked';
+    else if (hasBlocker) statusCls = 'status-blocked';
+    var cardStatusLabel = cardNeedsApproval ? 'waiting' : (hasBlocker ? 'blocked' : cardStatus);
+    o += '<span class="agent-status ' + statusCls + '">' + cardStatusLabel + '</span>';
+    o += '</div></div>';
 
     var summary = (a.summary || '').replace(/^\[?\w+\]?\s*\d{4}-\d{2}-\d{2}\s*[—–\-]*\s*/, '').replace(/^\*\*/, '').replace(/\*\*$/, '');
     o += '<div class="agent-summary">' + esc(summary) + '</div>';
     o += '<div class="agent-body">';
 
+    o += '<div class="agent-meta">';
     if (a.phase) o += '<span class="agent-phase">' + esc(a.phase) + '</span>';
+    if (a.branch) o += '<span class="agent-branch">' + esc(a.branch) + '</span>';
+    if (a.worktree) o += '<span class="agent-branch" style="background:rgba(92,101,120,.12);color:var(--text3);border-color:rgba(92,101,120,.2)">' + esc(a.worktree) + '</span>';
+    if (a.pr){
+      var cardPrUrl = buildMergeRequestUrl(a.repo_url, a.pr);
+      if (cardPrUrl) o += '<a href="' + esc(cardPrUrl) + '" target="_blank" style="text-decoration:none"><span class="agent-branch" style="background:var(--blue-bg);color:var(--blue);border-color:rgba(77,158,255,.2)">' + esc(a.pr) + '</span></a>';
+      else o += '<span class="agent-branch" style="background:var(--blue-bg);color:var(--blue);border-color:rgba(77,158,255,.2)">' + esc(a.pr) + '</span>';
+    }
+    if (a.test_count != null) o += '<span class="agent-test-count">' + a.test_count + ' tests</span>';
+    o += '</div>';
 
     if (a.items && a.items.length > 0){
       o += '<ul class="agent-items">';
@@ -454,6 +1253,12 @@ function render(data){
       o += renderFreeText(a.free_text);
     }
 
+    if (a.blockers && a.blockers.length > 0){
+      a.blockers.forEach(function(bl){
+        o += '<div class="agent-blocker">' + esc(bl) + '</div>';
+      });
+    }
+
     if (a.next_steps) o += '<div class="agent-next"><strong>Next </strong>' + esc(a.next_steps) + '</div>';
 
     bossQs.forEach(function(q){ o += '<div class="boss-q">' + esc(q) + '</div>'; });
@@ -476,46 +1281,7 @@ function render(data){
     o += '</div></div>';
   }
 
-  document.getElementById('page').innerHTML = o;
-
-  var dot = '<span class="header-dot" style="background:var(--green)"></span>';
-  document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
-  document.getElementById('last-update').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
-}
-
-function renderBugs(a){
-  var lines = a.free_text.split('\n');
-  var bugs = [], cur = null;
-  var BT = String.fromCharCode(96);
-  var btRe = new RegExp(BT, 'g');
-  for (var i = 0; i < lines.length; i++){
-    var ln = lines[i];
-    if (ln.indexOf('### BUG') === 0){
-      if (cur) bugs.push(cur);
-      cur = {title: ln.replace(/^###\s*/, ''), loc: '', desc: ''};
-    } else if (cur && !cur.loc && ln.charCodeAt(0) === 96){
-      var di = ln.search(/\s[-\u2014\u2013]\s/);
-      if (di > 0){ cur.loc = ln.substring(0, di).replace(btRe, ''); cur.desc = ln.substring(di + 3); }
-      else { cur.loc = ln.replace(btRe, ''); }
-    }
-  }
-  if (cur) bugs.push(cur);
-
-  var h = '';
-  if (bugs.length > 0){
-    bugs.forEach(function(b){
-      h += '<div class="bug-item">';
-      h += '<div class="bug-title">' + esc(b.title) + '</div>';
-      if (b.loc) h += '<div class="bug-loc">' + esc(b.loc) + '</div>';
-      if (b.desc) h += '<div class="bug-desc">' + esc(b.desc) + '</div>';
-      h += '</div>';
-    });
-  } else if (a.items && a.items.length > 0){
-    h += '<ul class="agent-items">';
-    a.items.forEach(function(it){ h += '<li>' + esc(it) + '</li>'; });
-    h += '</ul>';
-  }
-  return h;
+  document.getElementById('panel-agents').innerHTML = o;
 }
 
 function renderFreeText(text){
@@ -566,30 +1332,6 @@ function renderFreeText(text){
   if (inTable) h += '</table>';
   if (inList) h += '</ul>';
   h += '</div>';
-  return h;
-}
-
-function renderMergePlan(a){
-  var prRe = /\|\s*\*\*PR (\d+)\*\*\s*\|[^|]*\|[^|]*\|\s*~?(\d+)\s*\|[^|]*\|\s*([^|]+)\|/g;
-  var m, prs = [];
-  while ((m = prRe.exec(a.free_text)) !== null){
-    prs.push({num: m[1], files: m[2], desc: m[3].trim()});
-  }
-
-  var h = '';
-  if (prs.length > 0){
-    h += '<div class="merge-plan">';
-    h += '<h4>Merge Plan: ' + prs.length + '-PR Dependency Chain</h4>';
-    h += '<div class="dep-graph">PR 1 (rh-trex-ai)\n  \u2514\u2192 PR 2 (api-server)\n       \u251c\u2192 PR 3 (sdk) \u2192 PR 4 (frontend)\n       \u2514\u2192 PR 5 (control-plane)</div>';
-    prs.forEach(function(pr){
-      h += '<div class="merge-row">';
-      h += '<span class="merge-pr">PR ' + esc(pr.num) + '</span>';
-      h += '<span class="merge-desc">' + esc(pr.desc) + '</span>';
-      h += '<span class="merge-files">~' + esc(pr.files) + ' files</span>';
-      h += '</div>';
-    });
-    h += '</div>';
-  }
   return h;
 }
 </script>

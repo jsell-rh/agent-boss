@@ -44,21 +44,33 @@ func (s AgentStatus) Emoji() string {
 type AgentUpdate struct {
 	Status    AgentStatus `json:"status"`
 	Summary   string      `json:"summary"`
-	Phase     string      `json:"phase,omitempty"`
+	Branch   string      `json:"branch,omitempty"`
+	Worktree string      `json:"worktree,omitempty"`
+	PR       string      `json:"pr,omitempty"`
+	Phase    string      `json:"phase,omitempty"`
 	TestCount *int        `json:"test_count,omitempty"`
 	Items     []string    `json:"items,omitempty"`
 	Sections  []Section   `json:"sections,omitempty"`
 	Questions []string    `json:"questions,omitempty"`
 	Blockers  []string    `json:"blockers,omitempty"`
-	NextSteps string      `json:"next_steps,omitempty"`
-	FreeText  string      `json:"free_text,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	NextSteps    string      `json:"next_steps,omitempty"`
+	FreeText     string      `json:"free_text,omitempty"`
+	Documents    []AgentDocument `json:"documents,omitempty"`
+	TmuxSession  string      `json:"tmux_session,omitempty"`
+	RepoURL      string      `json:"repo_url,omitempty"`
+	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
 type Section struct {
 	Title string   `json:"title"`
 	Items []string `json:"items,omitempty"`
 	Table *Table   `json:"table,omitempty"`
+}
+
+type AgentDocument struct {
+	Slug    string `json:"slug"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
 }
 
 type Table struct {
@@ -86,10 +98,6 @@ func NewKnowledgeSpace(name string) *KnowledgeSpace {
 }
 
 func (ks *KnowledgeSpace) RenderMarkdown() string {
-	return ks.RenderMarkdownWithStaleness(0)
-}
-
-func (ks *KnowledgeSpace) RenderMarkdownWithStaleness(staleThreshold time.Duration) string {
 	var b strings.Builder
 
 	b.WriteString("# ")
@@ -97,8 +105,8 @@ func (ks *KnowledgeSpace) RenderMarkdownWithStaleness(staleThreshold time.Durati
 	b.WriteString("\n\n")
 
 	b.WriteString("## Session Dashboard\n\n")
-	b.WriteString("| **Session** | **Status** | **Phase** | **Tests** | **Summary** |\n")
-	b.WriteString("| ----------- | ---------- | --------- | --------- | ----------- |\n")
+	b.WriteString("| **Agent** | **Status** | **Branch** | **PR** |\n")
+	b.WriteString("| --------- | ---------- | ---------- | ------ |\n")
 
 	sortedNames := make([]string, 0, len(ks.Agents))
 	for name := range ks.Agents {
@@ -108,22 +116,16 @@ func (ks *KnowledgeSpace) RenderMarkdownWithStaleness(staleThreshold time.Durati
 
 	for _, name := range sortedNames {
 		agent := ks.Agents[name]
-		phase := agent.Phase
-		if phase == "" {
-			phase = "—"
+		branch := agent.Branch
+		if branch == "" {
+			branch = "—"
 		}
-		tests := "—"
-		if agent.TestCount != nil {
-			tests = fmt.Sprintf("%d", *agent.TestCount)
+		pr := agent.PR
+		if pr == "" {
+			pr = "—"
 		}
-		staleMarker := ""
-		if staleThreshold > 0 && agent.Status != StatusDone && agent.Status != StatusError {
-			if time.Since(agent.UpdatedAt) > staleThreshold {
-				staleMarker = " ⚠️ STALE"
-			}
-		}
-		b.WriteString(fmt.Sprintf("| %s | %s %s%s | %s | %s | %s |\n",
-			name, agent.Status.Emoji(), agent.Status, staleMarker, phase, tests, agent.Summary))
+		b.WriteString(fmt.Sprintf("| %s | %s %s | %s | %s |\n",
+			name, agent.Status.Emoji(), agent.Status, branch, pr))
 	}
 	b.WriteString("\n---\n\n")
 
@@ -214,6 +216,14 @@ func renderAgentSection(name string, agent *AgentUpdate) string {
 	if agent.FreeText != "" {
 		b.WriteString(agent.FreeText)
 		b.WriteString("\n\n")
+	}
+
+	if len(agent.Documents) > 0 {
+		b.WriteString("#### Documents\n\n")
+		for _, doc := range agent.Documents {
+			b.WriteString(fmt.Sprintf("- [%s](./%s/%s)\n", doc.Title, name, doc.Slug))
+		}
+		b.WriteString("\n")
 	}
 
 	return b.String()

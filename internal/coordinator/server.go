@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	DefaultPort           = ":8899"
-	DefaultSpaceName      = "default"
-	DefaultStaleThreshold = 10 * time.Minute
+	DefaultPort      = ":8899"
+	DefaultSpaceName = "default"
 )
 
 const protocolFileName = "protocol.md"
@@ -39,9 +38,11 @@ type Server struct {
 	EventLog         []string
 	eventMu          sync.Mutex
 	protocolTemplate string
-	staleThreshold   time.Duration
+	stopLiveness     chan struct{}
 	sseClients       map[*sseClient]struct{}
 	sseMu            sync.Mutex
+	interrupts       *InterruptLedger
+	approvalTracked  map[string]time.Time
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -49,16 +50,14 @@ func NewServer(port, dataDir string) *Server {
 		port = DefaultPort
 	}
 	return &Server{
-		port:           port,
-		dataDir:        dataDir,
-		spaces:         make(map[string]*KnowledgeSpace),
-		staleThreshold: DefaultStaleThreshold,
-		sseClients:     make(map[*sseClient]struct{}),
+		port:            port,
+		dataDir:         dataDir,
+		spaces:          make(map[string]*KnowledgeSpace),
+		stopLiveness:    make(chan struct{}),
+		sseClients:      make(map[*sseClient]struct{}),
+		interrupts:      NewInterruptLedger(dataDir),
+		approvalTracked: make(map[string]time.Time),
 	}
-}
-
-func (s *Server) SetStaleThreshold(d time.Duration) {
-	s.staleThreshold = d
 }
 
 func (s *Server) Running() bool {
@@ -143,6 +142,8 @@ func (s *Server) Start() error {
 		}
 	}()
 
+	go s.livenessLoop()
+
 	return nil
 }
 
@@ -155,6 +156,7 @@ func (s *Server) Stop() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	close(s.stopLiveness)
 	err := s.httpServer.Shutdown(ctx)
 	s.running = false
 	s.logEvent("coordinator stopped")
@@ -208,12 +210,34 @@ func (s *Server) loadSpace(name string) (*KnowledgeSpace, error) {
 	return &ks, nil
 }
 
+const maxBackups = 10
+
+func (s *Server) rotateBackups(spaceName string) {
+	backupDir := filepath.Join(s.dataDir, "backups")
+	os.MkdirAll(backupDir, 0755)
+
+	base := filepath.Join(backupDir, spaceName+".json")
+	for i := maxBackups; i > 1; i-- {
+		src := fmt.Sprintf("%s.%d", base, i-1)
+		dst := fmt.Sprintf("%s.%d", base, i)
+		os.Rename(src, dst)
+	}
+
+	src := s.spacePath(spaceName)
+	dst := fmt.Sprintf("%s.%d", base, 1)
+	data, err := os.ReadFile(src)
+	if err == nil {
+		os.WriteFile(dst, data, 0644)
+	}
+}
+
 func (s *Server) saveSpace(ks *KnowledgeSpace) error {
 	s.refreshProtocol(ks)
 	data, err := json.MarshalIndent(ks, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", ks.Name, err)
 	}
+	s.rotateBackups(ks.Name)
 	if err := os.WriteFile(s.spacePath(ks.Name), data, 0644); err != nil {
 		return err
 	}
@@ -246,7 +270,7 @@ func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
 }
 
 func (s *Server) loadProtocolTemplate() string {
-	path := filepath.Join(s.dataDir, protocolFileName)
+	path := filepath.Join("docs", protocolFileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -311,7 +335,7 @@ func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/spaces/")
-	parts := strings.SplitN(path, "/", 3)
+	parts := strings.Split(path, "/")
 
 	spaceName := parts[0]
 	if spaceName == "" {
@@ -328,6 +352,11 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+
 	subRoute := parts[1]
 
 	switch subRoute {
@@ -340,15 +369,80 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 	case "archive":
 		s.handleSpaceArchive(w, r, spaceName)
 	case "agent":
+		if len(parts) < 3 {
+			http.Error(w, "missing agent name", http.StatusBadRequest)
+			return
+		}
+		agentName := parts[2]
+		if len(parts) >= 4 {
+			// Handle document path: /spaces/{space}/agent/{agent}/{slug}
+			documentSlug := strings.TrimRight(parts[3], "/")
+			s.handleAgentDocument(w, r, spaceName, agentName, documentSlug)
+		} else {
+			// Handle agent updates: /spaces/{space}/agent/{agent}
+			agentName = strings.TrimRight(agentName, "/")
+			s.handleSpaceAgent(w, r, spaceName, agentName)
+		}
+	case "api":
+		if len(parts) == 3 {
+			switch strings.TrimRight(parts[2], "/") {
+			case "agents":
+				s.handleSpaceAgentsJSON(w, r, spaceName)
+			case "events":
+				s.handleSpaceEventsJSON(w, r)
+			case "tmux-status":
+				s.handleSpaceTmuxStatus(w, r, spaceName)
+			default:
+				http.NotFound(w, r)
+			}
+		} else {
+			http.NotFound(w, r)
+		}
+	case "ignition":
 		agentName := ""
 		if len(parts) == 3 {
 			agentName = strings.TrimRight(parts[2], "/")
 		}
-		s.handleSpaceAgent(w, r, spaceName, agentName)
-	case "api":
-		if len(parts) == 3 && strings.TrimRight(parts[2], "/") == "agents" {
-			s.handleSpaceAgentsJSON(w, r, spaceName)
+		s.handleIgnition(w, r, spaceName, agentName)
+	case "approve":
+		if len(parts) == 3 {
+			agentName := strings.TrimRight(parts[2], "/")
+			s.handleApproveAgent(w, r, spaceName, agentName)
 		} else {
+			http.Error(w, "agent name required", http.StatusBadRequest)
+		}
+	case "broadcast":
+		if len(parts) == 3 {
+			agentName := strings.TrimRight(parts[2], "/")
+			s.handleSingleBroadcast(w, r, spaceName, agentName)
+		} else {
+			s.handleBroadcast(w, r, spaceName)
+		}
+	case "reply":
+		if len(parts) == 3 {
+			agentName := strings.TrimRight(parts[2], "/")
+			s.handleReplyAgent(w, r, spaceName, agentName)
+		} else {
+			http.Error(w, "agent name required", http.StatusBadRequest)
+		}
+	case "dismiss":
+		if len(parts) == 3 {
+			agentName := strings.TrimRight(parts[2], "/")
+			s.handleDismissQuestion(w, r, spaceName, agentName)
+		} else {
+			http.Error(w, "agent name required", http.StatusBadRequest)
+		}
+	case "factory":
+		factorySub := ""
+		if len(parts) == 3 {
+			factorySub = strings.TrimRight(parts[2], "/")
+		}
+		switch factorySub {
+		case "", "interrupts":
+			s.handleInterrupts(w, r, spaceName)
+		case "metrics":
+			s.handleInterruptMetrics(w, r, spaceName)
+		default:
 			http.NotFound(w, r)
 		}
 	default:
@@ -414,7 +508,7 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, ks.RenderMarkdownWithStaleness(s.staleThreshold))
+		fmt.Fprint(w, ks.RenderMarkdown())
 
 	case http.MethodPost:
 		body, err := io.ReadAll(r.Body)
@@ -545,6 +639,16 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		json.NewEncoder(w).Encode(agent)
 
 	case http.MethodPost:
+		callerName := r.Header.Get("X-Agent-Name")
+		if callerName == "" {
+			http.Error(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
+			return
+		}
+		if !strings.EqualFold(callerName, agentName) {
+			http.Error(w, fmt.Sprintf("agent %q cannot post to %q's channel", callerName, agentName), http.StatusForbidden)
+			return
+		}
+
 		ks := s.getOrCreateSpace(spaceName)
 		canonical := resolveAgentName(ks, agentName)
 
@@ -581,6 +685,14 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		update.UpdatedAt = time.Now().UTC()
 
 		s.mu.Lock()
+		if existing, ok := ks.Agents[canonical]; ok {
+			if update.TmuxSession == "" && existing.TmuxSession != "" {
+				update.TmuxSession = existing.TmuxSession
+			}
+			if update.RepoURL == "" && existing.RepoURL != "" {
+				update.RepoURL = existing.RepoURL
+			}
+		}
 		ks.Agents[canonical] = &update
 		ks.UpdatedAt = time.Now().UTC()
 		if err := s.saveSpace(ks); err != nil {
@@ -591,6 +703,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		s.mu.Unlock()
 
 		s.logEvent(fmt.Sprintf("[%s/%s] %s: %s", spaceName, canonical, update.Status, update.Summary))
+		s.recordDecisionInterrupts(spaceName, canonical, &update)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
 		s.broadcastSSE(spaceName, "agent_updated", string(sseData))
 		w.WriteHeader(http.StatusAccepted)
@@ -623,6 +736,319 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 	}
 }
 
+func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spaceName, agentName, documentSlug string) {
+	agentName = strings.TrimRight(agentName, "/")
+	
+	// Agent name enforcement - ensure X-Agent-Name header matches for writes
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		callerName := r.Header.Get("X-Agent-Name")
+		if callerName == "" {
+			http.Error(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
+			return
+		}
+		if !strings.EqualFold(callerName, agentName) {
+			http.Error(w, fmt.Sprintf("agent %q cannot post to %q's documents", callerName, agentName), http.StatusForbidden)
+			return
+		}
+	}
+	
+	// Sanitize document slug
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(documentSlug) {
+		http.Error(w, "invalid document slug: must be alphanumeric with underscores and dashes only", http.StatusBadRequest)
+		return
+	}
+
+	// Create agent document directory
+	agentDir := filepath.Join(s.dataDir, spaceName, agentName)
+	docPath := filepath.Join(agentDir, documentSlug+".md")
+
+	switch r.Method {
+	case http.MethodGet:
+		content, err := os.ReadFile(docPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "document not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, fmt.Sprintf("read document: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown")
+		w.Write(content)
+
+	case http.MethodPost, http.MethodPut:
+		contentType := r.Header.Get("Content-Type")
+		if !strings.Contains(contentType, "text/markdown") && !strings.Contains(contentType, "text/plain") {
+			http.Error(w, "Content-Type must be text/markdown or text/plain", http.StatusBadRequest)
+			return
+		}
+
+		content, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		// Create agent directory if it doesn't exist
+		if err := os.MkdirAll(agentDir, 0755); err != nil {
+			http.Error(w, fmt.Sprintf("create directory: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Write document
+		if err := os.WriteFile(docPath, content, 0644); err != nil {
+			http.Error(w, fmt.Sprintf("write document: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Update agent's documents list in the knowledge space
+		ks := s.getOrCreateSpace(spaceName)
+		canonical := resolveAgentName(ks, agentName)
+		
+		s.mu.Lock()
+		if ks.Agents[canonical] == nil {
+			ks.Agents[canonical] = &AgentUpdate{
+				Status: StatusActive,
+				Summary: "Document uploaded",
+				UpdatedAt: time.Now().UTC(),
+			}
+		}
+		
+		agent := ks.Agents[canonical]
+		
+		// Add or update document in the list
+		found := false
+		for i, doc := range agent.Documents {
+			if doc.Slug == documentSlug {
+				agent.Documents[i].Content = string(content)
+				found = true
+				break
+			}
+		}
+		if !found {
+			agent.Documents = append(agent.Documents, AgentDocument{
+				Slug:    documentSlug,
+				Title:   documentSlug, // Default title is the slug, agents can override via JSON
+				Content: string(content),
+			})
+		}
+		
+		agent.UpdatedAt = time.Now().UTC()
+		ks.UpdatedAt = time.Now().UTC()
+		
+		if err := s.saveSpace(ks); err != nil {
+			s.mu.Unlock()
+			http.Error(w, fmt.Sprintf("save space: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.mu.Unlock()
+
+		s.logEvent(fmt.Sprintf("[%s/%s] document %q uploaded", spaceName, canonical, documentSlug))
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, "document %q saved for [%s] in space %q", documentSlug, canonical, spaceName)
+
+	case http.MethodDelete:
+		if err := os.Remove(docPath); err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "document not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, fmt.Sprintf("delete document: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Remove document from agent's list
+		ks, ok := s.getSpace(spaceName)
+		if ok {
+			canonical := resolveAgentName(ks, agentName)
+			s.mu.Lock()
+			if agent := ks.Agents[canonical]; agent != nil {
+				for i, doc := range agent.Documents {
+					if doc.Slug == documentSlug {
+						agent.Documents = append(agent.Documents[:i], agent.Documents[i+1:]...)
+						break
+					}
+				}
+				agent.UpdatedAt = time.Now().UTC()
+				ks.UpdatedAt = time.Now().UTC()
+				s.saveSpace(ks)
+			}
+			s.mu.Unlock()
+		}
+
+		s.logEvent(fmt.Sprintf("[%s/%s] document %q deleted", spaceName, agentName, documentSlug))
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "document %q deleted", documentSlug)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if agentName == "" {
+		http.Error(w, "missing agent name: GET /spaces/{space}/ignition/{agent}", http.StatusBadRequest)
+		return
+	}
+
+	tmuxSession := r.URL.Query().Get("tmux_session")
+
+	ks := s.getOrCreateSpace(spaceName)
+
+	if tmuxSession != "" {
+		s.mu.Lock()
+		canonical := resolveAgentName(ks, agentName)
+		if existing, ok := ks.Agents[canonical]; ok {
+			existing.TmuxSession = tmuxSession
+		} else {
+			ks.Agents[canonical] = &AgentUpdate{
+				Status:      StatusIdle,
+				Summary:     canonical + ": awaiting ignition",
+				TmuxSession: tmuxSession,
+				UpdatedAt:   time.Now().UTC(),
+			}
+		}
+		ks.UpdatedAt = time.Now().UTC()
+		s.saveSpace(ks)
+		s.mu.Unlock()
+		s.logEvent(fmt.Sprintf("[%s/%s] tmux session registered via ignition: %s", spaceName, agentName, tmuxSession))
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("# Agent Ignition: %s\n\n", agentName))
+	b.WriteString(fmt.Sprintf("You are **%s**, an agent working in workspace **%s**.\n\n", agentName, spaceName))
+
+	b.WriteString("## Coordinator\n\n")
+	b.WriteString(fmt.Sprintf("- Boss URL: `http://localhost%s`\n", s.port))
+	b.WriteString(fmt.Sprintf("- Workspace: `%s`\n", spaceName))
+	b.WriteString(fmt.Sprintf("- Your channel: `POST /spaces/%s/agent/%s`\n", spaceName, agentName))
+	b.WriteString(fmt.Sprintf("- Read blackboard: `GET /spaces/%s/raw`\n", spaceName))
+	b.WriteString(fmt.Sprintf("- Dashboard: `http://localhost%s/spaces/%s/`\n", s.port, spaceName))
+	if tmuxSession != "" {
+		b.WriteString(fmt.Sprintf("- Tmux session: `%s` (pre-registered)\n", tmuxSession))
+	}
+	b.WriteString("\n")
+
+	b.WriteString("## Protocol\n\n")
+	b.WriteString("1. **Read before write.** GET /raw first to see what others are doing.\n")
+	b.WriteString(fmt.Sprintf("2. **Post to your channel only.** POST to `/spaces/%s/agent/%s` with `-H 'X-Agent-Name: %s'`.\n", spaceName, agentName, agentName))
+	b.WriteString("3. **Tag questions** with `[?BOSS]` — they render highlighted in the dashboard.\n")
+	b.WriteString("4. **Include location fields** in every POST: `branch`, `pr`, `test_count`.\n")
+	if tmuxSession != "" {
+		b.WriteString(fmt.Sprintf("5. **Tmux session is pre-registered.** Your session `%s` is already known to the coordinator. It is sticky — you do not need to include `tmux_session` in your POSTs.\n", tmuxSession))
+	} else {
+		b.WriteString("5. **Register your tmux session.** Include `\"tmux_session\"` in your first POST. Find it with `tmux display-message -p '#S'`. It is sticky — you only need to send it once.\n")
+	}
+	b.WriteString("\n")
+
+	b.WriteString("## Peer Agents\n\n")
+	if len(ks.Agents) == 0 {
+		b.WriteString("No agents have posted yet.\n\n")
+	} else {
+		b.WriteString("| Agent | Status | Summary |\n")
+		b.WriteString("| ----- | ------ | ------- |\n")
+		for name, agent := range ks.Agents {
+			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, agent.Status, agent.Summary))
+		}
+		b.WriteString("\n")
+	}
+
+	canonical := resolveAgentName(ks, agentName)
+	existing, hasExisting := ks.Agents[canonical]
+	if hasExisting {
+		b.WriteString("## Your Last State\n\n")
+		b.WriteString(fmt.Sprintf("- Status: %s\n", existing.Status))
+		b.WriteString(fmt.Sprintf("- Summary: %s\n", existing.Summary))
+		if existing.Branch != "" {
+			b.WriteString(fmt.Sprintf("- Branch: `%s`\n", existing.Branch))
+		}
+		if existing.PR != "" {
+			b.WriteString(fmt.Sprintf("- PR: %s\n", existing.PR))
+		}
+		if existing.Phase != "" {
+			b.WriteString(fmt.Sprintf("- Phase: %s\n", existing.Phase))
+		}
+		if existing.NextSteps != "" {
+			b.WriteString(fmt.Sprintf("- Next steps: %s\n", existing.NextSteps))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("## JSON Post Template\n\n")
+	b.WriteString("```bash\n")
+	b.WriteString(fmt.Sprintf("curl -s -X POST http://localhost%s/spaces/%s/agent/%s \\\n", s.port, spaceName, agentName))
+	b.WriteString("  -H 'Content-Type: application/json' \\\n")
+	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
+	b.WriteString("  -d '{\n")
+	b.WriteString("    \"status\": \"active\",\n")
+	b.WriteString(fmt.Sprintf("    \"summary\": \"%s: working on ...\",\n", agentName))
+	b.WriteString("    \"branch\": \"feat/...\",\n")
+	b.WriteString("    \"items\": [\"...\"]\n")
+	b.WriteString("  }'\n")
+	b.WriteString("```\n")
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, b.String())
+}
+
+func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	checkModel := r.URL.Query().Get("check_model")
+	if checkModel == "" {
+		checkModel = "claude-sonnet-4-6@default"
+	}
+	workModel := r.URL.Query().Get("work_model")
+	if workModel == "" {
+		workModel = "claude-opus-4-6@default"
+	}
+
+	go func() {
+		result := s.BroadcastCheckIn(spaceName, checkModel, workModel)
+		sseData, _ := json.Marshal(result)
+		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	fmt.Fprintf(w, "broadcast initiated for space %q", spaceName)
+}
+
+func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	checkModel := r.URL.Query().Get("check_model")
+	if checkModel == "" {
+		checkModel = "claude-sonnet-4-6@default"
+	}
+	workModel := r.URL.Query().Get("work_model")
+	if workModel == "" {
+		workModel = "claude-opus-4-6@default"
+	}
+
+	go func() {
+		result := s.SingleAgentCheckIn(spaceName, agentName, checkModel, workModel)
+		sseData, _ := json.Marshal(result)
+		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	fmt.Fprintf(w, "check-in initiated for agent %q in space %q", agentName, spaceName)
+}
+
 func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -637,6 +1063,255 @@ func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, s
 	defer s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ks.Agents)
+}
+
+func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	events := s.RecentEvents(50)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+type tmuxAgentStatus struct {
+	Agent         string `json:"agent"`
+	Session       string `json:"session"`
+	Registered    bool   `json:"registered"`
+	Exists        bool   `json:"exists"`
+	Idle          bool   `json:"idle"`
+	LastLine      string `json:"last_line,omitempty"`
+	NeedsApproval bool   `json:"needs_approval"`
+	ToolName      string `json:"tool_name,omitempty"`
+	PromptText    string `json:"prompt_text,omitempty"`
+}
+
+func (s *Server) handleSpaceTmuxStatus(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	s.TmuxAutoDiscover(spaceName)
+
+	s.mu.RLock()
+	type agentSession struct {
+		name    string
+		session string
+	}
+	var pairs []agentSession
+	for name, agent := range ks.Agents {
+		pairs = append(pairs, agentSession{name: name, session: agent.TmuxSession})
+	}
+	s.mu.RUnlock()
+
+	hasTmux := tmuxAvailable()
+	var results []tmuxAgentStatus
+	for i, p := range pairs {
+		st := tmuxAgentStatus{
+			Agent:      p.name,
+			Session:    p.session,
+			Registered: p.session != "",
+		}
+		if hasTmux && st.Registered {
+			st.Exists = tmuxSessionExists(p.session)
+			if st.Exists {
+				st.Idle = tmuxIsIdle(p.session)
+				st.LastLine, _ = tmuxCapturePaneLastLine(p.session)
+				approval := tmuxCheckApproval(p.session)
+				st.NeedsApproval = approval.NeedsApproval
+				st.ToolName = approval.ToolName
+				st.PromptText = approval.PromptText
+			}
+		}
+		results = append(results, st)
+		if hasTmux && i < len(pairs)-1 {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+	s.mu.RLock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.Agents[canonical]
+	var tmuxSession string
+	if exists {
+		tmuxSession = agent.TmuxSession
+	}
+	s.mu.RUnlock()
+	if !exists {
+		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		return
+	}
+	if tmuxSession == "" {
+		http.Error(w, canonical+": no tmux session registered", http.StatusBadRequest)
+		return
+	}
+	if !tmuxSessionExists(tmuxSession) {
+		http.Error(w, canonical+": tmux session not found", http.StatusBadRequest)
+		return
+	}
+	approval := tmuxCheckApproval(tmuxSession)
+	if !approval.NeedsApproval {
+		http.Error(w, canonical+": not waiting for approval", http.StatusConflict)
+		return
+	}
+	if err := tmuxApprove(tmuxSession); err != nil {
+		http.Error(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.logEvent(fmt.Sprintf("[%s/%s] approval granted via dashboard (tool: %s)", spaceName, canonical, approval.ToolName))
+	key := spaceName + "/" + canonical
+	ctx := map[string]string{"tool": approval.ToolName}
+	if started, was := s.approvalTracked[key]; was {
+		delete(s.approvalTracked, key)
+		ctx["wait_seconds"] = fmt.Sprintf("%.1f", time.Since(started).Seconds())
+	}
+	s.interrupts.RecordResolved(spaceName, canonical, InterruptApproval,
+		approval.PromptText, "human", "approved", ctx)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "approved", "agent": canonical, "tool": approval.ToolName})
+}
+
+func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+	s.mu.RLock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.Agents[canonical]
+	var tmuxSession string
+	if exists {
+		tmuxSession = agent.TmuxSession
+	}
+	s.mu.RUnlock()
+	if !exists {
+		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		return
+	}
+	if tmuxSession == "" {
+		http.Error(w, canonical+": no tmux session registered", http.StatusBadRequest)
+		return
+	}
+	if !tmuxSessionExists(tmuxSession) {
+		http.Error(w, canonical+": tmux session not found", http.StatusBadRequest)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 32*1024))
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.Message) == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
+		return
+	}
+	if err := tmuxSendKeys(tmuxSession, payload.Message); err != nil {
+		http.Error(w, canonical+": send failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.logEvent(fmt.Sprintf("[%s/%s] boss reply sent via dashboard", spaceName, canonical))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent", "agent": canonical})
+}
+
+func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var payload struct {
+		Type  string `json:"type"`
+		Index int    `json:"index"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.Agents[canonical]
+	if !exists {
+		s.mu.Unlock()
+		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		return
+	}
+	switch payload.Type {
+	case "question":
+		if payload.Index < 0 || payload.Index >= len(agent.Questions) {
+			s.mu.Unlock()
+			http.Error(w, "index out of range", http.StatusBadRequest)
+			return
+		}
+		agent.Questions = append(agent.Questions[:payload.Index], agent.Questions[payload.Index+1:]...)
+	case "blocker":
+		if payload.Index < 0 || payload.Index >= len(agent.Blockers) {
+			s.mu.Unlock()
+			http.Error(w, "index out of range", http.StatusBadRequest)
+			return
+		}
+		agent.Blockers = append(agent.Blockers[:payload.Index], agent.Blockers[payload.Index+1:]...)
+	default:
+		s.mu.Unlock()
+		http.Error(w, "type must be 'question' or 'blocker'", http.StatusBadRequest)
+		return
+	}
+	ks.UpdatedAt = time.Now().UTC()
+	if err := s.saveSpace(ks); err != nil {
+		s.mu.Unlock()
+		http.Error(w, "save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.mu.Unlock()
+
+	s.logEvent(fmt.Sprintf("[%s/%s] boss dismissed %s #%d via dashboard", spaceName, canonical, payload.Type, payload.Index))
+	sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
+	s.broadcastSSE(spaceName, "agent_updated", string(sseData))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "dismissed", "agent": canonical})
 }
 
 func (s *Server) broadcastSSE(space, event, data string) {
@@ -699,27 +1374,141 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 	}
 }
 
-func (s *Server) IsStale(agent *AgentUpdate) bool {
-	if agent.Status == StatusDone || agent.Status == StatusError {
-		return false
-	}
-	return time.Since(agent.UpdatedAt) > s.staleThreshold
-}
-
-func (s *Server) StaleAgents(spaceName string) map[string]*AgentUpdate {
-	ks, ok := s.getSpace(spaceName)
-	if !ok {
-		return nil
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	stale := make(map[string]*AgentUpdate)
-	for name, agent := range ks.Agents {
-		if s.IsStale(agent) {
-			stale[name] = agent
+func (s *Server) livenessLoop() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stopLiveness:
+			return
+		case <-ticker.C:
+			s.checkAllSessionLiveness()
 		}
 	}
-	return stale
+}
+
+func (s *Server) checkAllSessionLiveness() {
+	if !tmuxAvailable() {
+		return
+	}
+	s.mu.RLock()
+	type probe struct {
+		space, agent, session string
+	}
+	var probes []probe
+	for spaceName, ks := range s.spaces {
+		for name, agent := range ks.Agents {
+			if agent.TmuxSession != "" {
+				probes = append(probes, probe{spaceName, name, agent.TmuxSession})
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	type statusEntry struct {
+		agent, session   string
+		exists, idle     bool
+		needsApproval    bool
+		toolName, prompt string
+	}
+	spaceResults := make(map[string][]statusEntry)
+	for _, p := range probes {
+		e := statusEntry{agent: p.agent, session: p.session}
+		e.exists = tmuxSessionExists(p.session)
+		if e.exists {
+			e.idle = tmuxIsIdle(p.session)
+			if !e.idle {
+				approval := tmuxCheckApproval(p.session)
+				e.needsApproval = approval.NeedsApproval
+				e.toolName = approval.ToolName
+				e.prompt = approval.PromptText
+			}
+		}
+		spaceResults[p.space] = append(spaceResults[p.space], e)
+	}
+
+	for space, entries := range spaceResults {
+		payload := make([]map[string]interface{}, len(entries))
+		for i, e := range entries {
+			key := space + "/" + e.agent
+			if e.needsApproval {
+				if _, already := s.approvalTracked[key]; !already {
+					ctx := map[string]string{}
+					if e.toolName != "" {
+						ctx["tool"] = e.toolName
+					}
+					s.interrupts.Record(space, e.agent, InterruptApproval, e.prompt, ctx)
+					s.approvalTracked[key] = time.Now()
+					s.logEvent(fmt.Sprintf("[%s/%s] approval interrupt detected (tool: %s)", space, e.agent, e.toolName))
+				}
+			} else {
+				if started, was := s.approvalTracked[key]; was {
+					delete(s.approvalTracked, key)
+					waitSec := time.Since(started).Seconds()
+					s.interrupts.RecordResolved(space, e.agent, InterruptApproval,
+						"", "auto", "cleared",
+						map[string]string{"wait_seconds": fmt.Sprintf("%.1f", waitSec)})
+					s.logEvent(fmt.Sprintf("[%s/%s] approval interrupt cleared (waited %.1fs)", space, e.agent, waitSec))
+				}
+			}
+
+			m := map[string]interface{}{
+				"agent":          e.agent,
+				"session":        e.session,
+				"exists":         e.exists,
+				"idle":           e.idle,
+				"needs_approval": e.needsApproval,
+			}
+			if e.toolName != "" {
+				m["tool_name"] = e.toolName
+			}
+			if e.prompt != "" {
+				m["prompt_text"] = e.prompt
+			}
+			payload[i] = m
+		}
+		data, _ := json.Marshal(payload)
+		s.broadcastSSE(space, "tmux_liveness", string(data))
+	}
+}
+
+func (s *Server) recordDecisionInterrupts(spaceName, agentName string, update *AgentUpdate) {
+	for _, q := range update.Questions {
+		ctx := map[string]string{}
+		if update.Branch != "" {
+			ctx["branch"] = update.Branch
+		}
+		if update.PR != "" {
+			ctx["pr"] = update.PR
+		}
+		if update.Phase != "" {
+			ctx["phase"] = update.Phase
+		}
+		s.interrupts.Record(spaceName, agentName, InterruptDecision, q, ctx)
+	}
+}
+
+func (s *Server) handleInterrupts(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	interrupts := s.interrupts.LoadAll(spaceName)
+	if interrupts == nil {
+		interrupts = []Interrupt{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(interrupts)
+}
+
+func (s *Server) handleInterruptMetrics(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	metrics := s.interrupts.Metrics(spaceName)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metrics)
 }
 
 func resolveAgentName(ks *KnowledgeSpace, raw string) string {

@@ -31,6 +31,10 @@ func main() {
 		cmdSpaces(os.Args[2:])
 	case "delete":
 		cmdDelete(os.Args[2:])
+	case "ignite":
+		cmdIgnite(os.Args[2:])
+	case "broadcast":
+		cmdBroadcast(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -49,6 +53,8 @@ Commands:
   get                       Get agent state or space markdown
   spaces                    List all spaces
   delete                    Delete a space or agent
+  ignite                    Generate ignition prompt for an agent
+  broadcast                 Trigger boss-check broadcast for a space
 
 Examples:
   boss serve
@@ -58,6 +64,8 @@ Examples:
   boss spaces
   boss delete --space my-feature
   boss delete --space my-feature --agent api
+  boss ignite SDK sdk-backend-replacement
+  boss broadcast --space sdk-backend-replacement
 
 Environment:
   BOSS_URL          Server URL (default: http://localhost:8899)
@@ -194,6 +202,43 @@ func cmdSpaces(args []string) {
 	for _, s := range spaces {
 		fmt.Printf("  %-24s %d agents   updated %s\n", s.Name, s.AgentCount, s.UpdatedAt.Local().Format("15:04:05"))
 	}
+}
+
+func cmdIgnite(args []string) {
+	fs := flag.NewFlagSet("ignite", flag.ExitOnError)
+	tmuxSession := fs.String("tmux", "", "Tmux session name to register (default: auto-detect)")
+	fs.Parse(args)
+
+	positional := fs.Args()
+	if len(positional) < 2 {
+		fmt.Fprintln(os.Stderr, "boss ignite: requires <agent-name> <workspace>")
+		fmt.Fprintln(os.Stderr, "usage: boss ignite [-tmux SESSION] SDK sdk-backend-replacement")
+		os.Exit(1)
+	}
+	agentName := positional[0]
+	workspace := positional[1]
+
+	client := coordinator.NewClient(serverURL(), workspace)
+	prompt, err := client.FetchIgnition(agentName, *tmuxSession)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boss ignite: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(prompt)
+}
+
+func cmdBroadcast(args []string) {
+	fs := flag.NewFlagSet("broadcast", flag.ExitOnError)
+	space := fs.String("space", "default", "Space name")
+	fs.Parse(args)
+
+	client := coordinator.NewClient(serverURL(), *space)
+	msg, err := client.TriggerBroadcast()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boss broadcast: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(msg)
 }
 
 func cmdDelete(args []string) {
