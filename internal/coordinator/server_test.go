@@ -514,8 +514,6 @@ func TestMultipleAgentsInOneSpace(t *testing.T) {
 
 func TestProtocolInjectedOnNewSpace(t *testing.T) {
 	dataDir := t.TempDir()
-	protocol := "## Protocol\n\nSpace: `{SPACE}`\nPost: `POST /spaces/{SPACE}/agent/{name}`"
-	os.WriteFile(filepath.Join(dataDir, "protocol.md"), []byte(protocol), 0644)
 
 	srv := NewServer(":0", dataDir)
 	if err := srv.Start(); err != nil {
@@ -555,27 +553,29 @@ func TestProtocolInjectedOnNewSpace(t *testing.T) {
 	}
 }
 
-func TestNoProtocolFileSkipsInjection(t *testing.T) {
+func TestProtocolAlwaysInjected(t *testing.T) {
 	srv, cleanup := mustStartServer(t)
 	defer cleanup()
 	base := serverBaseURL(srv)
 
-	postJSON(t, base+"/spaces/no-protocol/agent/test", AgentUpdate{
-		Status: StatusIdle, Summary: "no protocol file",
+	postJSON(t, base+"/spaces/embedded-protocol/agent/test", AgentUpdate{
+		Status: StatusIdle, Summary: "embedded protocol test",
 	})
 
-	code, md := getBody(t, base+"/spaces/no-protocol/raw")
+	code, md := getBody(t, base+"/spaces/embedded-protocol/raw")
 	if code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", code)
 	}
-	if strings.Contains(md, "Shared Contracts") {
-		t.Error("Shared Contracts should not appear when no protocol.md exists")
+	if !strings.Contains(md, "Shared Contracts") {
+		t.Error("Shared Contracts should always appear with embedded protocol")
+	}
+	if !strings.Contains(md, "Space: `embedded-protocol`") {
+		t.Error("Embedded protocol should have space name substituted")
 	}
 }
 
-func TestProtocolAlwaysOverwritesContracts(t *testing.T) {
+func TestEmbeddedProtocolRespectsManualEdits(t *testing.T) {
 	dataDir := t.TempDir()
-	os.WriteFile(filepath.Join(dataDir, "protocol.md"), []byte("canonical protocol for {SPACE}"), 0644)
 
 	srv := NewServer(":0", dataDir)
 	if err := srv.Start(); err != nil {
@@ -595,46 +595,15 @@ func TestProtocolAlwaysOverwritesContracts(t *testing.T) {
 	})
 
 	_, contracts := getBody(t, base+"/spaces/custom/contracts")
-	if strings.Contains(contracts, "custom contracts override") {
-		t.Error("protocol.md should always overwrite manual contract edits")
+	if !strings.Contains(contracts, "custom contracts override") {
+		t.Error("embedded protocol should respect manual contract edits")
 	}
-	if !strings.Contains(contracts, "canonical protocol for custom") {
-		t.Errorf("expected protocol with space name, got: %q", contracts)
-	}
-}
-
-func TestProtocolHotReload(t *testing.T) {
-	dataDir := t.TempDir()
-	protocolPath := filepath.Join(dataDir, "protocol.md")
-	os.WriteFile(protocolPath, []byte("v1 protocol for {SPACE}"), 0644)
-
-	srv := NewServer(":0", dataDir)
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer srv.Stop()
-	base := serverBaseURL(srv)
-
-	postJSON(t, base+"/spaces/reload/agent/api", AgentUpdate{
-		Status: StatusActive, Summary: "first post",
-	})
-
-	_, contracts := getBody(t, base+"/spaces/reload/contracts")
-	if !strings.Contains(contracts, "v1 protocol for reload") {
-		t.Fatalf("expected v1 protocol, got: %q", contracts)
-	}
-
-	os.WriteFile(protocolPath, []byte("v2 protocol for {SPACE} with new rules"), 0644)
-
-	postJSON(t, base+"/spaces/reload/agent/api", AgentUpdate{
-		Status: StatusDone, Summary: "second post triggers reload",
-	})
-
-	_, contracts = getBody(t, base+"/spaces/reload/contracts")
-	if !strings.Contains(contracts, "v2 protocol for reload with new rules") {
-		t.Errorf("expected v2 protocol after hot reload, got: %q", contracts)
+	if strings.Contains(contracts, "Space: `custom`") {
+		t.Errorf("embedded protocol should not overwrite manual contracts, got: %q", contracts)
 	}
 }
+
+// TestProtocolHotReload is no longer relevant since protocol is embedded at compile time
 
 func TestUpdatedAtTimestamp(t *testing.T) {
 	srv, cleanup := mustStartServer(t)

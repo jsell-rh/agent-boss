@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,7 +21,8 @@ const (
 	DefaultSpaceName = "default"
 )
 
-const protocolFileName = "protocol.md"
+//go:embed protocol.md
+var protocolTemplate string
 
 type sseClient struct {
 	ch    chan []byte
@@ -37,7 +39,6 @@ type Server struct {
 	runMu            sync.Mutex
 	EventLog         []string
 	eventMu          sync.Mutex
-	protocolTemplate string
 	stopLiveness     chan struct{}
 	sseClients       map[*sseClient]struct{}
 	sseMu            sync.Mutex
@@ -102,7 +103,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("create data dir: %w", err)
 	}
 
-	s.protocolTemplate = s.loadProtocolTemplate()
+	// Protocol template is now embedded at compile time
 
 	if err := s.loadAllSpaces(); err != nil {
 		return fmt.Errorf("load spaces: %w", err)
@@ -249,12 +250,13 @@ func (s *Server) saveSpace(ks *KnowledgeSpace) error {
 }
 
 func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
-	template := s.loadProtocolTemplate()
-	if template == "" {
+	if protocolTemplate == "" {
 		return
 	}
-	s.protocolTemplate = template
-	ks.SharedContracts = strings.ReplaceAll(template, "{SPACE}", ks.Name)
+	// Only set protocol if SharedContracts is empty (don't overwrite manual edits)
+	if ks.SharedContracts == "" {
+		ks.SharedContracts = strings.ReplaceAll(protocolTemplate, "{SPACE}", ks.Name)
+	}
 }
 
 func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
@@ -269,14 +271,6 @@ func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
 	return ks
 }
 
-func (s *Server) loadProtocolTemplate() string {
-	path := filepath.Join("docs", protocolFileName)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
 
 func (s *Server) getSpace(name string) (*KnowledgeSpace, bool) {
 	s.mu.RLock()
