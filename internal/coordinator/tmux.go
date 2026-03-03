@@ -157,7 +157,7 @@ func tmuxCheckApproval(session string) approvalInfo {
 	if tmuxIsIdle(session) {
 		return approvalInfo{}
 	}
-	lines, err := tmuxCapturePaneLines(session, 30)
+	lines, err := tmuxCapturePaneLines(session, 60)
 	if err != nil || len(lines) == 0 {
 		return approvalInfo{}
 	}
@@ -175,7 +175,9 @@ func tmuxCheckApproval(session string) approvalInfo {
 	hasNumberedChoice := false
 	for i := promptIdx + 1; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(trimmed, "1.") || strings.HasPrefix(trimmed, ") 1.") || strings.HasPrefix(trimmed, "❯") {
+		inner := strings.TrimSpace(strings.ReplaceAll(trimmed, "│", ""))
+		if strings.HasPrefix(inner, "1.") || strings.HasPrefix(inner, ") 1.") || strings.HasPrefix(inner, "❯") ||
+			strings.Contains(inner, "1. Yes") {
 			hasNumberedChoice = true
 			break
 		}
@@ -206,8 +208,8 @@ func tmuxCheckApproval(session string) approvalInfo {
 		contentLines = append(contentLines, inner)
 	}
 	prompt := strings.Join(contentLines, " | ")
-	if len(prompt) > 200 {
-		prompt = prompt[:197] + "..."
+	if len(prompt) > 2000 {
+		prompt = prompt[:1997] + "..."
 	}
 	return approvalInfo{
 		NeedsApproval: true,
@@ -223,16 +225,22 @@ func tmuxApprove(session string) error {
 }
 
 func tmuxIsIdle(session string) bool {
-	line, err := tmuxCapturePaneLastLine(session)
+	lines, err := tmuxCapturePaneLines(session, 5)
 	if err != nil {
 		return false
 	}
-	if strings.Contains(line, ">") || strings.Contains(line, "$") {
-		return true
-	}
-	trimmed := strings.TrimSpace(line)
-	if strings.HasPrefix(trimmed, "?") || strings.Contains(trimmed, "for shortcuts") {
-		return true
+	for _, line := range lines {
+		inner := strings.TrimSpace(strings.ReplaceAll(line, "│", ""))
+		if inner == ">" {
+			return true
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "?") && strings.Contains(trimmed, "for shortcuts") {
+			return true
+		}
+		if strings.Contains(trimmed, "auto-compact") || strings.Contains(trimmed, "auto-accept") {
+			return true
+		}
 	}
 	return false
 }
@@ -399,7 +407,10 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 	var targets []target
 	for name, agent := range ks.Agents {
 		if agent.TmuxSession != "" {
-			targets = append(targets, target{agentName: name, tmuxSession: agent.TmuxSession})
+			targets = append(targets, target{
+				agentName:   name,
+				tmuxSession: agent.TmuxSession,
+			})
 		}
 	}
 	s.mu.RUnlock()

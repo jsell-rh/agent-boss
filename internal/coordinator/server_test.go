@@ -828,66 +828,6 @@ func TestSSEGlobalEndpoint(t *testing.T) {
 	}
 }
 
-func TestStalenessDetection(t *testing.T) {
-	srv, cleanup := mustStartServer(t)
-	defer cleanup()
-	base := serverBaseURL(srv)
-
-	srv.SetStaleThreshold(50 * time.Millisecond)
-
-	postJSON(t, base+"/spaces/stale-test/agent/api", AgentUpdate{
-		Status: StatusActive, Summary: "will go stale",
-	})
-	postJSON(t, base+"/spaces/stale-test/agent/done-agent", AgentUpdate{
-		Status: StatusDone, Summary: "finished work",
-	})
-
-	time.Sleep(100 * time.Millisecond)
-
-	code, md := getBody(t, base+"/spaces/stale-test/raw")
-	if code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", code)
-	}
-	if !strings.Contains(md, "STALE") {
-		t.Error("expected STALE marker for active agent past threshold")
-	}
-
-	stale := srv.StaleAgents("stale-test")
-	if len(stale) != 1 {
-		t.Fatalf("expected 1 stale agent, got %d", len(stale))
-	}
-	if _, ok := stale["Api"]; !ok {
-		t.Error("expected Api to be stale")
-	}
-	if _, ok := stale["Done-agent"]; ok {
-		t.Error("done agents should not be stale")
-	}
-}
-
-func TestStalenessNotShownForDoneAgents(t *testing.T) {
-	srv, cleanup := mustStartServer(t)
-	defer cleanup()
-	base := serverBaseURL(srv)
-
-	srv.SetStaleThreshold(50 * time.Millisecond)
-
-	postJSON(t, base+"/spaces/stale-done/agent/api", AgentUpdate{
-		Status: StatusDone, Summary: "finished",
-	})
-	postJSON(t, base+"/spaces/stale-done/agent/err", AgentUpdate{
-		Status: StatusError, Summary: "crashed",
-	})
-
-	time.Sleep(100 * time.Millisecond)
-
-	code, md := getBody(t, base+"/spaces/stale-done/raw")
-	if code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", code)
-	}
-	if strings.Contains(md, "STALE") {
-		t.Error("done/error agents should not show STALE")
-	}
-}
 
 func TestClientDeleteAgent(t *testing.T) {
 	srv, cleanup := mustStartServer(t)
@@ -929,6 +869,178 @@ func TestClientDeleteSpace(t *testing.T) {
 	code, _ := getBody(t, base+"/spaces/client-del-space/raw")
 	if code != http.StatusNotFound {
 		t.Fatalf("expected 404 after delete, got %d", code)
+	}
+}
+
+func TestInterruptRecordedOnBossQuestion(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	postJSON(t, base+"/spaces/int-test/agent/FE", AgentUpdate{
+		Status:    StatusBlocked,
+		Summary:   "FE: needs direction",
+		Branch:    "feat/frontend",
+		PR:        "#640",
+		Questions: []string{"[?BOSS] Should I rebase or start fresh?"},
+	})
+
+	code, body := getBody(t, base+"/spaces/int-test/factory/interrupts")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var interrupts []Interrupt
+	if err := json.Unmarshal([]byte(body), &interrupts); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(interrupts) != 1 {
+		t.Fatalf("expected 1 interrupt, got %d", len(interrupts))
+	}
+	intr := interrupts[0]
+	if intr.Type != InterruptDecision {
+		t.Errorf("type = %q, want %q", intr.Type, InterruptDecision)
+	}
+	if intr.Agent != "Fe" {
+		t.Errorf("agent = %q, want Fe", intr.Agent)
+	}
+	if intr.Space != "int-test" {
+		t.Errorf("space = %q, want int-test", intr.Space)
+	}
+	if intr.Context["branch"] != "feat/frontend" {
+		t.Errorf("context branch = %q", intr.Context["branch"])
+	}
+	if intr.Context["pr"] != "#640" {
+		t.Errorf("context pr = %q", intr.Context["pr"])
+	}
+	if intr.Resolution != nil {
+		t.Error("expected no resolution (pending)")
+	}
+}
+
+func TestInterruptMetricsEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	postJSON(t, base+"/spaces/metrics-test/agent/API", AgentUpdate{
+		Status:    StatusActive,
+		Summary:   "API: working",
+		Questions: []string{"[?BOSS] Which approach?", "[?BOSS] What version?"},
+	})
+
+	code, body := getBody(t, base+"/spaces/metrics-test/factory/metrics")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var metrics InterruptMetrics
+	if err := json.Unmarshal([]byte(body), &metrics); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if metrics.TotalInterrupts != 2 {
+		t.Errorf("total = %d, want 2", metrics.TotalInterrupts)
+	}
+	if metrics.PendingInterrupts != 2 {
+		t.Errorf("pending = %d, want 2", metrics.PendingInterrupts)
+	}
+	if metrics.ByType["decision"] != 2 {
+		t.Errorf("by_type[decision] = %d, want 2", metrics.ByType["decision"])
+	}
+	if metrics.ByAgent["Api"] != 2 {
+		t.Errorf("by_agent[Api] = %d, want 2", metrics.ByAgent["Api"])
+	}
+}
+
+func TestInterruptLedgerPersistence(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv1 := NewServer(":0", dataDir)
+	if err := srv1.Start(); err != nil {
+		t.Fatal(err)
+	}
+	base1 := serverBaseURL(srv1)
+
+	postJSON(t, base1+"/spaces/persist-int/agent/SDK", AgentUpdate{
+		Status:    StatusBlocked,
+		Summary:   "SDK: blocked",
+		Questions: []string{"[?BOSS] Wait for API?"},
+	})
+	srv1.Stop()
+
+	srv2 := NewServer(":0", dataDir)
+	if err := srv2.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv2.Stop()
+	base2 := serverBaseURL(srv2)
+
+	code, body := getBody(t, base2+"/spaces/persist-int/factory/interrupts")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var interrupts []Interrupt
+	json.Unmarshal([]byte(body), &interrupts)
+	if len(interrupts) != 1 {
+		t.Fatalf("expected 1 interrupt after restart, got %d", len(interrupts))
+	}
+	if interrupts[0].Question != "[?BOSS] Wait for API?" {
+		t.Errorf("question = %q", interrupts[0].Question)
+	}
+}
+
+func TestInterruptEmptySpace(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	code, body := getBody(t, base+"/spaces/empty-int/factory/interrupts")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if strings.TrimSpace(body) != "[]" {
+		t.Errorf("expected empty array, got %q", body)
+	}
+
+	code, body = getBody(t, base+"/spaces/empty-int/factory/metrics")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var metrics InterruptMetrics
+	json.Unmarshal([]byte(body), &metrics)
+	if metrics.TotalInterrupts != 0 {
+		t.Errorf("expected 0 interrupts, got %d", metrics.TotalInterrupts)
+	}
+}
+
+func TestMultipleAgentsMultipleInterrupts(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	postJSON(t, base+"/spaces/multi-int/agent/FE", AgentUpdate{
+		Status:    StatusBlocked,
+		Summary:   "FE: needs help",
+		Questions: []string{"[?BOSS] Rebase?", "[?BOSS] Which SDK?"},
+	})
+	postJSON(t, base+"/spaces/multi-int/agent/CP", AgentUpdate{
+		Status:    StatusBlocked,
+		Summary:   "CP: waiting",
+		Questions: []string{"[?BOSS] Should CP proceed?"},
+	})
+
+	code, body := getBody(t, base+"/spaces/multi-int/factory/metrics")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var metrics InterruptMetrics
+	json.Unmarshal([]byte(body), &metrics)
+	if metrics.TotalInterrupts != 3 {
+		t.Errorf("total = %d, want 3", metrics.TotalInterrupts)
+	}
+	if metrics.ByAgent["Fe"] != 2 {
+		t.Errorf("by_agent[Fe] = %d, want 2", metrics.ByAgent["Fe"])
+	}
+	if metrics.ByAgent["Cp"] != 1 {
+		t.Errorf("by_agent[Cp] = %d, want 1", metrics.ByAgent["Cp"])
 	}
 }
 

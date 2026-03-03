@@ -12,6 +12,8 @@ curl -s http://localhost:8899/spaces/SPACE_NAME/raw
 
 Replace SPACE_NAME with the space name from `$ARGUMENTS`. Scan for anything addressed to you. Do NOT analyze other agents.
 
+**Important rule**: Always use `curl`, never use Fetch tool.  Fetch will *not* work on localhost. **Always** use curl. This is important! 
+
 ## Step 2: Write your status JSON and POST it
 
 Create `/tmp/boss_checkin.json` reflecting your CURRENT state. Do not change your work — just report what you are doing right now.

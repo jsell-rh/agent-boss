@@ -96,7 +96,6 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .status-dot-active{background:var(--green)}
 .status-dot-done{background:var(--blue)}
 .status-dot-blocked{background:var(--red)}
-.status-dot-stale{background:var(--orange)}
 .status-dot-idle{background:var(--text3)}
 .status-dot-error{background:var(--red)}
 .status-dot-waiting{background:var(--red);animation:pulse-glow 1.5s ease-in-out infinite}
@@ -150,7 +149,31 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
   text-align:center;border-radius:4px;flex-shrink:0;color:var(--yellow);
   background:rgba(210,153,34,.08);
 }
-.inbox-text{color:var(--text2);line-height:1.5}
+.inbox-text{color:var(--text2);line-height:1.5;flex:1}
+.inbox-reply-btn{
+  background:none;border:1px solid rgba(210,153,34,.2);color:var(--yellow);
+  width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:13px;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;
+  transition:all .15s;line-height:1;flex-shrink:0;
+}
+.inbox-reply-btn:hover{background:rgba(210,153,34,.12);border-color:var(--yellow)}
+.inbox-reply-form{
+  display:flex;gap:6px;padding:6px 12px 8px;border-bottom:1px solid var(--border);
+  background:var(--bg3);
+}
+.inbox-reply-input{
+  flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  color:var(--text);font-size:12px;padding:6px 10px;font-family:inherit;
+  outline:none;resize:none;min-height:32px;max-height:120px;line-height:1.4;
+}
+.inbox-reply-input:focus{border-color:var(--yellow)}
+.inbox-reply-send{
+  padding:4px 12px;border-radius:var(--radius-sm);border:1px solid rgba(210,153,34,.3);
+  background:rgba(210,153,34,.1);color:var(--yellow);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .15s;white-space:nowrap;align-self:flex-end;
+}
+.inbox-reply-send:hover{background:rgba(210,153,34,.2);border-color:var(--yellow)}
+.inbox-reply-send:disabled{opacity:.4;cursor:not-allowed}
 
 .blocker-item{
   padding:8px 12px;border-bottom:1px solid var(--border);display:flex;
@@ -327,7 +350,7 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .tmux-badge.tmux-waiting{background:var(--red-bg);color:var(--red);border:1px solid rgba(248,81,73,.2);animation:pulse-glow 1.5s ease-in-out infinite}
 .approval-popup{
   position:fixed;z-index:200;background:var(--bg2);border:1px solid var(--red);
-  border-radius:var(--radius);padding:0;min-width:360px;max-width:500px;
+  border-radius:var(--radius);padding:0;width:600px;max-width:90vw;
   box-shadow:0 8px 32px rgba(0,0,0,.5);pointer-events:auto;
 }
 .approval-popup-header{
@@ -339,7 +362,7 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .approval-popup-header .ap-tool{font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.4px}
 .approval-popup-body{
   padding:12px 14px;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;
-  font-size:11px;color:var(--text2);line-height:1.6;max-height:200px;overflow-y:auto;
+  font-size:12px;color:var(--text2);line-height:1.6;max-height:340px;overflow-y:auto;
   white-space:pre-wrap;word-break:break-word;
 }
 .approval-popup-footer{
@@ -364,7 +387,6 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .overview-table tr.is-done:hover td{opacity:.7}
 .agent-card.is-done{opacity:.5;border-color:var(--border)}
 .agent-card.is-done:hover{opacity:.75;border-color:var(--text3)}
-.status-stale{background:var(--orange-bg);color:var(--orange);border:1px solid rgba(219,109,40,.25)}
 </style>
 </head>
 <body>
@@ -392,6 +414,12 @@ var broadcastLog = [];
 var tmuxCache = null;
 var currentView = 'board';
 var approvalPollTimer = null;
+var inboxLocked = false;
+var cachedBoardData = null;
+var cachedInterruptMetrics = null;
+var cachedInterruptLog = null;
+var boardSkeletonReady = false;
+var dismissedTexts = {};
 
 (function(){
   var pathMatch = window.location.pathname.match(/^\/spaces\/([^\/]+)/);
@@ -464,10 +492,12 @@ function loadSpace(name){
   Promise.all([
     fetch(base + '/', {headers:{'Accept':'application/json'}, cache:'no-store'}).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
     fetch(base + '/api/tmux-status').then(function(r){ return r.json(); }).catch(function(){ return []; }),
-    fetch(base + '/api/events').then(function(r){ return r.json(); }).catch(function(){ return []; })
+    fetch(base + '/api/events').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+    fetch(base + '/factory/metrics').then(function(r){ return r.json(); }).catch(function(){ return {total_interrupts:0,by_type:{},by_agent:{}}; }),
+    fetch(base + '/factory/interrupts').then(function(r){ return r.json(); }).catch(function(){ return []; })
   ]).then(function(results){
     tmuxCache = results[1];
-    renderBoard(results[0], results[1], results[2]);
+    renderBoard(results[0], results[1], results[2], results[3], results[4]);
     startApprovalPolling();
   }).catch(function(e){
     document.getElementById('page').innerHTML =
@@ -484,6 +514,71 @@ function loadSpace(name){
       var ts = new Date().toLocaleTimeString();
       broadcastLog.push({time:ts, cls:'log-info', msg:p.message});
       renderBroadcastLog();
+    } catch(ex){}
+  });
+  evtSource.addEventListener('tmux_liveness', function(e){
+    try {
+      var liveness = JSON.parse(e.data);
+      var anyApprovalChange = false;
+      liveness.forEach(function(entry){
+        var oldTmux = tmuxCache ? tmuxCache.find(function(t){ return t.agent === entry.agent; }) : null;
+        if (oldTmux && oldTmux.needs_approval !== entry.needs_approval) anyApprovalChange = true;
+        if (!oldTmux && entry.needs_approval) anyApprovalChange = true;
+
+        var badges = document.querySelectorAll('.tmux-badge');
+        badges.forEach(function(badge){
+          var card = badge.closest('.agent-card');
+          if (!card) return;
+          var nameEl = card.querySelector('.agent-name');
+          if (!nameEl) return;
+          var name = nameEl.textContent.trim();
+          if (name !== entry.agent) return;
+          if (!entry.exists){
+            badge.className = 'tmux-badge tmux-offline';
+            badge.textContent = 'offline';
+          } else if (entry.needs_approval){
+            badge.className = 'tmux-badge tmux-waiting';
+            badge.textContent = 'waiting';
+          } else if (entry.idle){
+            badge.className = 'tmux-badge tmux-idle';
+            badge.textContent = 'idle';
+          } else {
+            badge.className = 'tmux-badge tmux-busy';
+            badge.textContent = 'busy';
+          }
+        });
+
+        var dot = document.querySelector('.status-dot[data-agent="' + entry.agent + '"]');
+        if (dot) {
+          var tr = dot.closest('tr');
+          if (tr) {
+            if (entry.needs_approval) {
+              tr.className = 'needs-approval';
+              tr.style.cursor = 'pointer';
+              tr.onclick = function(ev){ showApprovalPopup(ev, entry.agent); };
+              dot.className = 'status-dot status-dot-waiting';
+            } else if (tr.className === 'needs-approval') {
+              tr.className = '';
+              tr.style.cursor = '';
+              tr.onclick = null;
+            }
+          }
+        }
+      });
+      if (anyApprovalChange && tmuxCache) {
+        liveness.forEach(function(entry){
+          var old = tmuxCache.find(function(t){ return t.agent === entry.agent; });
+          if (old) {
+            old.needs_approval = entry.needs_approval;
+            old.tool_name = entry.tool_name;
+            old.prompt_text = entry.prompt_text;
+            old.exists = entry.exists;
+            old.idle = entry.idle;
+          }
+        });
+      } else {
+        tmuxCache = liveness;
+      }
     } catch(ex){}
   });
   evtSource.addEventListener('broadcast_complete', function(e){
@@ -525,6 +620,85 @@ function triggerBroadcast(){
     renderBroadcastLog();
     if (btn){ btn.disabled = false; btn.textContent = 'Broadcast All'; }
   });
+}
+
+function toggleReplyForm(qid, agentName){
+  var form = document.getElementById(qid);
+  if (!form) return;
+  var isHidden = form.style.display === 'none';
+  form.style.display = isHidden ? 'flex' : 'none';
+  if (isHidden) {
+    inboxLocked = true;
+    var input = document.getElementById(qid + '-input');
+    if (input) input.focus();
+  } else {
+    inboxLocked = false;
+    flushInbox();
+  }
+}
+
+function sendReply(agentName, qid, dismissSource, dismissIndex, dismissText){
+  var input = document.getElementById(qid + '-input');
+  var btn = document.getElementById(qid + '-btn');
+  if (!input || !input.value.trim()) return;
+  var msg = input.value.trim();
+  if (btn){ btn.disabled = true; btn.textContent = '...'; }
+  broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-info', msg:'Replying to ' + agentName + '...'});
+  renderBroadcastLog();
+  fetch('/spaces/' + encodeURIComponent(SPACE) + '/reply/' + encodeURIComponent(agentName), {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message: msg})
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+    return r.json();
+  }).then(function(data){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-ok', msg:'Reply sent to ' + agentName});
+    renderBroadcastLog();
+    input.value = '';
+    if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+    dismissInboxItem(agentName, dismissSource, dismissIndex, dismissText);
+  }).catch(function(e){
+    broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:'Reply to ' + agentName + ' failed: ' + e.message});
+    renderBroadcastLog();
+    if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+  });
+}
+
+function cancelReply(qid){
+  var form = document.getElementById(qid);
+  if (form) form.style.display = 'none';
+  inboxLocked = false;
+  flushInbox();
+}
+
+function dismissInboxItem(agentName, source, sourceIndex, text){
+  var key = agentName + '::' + text;
+  if (source === 'blocker') key = agentName + '::blocker::' + text;
+  dismissedTexts[key] = true;
+  if ((source === 'question' && sourceIndex >= 0) || source === 'blocker') {
+    fetch('/spaces/' + encodeURIComponent(SPACE) + '/dismiss/' + encodeURIComponent(agentName), {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type: source, index: sourceIndex})
+    }).then(function(r){
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-ok', msg:'Dismissed ' + source + ' from ' + agentName});
+      renderBroadcastLog();
+    }).catch(function(e){
+      broadcastLog.push({time: new Date().toLocaleTimeString(), cls:'log-err', msg:'Dismiss failed: ' + e.message});
+      renderBroadcastLog();
+    });
+  }
+  inboxLocked = false;
+  flushInbox();
+}
+
+function flushInbox(){
+  if (cachedBoardData) {
+    var sorted = sortAgents(cachedBoardData.agents || {});
+    renderPanelInbox(cachedBoardData, sorted);
+  }
 }
 
 function pokeAgent(agentName, btnEl){
@@ -580,7 +754,7 @@ function startApprovalPolling(){
         tmuxCache = data;
         if (changed) updateApprovalUI(data);
       }).catch(function(){});
-  }, 2000);
+  }, 1000);
 }
 
 function showApprovalPopup(event, agentName){
@@ -597,10 +771,11 @@ function showApprovalPopup(event, agentName){
     + '<div class="approval-popup-footer"><button class="btn-approve-dismiss" onclick="dismissApprovalPopup()">Cancel</button><button class="btn-approve-confirm" id="ap-confirm-btn" onclick="confirmApproval(\'' + esc(agentName).replace(/'/g,"\\'") + '\')">Approve</button></div>';
   document.body.appendChild(popup);
   var rect = event.currentTarget.getBoundingClientRect();
-  var popupW = 400;
-  var left = Math.min(rect.left, window.innerWidth - popupW - 20);
-  var top = rect.bottom + 4;
-  if (top + 280 > window.innerHeight) top = rect.top - 280;
+  var popupW = 600;
+  var popupH = 400;
+  var top = rect.top + window.scrollY;
+  var left = Math.round((window.innerWidth - popupW) / 2);
+  if (top + popupH > window.innerHeight + window.scrollY) top = Math.max(10, window.innerHeight + window.scrollY - popupH - 10);
   popup.style.left = Math.max(10, left) + 'px';
   popup.style.top = Math.max(10, top) + 'px';
   setTimeout(function(){ document.addEventListener('click', dismissOnOutsideClick); }, 0);
@@ -625,25 +800,8 @@ function confirmApproval(agentName){
 }
 
 function updateApprovalUI(tmuxData){
-  if (!tmuxData) return;
-  tmuxData.forEach(function(t){
-    var row = document.querySelector('tr .status-dot[data-agent="' + t.agent + '"]');
-    if (!row) return;
-    var tr = row.closest('tr');
-    if (!tr) return;
-    if (t.needs_approval){
-      tr.className = 'needs-approval';
-      tr.onclick = function(e){ showApprovalPopup(e, t.agent); };
-      tr.style.cursor = 'pointer';
-      row.className = 'status-dot status-dot-waiting';
-    } else {
-      if (tr.className === 'needs-approval'){
-        tr.className = '';
-        tr.onclick = null;
-        tr.style.cursor = '';
-      }
-    }
-  });
+  if (!tmuxData || !SPACE) return;
+  loadSpace(SPACE);
 }
 
 function refreshTmux(){
@@ -714,6 +872,7 @@ function buildMergeRequestUrl(repoUrl, pr){
   var num = pr.replace(/^#/, '');
   if (!/^\d+$/.test(num)) return '';
   var base = repoUrl.replace(/\/+$/, '');
+  if (base.indexOf('github.com') !== -1) return base + '/pull/' + num;
   return base + '/-/merge_requests/' + num;
 }
 
@@ -789,31 +948,80 @@ function renderConsole(data, tmuxData, eventLog){
   if (logEl) logEl.scrollTop = logEl.scrollHeight;
 }
 
-function renderBoard(data, tmuxData, eventLog){
-  var agents = data.agents || {};
+function sortAgents(agents){
   var names = Object.keys(agents).sort();
-
   var roleOrder = ['Overlord','API','BE','FE','CP','Cluster','SDK','Cli','Trex','Helper','Reviewer'];
   var sorted = roleOrder.filter(function(n){ return agents[n]; });
   names.forEach(function(n){ if (sorted.indexOf(n) === -1) sorted.push(n); });
+  return sorted;
+}
 
+function collectInboxData(agents, sorted){
   var allQuestions = [];
   var allBlockers = [];
-  var statusCounts = {active:0,blocked:0,done:0,idle:0,error:0};
   sorted.forEach(function(name){
     var a = agents[name];
-    var st = a.status || 'idle';
-    if (statusCounts[st] !== undefined) statusCounts[st]++;
-    extractBossQuestions(a).forEach(function(q){ allQuestions.push({agent:name, text:q}); });
-    (a.blockers||[]).forEach(function(b){ allBlockers.push({agent:name, text:b}); });
+    var qs = a.questions || [];
+    qs.forEach(function(q, i){
+      var key = name + '::' + q;
+      if (!dismissedTexts[key]) allQuestions.push({agent:name, text:q, source:'question', sourceIndex:i});
+    });
+    var all = (a.summary||'') + ' ' + (a.free_text||'') + ' ' + (a.next_steps||'');
+    (a.items||[]).forEach(function(it){ all += ' ' + it; });
+    var re = /\[\?BOSS\][^\n]*/g, m;
+    while ((m = re.exec(all)) !== null){
+      var q = m[0].replace(/^\[\?BOSS\]\s*/, '');
+      var key = name + '::' + q;
+      if (!dismissedTexts[key] && !qs.some(function(eq){ return eq === q; })) {
+        allQuestions.push({agent:name, text:q, source:'text', sourceIndex:-1});
+      }
+    }
+    (a.blockers||[]).forEach(function(b, i){
+      var key = name + '::blocker::' + b;
+      if (!dismissedTexts[key]) allBlockers.push({agent:name, text:b, source:'blocker', sourceIndex:i});
+    });
   });
+  return {questions: allQuestions, blockers: allBlockers};
+}
 
-  var o = '';
+function ensureBoardSkeleton(){
+  if (boardSkeletonReady) return;
+  var o = '<div class="top-row">';
+  o += '<div id="panel-overview"></div>';
+  o += '<div id="panel-inbox"></div>';
+  o += '<div id="panel-interrupts"></div>';
+  o += '</div>';
+  o += '<div id="panel-agents"></div>';
+  document.getElementById('page').innerHTML = o;
+  boardSkeletonReady = true;
+}
 
+function renderBoard(data, tmuxData, eventLog, interruptMetrics, interruptLog){
+  interruptMetrics = interruptMetrics || {total_interrupts:0,by_type:{},by_agent:{}};
+  interruptLog = interruptLog || [];
+  cachedBoardData = data;
+  cachedInterruptMetrics = interruptMetrics;
+  cachedInterruptLog = interruptLog;
+  var agents = data.agents || {};
+  var names = Object.keys(agents).sort();
+  var sorted = sortAgents(agents);
 
-  o += '<div class="top-row">';
+  ensureBoardSkeleton();
 
-  o += '<div class="card">';
+  renderPanelOverview(data, sorted, tmuxData);
+  if (!inboxLocked) renderPanelInbox(data, sorted);
+  renderPanelInterrupts(interruptMetrics, interruptLog);
+  renderPanelAgents(data, sorted, tmuxData);
+
+  var dot = '<span class="header-dot" style="background:var(--green)"></span>';
+  document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
+  document.getElementById('last-update').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
+  renderBroadcastLog();
+}
+
+function renderPanelOverview(data, sorted, tmuxData){
+  var agents = data.agents || {};
+  var o = '<div class="card">';
   o += '<div class="card-header"><span class="card-title">Project Overview</span>';
   o += '<div style="display:flex;gap:8px">';
   o += '<button class="btn" onclick="refreshTmux()" title="Refresh tmux status">Refresh</button>';
@@ -830,7 +1038,6 @@ function renderBoard(data, tmuxData, eventLog){
     else if (tmux.idle){ dotCls='tmux-dot-idle'; stLabel='idle'; }
     else { dotCls='tmux-dot-busy'; stLabel='busy'; }
     var isDone = (a.status === 'done');
-    var isStale = !isDone && a.updated_at && (Date.now() - new Date(a.updated_at).getTime() > 600000);
     var hasBlockerOv = a.blockers && a.blockers.length > 0;
     var needsApproval = tmux && tmux.needs_approval;
     var trCls = '';
@@ -847,9 +1054,8 @@ function renderBoard(data, tmuxData, eventLog){
     var ovStatus = a.status || 'idle';
     var dotKey = ovStatus;
     if (needsApproval) dotKey = 'waiting';
-    else if (isStale) dotKey = 'stale';
     else if (hasBlockerOv) dotKey = 'blocked';
-    var ovLabel = needsApproval ? 'waiting' : (isStale ? 'stale' : (hasBlockerOv ? 'blocked' : ovStatus));
+    var ovLabel = needsApproval ? 'waiting' : (hasBlockerOv ? 'blocked' : ovStatus);
     o += '<td><span class="status-dot status-dot-' + dotKey + '" data-agent="' + esc(name) + '"></span>' + ovLabel;
     if (needsApproval && tmux.tool_name) o += ' <span style="font-size:9px;color:var(--text3)">(' + esc(tmux.tool_name) + ')</span>';
     o += '</td>';
@@ -863,7 +1069,15 @@ function renderBoard(data, tmuxData, eventLog){
   o += '</tbody></table>';
   o += '<div class="broadcast-log" id="broadcast-log"></div>';
   o += '</div></div>';
+  document.getElementById('panel-overview').innerHTML = o;
+}
 
+function renderPanelInbox(data, sorted){
+  var agents = data.agents || {};
+  var inbox = collectInboxData(agents, sorted);
+  var allQuestions = inbox.questions;
+  var allBlockers = inbox.blockers;
+  var o = '';
   if (allQuestions.length > 0 || allBlockers.length > 0) {
     o += '<div class="card boss-inbox">';
     o += '<div class="card-header"><span class="card-title">Inbox</span>';
@@ -871,16 +1085,27 @@ function renderBoard(data, tmuxData, eventLog){
     o += '<span class="card-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,.2)">' + inboxCount + '</span>';
     o += '</div>';
     o += '<div class="card-body" style="padding:0;max-height:260px;overflow-y:auto">';
-    allBlockers.forEach(function(b){
-      o += '<div class="blocker-item">';
+    allBlockers.forEach(function(b, bIdx){
+      var bid = 'inbox-b-' + b.agent.replace(/\W/g,'') + '-' + bIdx;
+      o += '<div class="inbox-item" id="' + bid + '-row">';
       o += '<span class="blocker-agent">' + esc(b.agent) + '</span>';
       o += '<span class="blocker-text" style="color:var(--red)">' + esc(b.text) + '</span>';
+      o += '<button class="inbox-reply-btn" style="color:var(--red);border-color:rgba(248,81,73,.2)" data-agent="' + esc(b.agent) + '" data-source="' + b.source + '" data-idx="' + b.sourceIndex + '" data-text="' + esc(b.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)" title="Delete">&times;</button>';
       o += '</div>';
     });
-    allQuestions.forEach(function(q){
-      o += '<div class="inbox-item">';
+    allQuestions.forEach(function(q, idx){
+      var qid = 'inbox-q-' + q.agent.replace(/\W/g,'') + '-' + idx;
+      o += '<div class="inbox-item" id="' + qid + '-row">';
       o += '<span class="inbox-agent">' + esc(q.agent) + '</span>';
       o += '<span class="inbox-text">' + esc(q.text) + '</span>';
+      o += '<button class="inbox-reply-btn" onclick="toggleReplyForm(\'' + qid + '-form\', \'' + esc(q.agent).replace(/'/g,"\\'") + '\')" title="Reply to ' + esc(q.agent) + '">&#x21B5;</button>';
+      o += '<button class="inbox-reply-btn" data-agent="' + esc(q.agent) + '" data-source="' + q.source + '" data-idx="' + q.sourceIndex + '" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)" title="Delete">&times;</button>';
+      o += '</div>';
+      o += '<div class="inbox-reply-form" id="' + qid + '-form" style="display:none" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '">';
+      o += '<textarea class="inbox-reply-input" id="' + qid + '-form-input" placeholder="Reply to ' + esc(q.agent) + '..." rows="1" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendReply(\'' + esc(q.agent).replace(/'/g,"\\'") + '\',\'' + qid + '-form\',\'' + q.source + '\',' + q.sourceIndex + ',this.parentElement.dataset.text)}"></textarea>';
+      o += '<button class="inbox-reply-send" id="' + qid + '-form-btn" onclick="sendReply(\'' + esc(q.agent).replace(/'/g,"\\'") + '\',\'' + qid + '-form\',\'' + q.source + '\',' + q.sourceIndex + ',this.parentElement.dataset.text)">Send</button>';
+      o += '<button class="inbox-reply-send" style="background:var(--bg);color:var(--text3);border-color:var(--border2)" onclick="cancelReply(\'' + qid + '-form\')">Cancel</button>';
+      o += '<button class="inbox-reply-send" style="background:rgba(248,81,73,.06);color:var(--red);border-color:rgba(248,81,73,.2)" data-agent="' + esc(q.agent) + '" data-source="' + q.source + '" data-idx="' + q.sourceIndex + '" data-text="' + esc(q.text).replace(/"/g,'&quot;') + '" onclick="dismissInboxItem(this.dataset.agent,this.dataset.source,parseInt(this.dataset.idx),this.dataset.text)">Delete</button>';
       o += '</div>';
     });
     o += '</div></div>';
@@ -890,19 +1115,66 @@ function renderBoard(data, tmuxData, eventLog){
     o += '<div class="card-body"><div style="color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0">No questions or blockers</div></div>';
     o += '</div>';
   }
+  document.getElementById('panel-inbox').innerHTML = o;
+}
 
-  o += '<div class="card protocol-card">';
-  o += '<div class="card-header"><span class="card-title">Communications Protocol</span></div>';
-  o += '<div class="card-body protocol-body">';
-  if (data.shared_contracts){
-    o += renderFreeText(data.shared_contracts);
+function renderPanelInterrupts(interruptMetrics, interruptLog){
+  var o = '<div class="card" style="border-color:var(--cyan);border-width:1px">';
+  o += '<div class="card-header" style="background:var(--cyan-bg);border-bottom-color:rgba(57,210,192,.2)">';
+  o += '<span class="card-title" style="color:var(--cyan)">Interrupt Tracker</span>';
+  var totalInt = interruptMetrics.total_interrupts || 0;
+  o += '<span class="card-badge" style="background:var(--cyan-bg);color:var(--cyan);border:1px solid rgba(57,210,192,.2)">' + totalInt + '</span>';
+  o += '</div>';
+  o += '<div class="card-body" style="padding:8px 12px">';
+  if (totalInt > 0){
+    o += '<div class="stats-row">';
+    var byType = interruptMetrics.by_type || {};
+    if (byType.decision) o += '<span class="stat-chip" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,.2)">decision ' + byType.decision + '</span>';
+    if (byType.approval) o += '<span class="stat-chip" style="background:var(--red-bg);color:var(--red);border:1px solid rgba(248,81,73,.2)">approval ' + byType.approval + '</span>';
+    if (byType.staleness) o += '<span class="stat-chip" style="background:var(--orange-bg);color:var(--orange);border:1px solid rgba(219,109,40,.2)">staleness ' + byType.staleness + '</span>';
+    if (byType.sequencing) o += '<span class="stat-chip" style="background:var(--blue-bg);color:var(--blue);border:1px solid rgba(77,158,255,.2)">sequencing ' + byType.sequencing + '</span>';
+    if (byType.review) o += '<span class="stat-chip" style="background:var(--purple-bg);color:var(--purple);border:1px solid rgba(163,113,247,.2)">review ' + byType.review + '</span>';
+    o += '</div>';
+    var pending = interruptMetrics.pending_interrupts || 0;
+    var human = interruptMetrics.human_interrupts || 0;
+    var auto = interruptMetrics.auto_resolved || 0;
+    o += '<div style="font-size:11px;color:var(--text2);margin-top:4px">';
+    o += '<span style="color:var(--yellow)">' + pending + ' pending</span>';
+    o += ' &middot; <span style="color:var(--green)">' + auto + ' auto</span>';
+    o += ' &middot; <span style="color:var(--red)">' + human + ' human</span>';
+    o += '</div>';
+    var recent = interruptLog.slice(-5).reverse();
+    if (recent.length > 0){
+      o += '<div style="margin-top:8px;max-height:140px;overflow-y:auto">';
+      recent.forEach(function(intr){
+        var typeCls = 'var(--text3)';
+        if (intr.type === 'decision') typeCls = 'var(--yellow)';
+        else if (intr.type === 'approval') typeCls = 'var(--red)';
+        else if (intr.type === 'staleness') typeCls = 'var(--orange)';
+        var resolved = intr.resolution ? '&check;' : '&hellip;';
+        var resolvedColor = intr.resolution ? 'var(--green)' : 'var(--yellow)';
+        var q = intr.question || '';
+        if (q.length > 80) q = q.substring(0, 77) + '...';
+        o += '<div style="font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:baseline">';
+        o += '<span style="color:' + resolvedColor + '">' + resolved + '</span>';
+        o += '<span style="color:' + typeCls + ';font-weight:600;min-width:55px">' + esc(intr.type) + '</span>';
+        o += '<span style="color:var(--text);font-weight:600;min-width:30px">' + esc(intr.agent) + '</span>';
+        o += '<span style="color:var(--text3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(q) + '</span>';
+        o += '</div>';
+      });
+      o += '</div>';
+    }
   } else {
-    o += '<div style="color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0">No protocol defined</div>';
+    o += '<div style="color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0">No interrupts recorded</div>';
   }
   o += '</div></div>';
+  document.getElementById('panel-interrupts').innerHTML = o;
+}
 
-  o += '</div>';
-
+function renderPanelAgents(data, sorted, tmuxData){
+  var agents = data.agents || {};
+  var names = Object.keys(agents).sort();
+  var o = '';
   o += '<div class="section-label">Agents<span class="section-count">' + names.length + '</span></div>';
   o += '<div class="agent-grid">';
 
@@ -913,7 +1185,6 @@ function renderBoard(data, tmuxData, eventLog){
     var hasQuestion = bossQs.length > 0;
 
     var isDoneCard = (a.status === 'done');
-    var isStaleCard = !isDoneCard && a.updated_at && (Date.now() - new Date(a.updated_at).getTime() > 600000);
     var cardCls = 'agent-card';
     if (isDoneCard) cardCls += ' is-done';
     else if (hasQuestion) cardCls += ' has-question';
@@ -938,9 +1209,8 @@ function renderBoard(data, tmuxData, eventLog){
     var cardStatus = a.status || 'idle';
     var statusCls = 'status-' + cardStatus;
     if (cardNeedsApproval) statusCls = 'status-blocked';
-    else if (isStaleCard) statusCls = 'status-stale';
     else if (hasBlocker) statusCls = 'status-blocked';
-    var cardStatusLabel = cardNeedsApproval ? 'waiting' : (isStaleCard ? 'stale' : (hasBlocker ? 'blocked' : cardStatus));
+    var cardStatusLabel = cardNeedsApproval ? 'waiting' : (hasBlocker ? 'blocked' : cardStatus);
     o += '<span class="agent-status ' + statusCls + '">' + cardStatusLabel + '</span>';
     o += '</div></div>';
 
@@ -993,7 +1263,6 @@ function renderBoard(data, tmuxData, eventLog){
 
     bossQs.forEach(function(q){ o += '<div class="boss-q">' + esc(q) + '</div>'; });
 
-
     if (a.updated_at) o += '<div class="agent-updated">' + timeAgo(a.updated_at) + '</div>';
 
     o += '</div></div>';
@@ -1012,12 +1281,7 @@ function renderBoard(data, tmuxData, eventLog){
     o += '</div></div>';
   }
 
-  document.getElementById('page').innerHTML = o;
-
-  var dot = '<span class="header-dot" style="background:var(--green)"></span>';
-  document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
-  document.getElementById('last-update').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
-  renderBroadcastLog();
+  document.getElementById('panel-agents').innerHTML = o;
 }
 
 function renderFreeText(text){
