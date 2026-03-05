@@ -114,8 +114,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/mc2", s.handleMC2)
 	// Static file server for CSS, JS, etc.
-	mux.Handle("/css/", http.StripPrefix("/", http.FileServer(http.Dir("static"))))
-	mux.Handle("/js/", http.StripPrefix("/", http.FileServer(http.Dir("static"))))
+	mux.Handle("/css/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
+	mux.Handle("/js/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
 	mux.HandleFunc("/spaces", s.handleListSpaces)
 	mux.HandleFunc("/spaces/", s.handleSpaceRoute)
 	mux.HandleFunc("/events", s.handleSSE)
@@ -1009,23 +1009,19 @@ func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceNa
 		return
 	}
 
-	checkModel := r.URL.Query().Get("check_model")
-	if checkModel == "" {
-		checkModel = "claude-sonnet-4-6@default"
-	}
-	workModel := r.URL.Query().Get("work_model")
-	if workModel == "" {
-		workModel = "claude-opus-4-6@default"
+	commandType := r.URL.Query().Get("type")
+	if commandType == "" {
+		commandType = "check-in"
 	}
 
 	go func() {
-		result := s.BroadcastCheckIn(spaceName, checkModel, workModel)
+		result := s.BroadcastCheckIn(spaceName, commandType)
 		sseData, _ := json.Marshal(result)
 		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
 	}()
 
 	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprintf(w, "broadcast initiated for space %q", spaceName)
+	fmt.Fprintf(w, "broadcast (%s) initiated for space %q", commandType, spaceName)
 }
 
 func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
@@ -1034,23 +1030,19 @@ func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 
-	checkModel := r.URL.Query().Get("check_model")
-	if checkModel == "" {
-		checkModel = "claude-sonnet-4-6@default"
-	}
-	workModel := r.URL.Query().Get("work_model")
-	if workModel == "" {
-		workModel = "claude-opus-4-6@default"
+	commandType := r.URL.Query().Get("type")
+	if commandType == "" {
+		commandType = "check-in"
 	}
 
 	go func() {
-		result := s.SingleAgentCheckIn(spaceName, agentName, checkModel, workModel)
+		result := s.SingleAgentCheckIn(spaceName, agentName, commandType)
 		sseData, _ := json.Marshal(result)
 		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
 	}()
 
 	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprintf(w, "check-in initiated for agent %q in space %q", agentName, spaceName)
+	fmt.Fprintf(w, "%s initiated for agent %q in space %q", commandType, agentName, spaceName)
 }
 
 func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, spaceName string) {
