@@ -1,0 +1,544 @@
+package coordinator
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestEventJournalAppendAndLoadSince(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	before := time.Now().UTC()
+	j.Append("myspace", EventAgentUpdated, "Alice", map[string]string{"key": "val"})
+	j.Append("myspace", EventMessageSent, "Bob", map[string]string{"msg": "hello"})
+	j.Append("myspace", EventAgentRemoved, "Carol", nil)
+
+	// Load all
+	all, err := j.LoadSince("myspace", time.Time{})
+	if err != nil {
+		t.Fatalf("LoadSince all: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(all))
+	}
+	if all[0].Type != EventAgentUpdated {
+		t.Errorf("expected agent_updated, got %s", all[0].Type)
+	}
+	if all[0].Agent != "Alice" {
+		t.Errorf("expected Alice, got %s", all[0].Agent)
+	}
+
+	// Load since before = all events
+	got, err := j.LoadSince("myspace", before)
+	if err != nil {
+		t.Fatalf("LoadSince before: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("expected 3 events since before, got %d", len(got))
+	}
+
+	// Load since future = no events
+	future, err := j.LoadSince("myspace", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("LoadSince future: %v", err)
+	}
+	if len(future) != 0 {
+		t.Errorf("expected 0 events since future, got %d", len(future))
+	}
+}
+
+func TestEventJournalNonexistentSpace(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	events, err := j.LoadSince("nosuchspace", time.Time{})
+	if err != nil {
+		t.Fatalf("expected no error for missing journal, got %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(events))
+	}
+}
+
+func TestEventJournalReplayEmpty(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	ks, err := j.ReplayInto("myspace")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	if ks != nil {
+		t.Error("expected nil for empty journal")
+	}
+}
+
+func TestEventJournalReplayAgentUpdates(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	tc := 5
+	update := &AgentUpdate{
+		Status:    StatusActive,
+		Summary:   "Alice: working",
+		Branch:    "feat/test",
+		TestCount: &tc,
+		UpdatedAt: time.Now().UTC(),
+	}
+	j.Append("myspace", EventSpaceCreated, "", map[string]any{
+		"name":       "myspace",
+		"created_at": time.Now().UTC(),
+	})
+	j.Append("myspace", EventAgentUpdated, "Alice", update)
+
+	// Second update overwrites
+	update2 := &AgentUpdate{
+		Status:    StatusDone,
+		Summary:   "Alice: done",
+		UpdatedAt: time.Now().UTC(),
+	}
+	j.Append("myspace", EventAgentUpdated, "Alice", update2)
+
+	ks, err := j.ReplayInto("myspace")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	if ks == nil {
+		t.Fatal("expected non-nil KnowledgeSpace")
+	}
+	if len(ks.Agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(ks.Agents))
+	}
+	alice, ok := ks.Agents["Alice"]
+	if !ok {
+		t.Fatal("expected Alice agent")
+	}
+	if alice.Status != StatusDone {
+		t.Errorf("expected done, got %s", alice.Status)
+	}
+	if alice.Summary != "Alice: done" {
+		t.Errorf("unexpected summary: %s", alice.Summary)
+	}
+}
+
+func TestEventJournalReplayAgentRemoved(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	update := &AgentUpdate{Status: StatusActive, Summary: "Bob: active", UpdatedAt: time.Now().UTC()}
+	j.Append("s", EventAgentUpdated, "Bob", update)
+	j.Append("s", EventAgentUpdated, "Carol", &AgentUpdate{Status: StatusIdle, Summary: "Carol: idle", UpdatedAt: time.Now().UTC()})
+	j.Append("s", EventAgentRemoved, "Bob", nil)
+
+	ks, err := j.ReplayInto("s")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	if _, ok := ks.Agents["Bob"]; ok {
+		t.Error("Bob should have been removed")
+	}
+	if _, ok := ks.Agents["Carol"]; !ok {
+		t.Error("Carol should still be present")
+	}
+}
+
+func TestEventJournalReplayMessages(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	update := &AgentUpdate{Status: StatusActive, Summary: "Dave: active", UpdatedAt: time.Now().UTC()}
+	j.Append("s", EventAgentUpdated, "Dave", update)
+
+	msg := &AgentMessage{
+		ID:        "msg_001",
+		Sender:    "boss",
+		Message:   "do the thing",
+		Timestamp: time.Now().UTC(),
+	}
+	j.Append("s", EventMessageSent, "Dave", msg)
+
+	ks, err := j.ReplayInto("s")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	dave := ks.Agents["Dave"]
+	if dave == nil {
+		t.Fatal("expected Dave agent")
+	}
+	if len(dave.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(dave.Messages))
+	}
+	if dave.Messages[0].ID != "msg_001" {
+		t.Errorf("unexpected message id: %s", dave.Messages[0].ID)
+	}
+}
+
+func TestEventJournalReplayMessageAck(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	update := &AgentUpdate{Status: StatusActive, Summary: "Eve: active", UpdatedAt: time.Now().UTC()}
+	j.Append("s", EventAgentUpdated, "Eve", update)
+
+	msg := &AgentMessage{ID: "msg_002", Sender: "boss", Message: "check in", Timestamp: time.Now().UTC()}
+	j.Append("s", EventMessageSent, "Eve", msg)
+
+	now := time.Now().UTC()
+	j.Append("s", EventMessageAcked, "Eve", map[string]any{
+		"message_id": "msg_002",
+		"acked_at":   now,
+	})
+
+	ks, err := j.ReplayInto("s")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	eve := ks.Agents["Eve"]
+	if eve == nil {
+		t.Fatal("expected Eve agent")
+	}
+	if len(eve.Messages) == 0 {
+		t.Fatal("expected messages")
+	}
+	if !eve.Messages[0].Read {
+		t.Error("expected message to be marked read")
+	}
+	if eve.Messages[0].ReadAt == nil {
+		t.Error("expected ReadAt to be set")
+	}
+}
+
+func TestEventJournalReplaySnapshot(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	// First: some events
+	j.Append("s", EventAgentUpdated, "OldAgent", &AgentUpdate{Status: StatusDone, Summary: "old", UpdatedAt: time.Now().UTC()})
+
+	// Snapshot replaces everything
+	ks := NewKnowledgeSpace("s")
+	tc := 3
+	ks.Agents["NewAgent"] = &AgentUpdate{Status: StatusActive, Summary: "new", TestCount: &tc, UpdatedAt: time.Now().UTC()}
+	j.Append("s", EventSnapshot, "", ks)
+
+	// After snapshot: events apply on top
+	j.Append("s", EventAgentUpdated, "Another", &AgentUpdate{Status: StatusIdle, Summary: "another", UpdatedAt: time.Now().UTC()})
+
+	result, err := j.ReplayInto("s")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	if _, ok := result.Agents["OldAgent"]; ok {
+		t.Error("OldAgent should not appear after snapshot")
+	}
+	if _, ok := result.Agents["NewAgent"]; !ok {
+		t.Error("NewAgent should appear from snapshot")
+	}
+	if _, ok := result.Agents["Another"]; !ok {
+		t.Error("Another should appear from post-snapshot event")
+	}
+}
+
+func TestEventJournalCompact(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	for i := 0; i < 5; i++ {
+		j.Append("s", EventAgentUpdated, "Alpha", &AgentUpdate{
+			Status: StatusActive, Summary: "Alpha: working", UpdatedAt: time.Now().UTC(),
+		})
+	}
+
+	all, _ := j.LoadSince("s", time.Time{})
+	if len(all) != 5 {
+		t.Fatalf("expected 5 events before compaction, got %d", len(all))
+	}
+
+	ks := NewKnowledgeSpace("s")
+	ks.Agents["Alpha"] = &AgentUpdate{Status: StatusDone, Summary: "Alpha: done", UpdatedAt: time.Now().UTC()}
+	if err := j.Compact("s", ks); err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+
+	afterCompact, _ := j.LoadSince("s", time.Time{})
+	// Should be exactly 1 event: the snapshot
+	if len(afterCompact) != 1 {
+		t.Fatalf("expected 1 event after compaction, got %d", len(afterCompact))
+	}
+	if afterCompact[0].Type != EventSnapshot {
+		t.Errorf("expected snapshot event, got %s", afterCompact[0].Type)
+	}
+
+	// Replay should restore state
+	result, err := j.ReplayInto("s")
+	if err != nil {
+		t.Fatalf("ReplayInto after compact: %v", err)
+	}
+	alpha := result.Agents["Alpha"]
+	if alpha == nil || alpha.Status != StatusDone {
+		t.Error("Alpha should be done after replay from compacted journal")
+	}
+}
+
+func TestEventJournalMigrateFromJSON(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	ks := NewKnowledgeSpace("mig")
+	tc := 10
+	ks.Agents["Migrated"] = &AgentUpdate{Status: StatusActive, Summary: "Migrated: active", TestCount: &tc, UpdatedAt: time.Now().UTC()}
+
+	if err := j.MigrateFromJSON(ks); err != nil {
+		t.Fatalf("MigrateFromJSON: %v", err)
+	}
+
+	result, err := j.ReplayInto("mig")
+	if err != nil {
+		t.Fatalf("ReplayInto: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if agent := result.Agents["Migrated"]; agent == nil {
+		t.Error("expected Migrated agent")
+	} else if agent.Status != StatusActive {
+		t.Errorf("expected active, got %s", agent.Status)
+	}
+}
+
+func TestServerJournalIntegration(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	base := serverBaseURL(srv)
+	space := "jtest"
+
+	// Post an agent update
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/TestAgent", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "TestAgent: testing",
+		Branch:  "feat/test",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != 202 {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+
+	// Fetch events endpoint
+	code, body := getBody(t, base+"/spaces/"+space+"/api/events")
+	if code != 200 {
+		t.Fatalf("expected 200 from /api/events, got %d: %s", code, body)
+	}
+	var events []SpaceEvent
+	if err := json.Unmarshal([]byte(body), &events); err != nil {
+		t.Fatalf("unmarshal events: %v", err)
+	}
+	// Should have at least the agent_updated event plus possibly a space_created.
+	found := false
+	for _, ev := range events {
+		if ev.Type == EventAgentUpdated && strings.EqualFold(ev.Agent, "TestAgent") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected agent_updated event for TestAgent, events: %+v", events)
+	}
+}
+
+func TestServerMessageAck(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	base := serverBaseURL(srv)
+	space := "acktest"
+
+	// Create the agent first
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/Acker", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Acker: active",
+	})
+	resp.Body.Close()
+
+	// Send a message to Acker
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Acker/message",
+		map[string]string{"message": "hello there"},
+		"boss",
+	)
+	if code != 200 {
+		t.Fatalf("send message: expected 200, got %d: %s", code, body)
+	}
+	var msgResp map[string]string
+	if err := json.Unmarshal([]byte(body), &msgResp); err != nil {
+		t.Fatalf("unmarshal msg response: %v", err)
+	}
+	msgID := msgResp["messageId"]
+	if msgID == "" {
+		t.Fatal("expected messageId in response")
+	}
+
+	// Ack the message
+	code2, body2 := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Acker/message/"+msgID+"/ack",
+		nil,
+		"Acker",
+	)
+	if code2 != 200 {
+		t.Fatalf("ack message: expected 200, got %d: %s", code2, body2)
+	}
+
+	// Verify the message is marked read
+	code3, body3 := getBody(t, base+"/spaces/"+space+"/agent/Acker")
+	if code3 != 200 {
+		t.Fatalf("get agent: expected 200, got %d", code3)
+	}
+	var agent AgentUpdate
+	if err := json.Unmarshal([]byte(body3), &agent); err != nil {
+		t.Fatalf("unmarshal agent: %v", err)
+	}
+	found := false
+	for _, msg := range agent.Messages {
+		if msg.ID == msgID {
+			found = true
+			if !msg.Read {
+				t.Error("expected message to be marked read")
+			}
+			if msg.ReadAt == nil {
+				t.Error("expected ReadAt to be set")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("message %q not found in agent messages", msgID)
+	}
+}
+
+func TestServerEventsSincFilter(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	base := serverBaseURL(srv)
+	space := "sincetest"
+
+	// Post before capturing time
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/Early", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Early: first",
+	})
+	resp.Body.Close()
+
+	cutoff := time.Now().UTC()
+
+	resp2 := postJSON(t, base+"/spaces/"+space+"/agent/Late", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Late: second",
+	})
+	resp2.Body.Close()
+
+	// Get events since cutoff — should only include Late's update (and possibly space_created is before)
+	code, body := getBody(t, base+"/spaces/"+space+"/api/events?since="+cutoff.Format(time.RFC3339Nano))
+	if code != 200 {
+		t.Fatalf("expected 200, got %d: %s", code, body)
+	}
+	var events []SpaceEvent
+	if err := json.Unmarshal([]byte(body), &events); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, ev := range events {
+		if ev.Timestamp.Before(cutoff) {
+			t.Errorf("event %s at %v is before cutoff %v", ev.ID, ev.Timestamp, cutoff)
+		}
+	}
+	// Should include Late's agent_updated
+	foundLate := false
+	for _, ev := range events {
+		if ev.Type == EventAgentUpdated && ev.Agent == "Late" {
+			foundLate = true
+		}
+	}
+	if !foundLate {
+		t.Errorf("expected Late agent_updated in since-filtered events")
+	}
+}
+
+func TestServerPersistsViaJournal(t *testing.T) {
+	dir := t.TempDir()
+
+	// Start server, post agent, stop server
+	srv1 := NewServer(":0", dir)
+	if err := srv1.Start(); err != nil {
+		t.Fatalf("start srv1: %v", err)
+	}
+	base1 := serverBaseURL(srv1)
+	space := "persist"
+
+	postJSON(t, base1+"/spaces/"+space+"/agent/Persistent", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Persistent: active",
+		Branch:  "main",
+	})
+	srv1.Stop()
+
+	// Verify journal file was created
+	journalPath := dir + "/" + space + ".events.jsonl"
+	if _, err := os.Stat(journalPath); err != nil {
+		t.Fatalf("expected journal file at %s: %v", journalPath, err)
+	}
+
+	// Start a new server on same data dir — should replay from journal
+	srv2 := NewServer(":0", dir)
+	if err := srv2.Start(); err != nil {
+		t.Fatalf("start srv2: %v", err)
+	}
+	defer srv2.Stop()
+	base2 := serverBaseURL(srv2)
+
+	code, body := getBody(t, base2+"/spaces/"+space+"/agent/Persistent")
+	if code != 200 {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var agent AgentUpdate
+	if err := json.Unmarshal([]byte(body), &agent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if agent.Status != StatusActive {
+		t.Errorf("expected active after restart, got %s", agent.Status)
+	}
+	if agent.Summary != "Persistent: active" {
+		t.Errorf("unexpected summary: %s", agent.Summary)
+	}
+}
+
+// postJSONWithSender posts JSON to a URL with a custom X-Agent-Name header.
+func postJSONWithSender(t *testing.T, url string, payload any, sender string) (int, string) {
+	t.Helper()
+	var bodyStr string
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		bodyStr = string(data)
+	} else {
+		bodyStr = "{}"
+	}
+	r, err := http.NewRequest(http.MethodPost, url, strings.NewReader(bodyStr))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Agent-Name", sender)
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}

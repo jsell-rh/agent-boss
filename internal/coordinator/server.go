@@ -58,6 +58,7 @@ type Server struct {
 	// Keyed by registrationKey(space, agent). Guarded by regMu.
 	registrations map[string]*AgentRegistrationRecord
 	regMu         sync.RWMutex
+	journal       *EventJournal
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -82,6 +83,7 @@ func NewServer(port, dataDir string) *Server {
 		nudgeInFlight:      make(map[string]bool),
 		stalenessThreshold: thresh,
 		registrations:      make(map[string]*AgentRegistrationRecord),
+		journal:            NewEventJournal(dataDir),
 	}
 }
 
@@ -187,6 +189,7 @@ func (s *Server) Start() error {
 	}()
 
 	go s.livenessLoop()
+	s.startCompactionLoop(30 * time.Minute)
 
 	return nil
 }
@@ -223,12 +226,23 @@ func (s *Server) loadAllSpaces() error {
 		}
 		return err
 	}
+
+	// Collect space names from both .json and .events.jsonl files.
+	seen := make(map[string]bool)
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if entry.IsDir() {
 			continue
 		}
-		name := strings.TrimSuffix(entry.Name(), ".json")
-		ks, err := s.loadSpace(name)
+		name := entry.Name()
+		if strings.HasSuffix(name, ".json") && !strings.HasSuffix(name, ".events.jsonl") {
+			seen[strings.TrimSuffix(name, ".json")] = true
+		} else if strings.HasSuffix(name, ".events.jsonl") {
+			seen[strings.TrimSuffix(name, ".events.jsonl")] = true
+		}
+	}
+
+	for name := range seen {
+		ks, err := s.loadSpaceWithJournal(name)
 		if err != nil {
 			s.logEvent(fmt.Sprintf("failed to load space %q: %v", name, err))
 			continue
@@ -237,6 +251,55 @@ func (s *Server) loadAllSpaces() error {
 		s.logEvent(fmt.Sprintf("loaded space %q (%d agents)", name, len(ks.Agents)))
 	}
 	return nil
+}
+
+// loadSpaceWithJournal loads a space preferring event replay over raw JSON.
+// If a journal exists, it replays events (migrating from JSON if needed).
+// If no journal exists, it loads from JSON and seeds a snapshot event.
+func (s *Server) loadSpaceWithJournal(name string) (*KnowledgeSpace, error) {
+	journalPath := filepath.Join(s.dataDir, name+".events.jsonl")
+	jsonPath := s.spacePath(name)
+
+	journalExists := false
+	if _, err := os.Stat(journalPath); err == nil {
+		journalExists = true
+	}
+
+	if journalExists {
+		ks, err := s.journal.ReplayInto(name)
+		if err != nil {
+			return nil, fmt.Errorf("replay journal for %q: %w", name, err)
+		}
+		if ks != nil {
+			return ks, nil
+		}
+		// Empty journal — fall through to JSON.
+	}
+
+	// No journal or empty journal — try loading from JSON.
+	if _, err := os.Stat(jsonPath); err != nil {
+		// No JSON either — create a fresh space.
+		ks := NewKnowledgeSpace(name)
+		s.journal.Append(name, EventSpaceCreated, "", map[string]any{
+			"name":       name,
+			"created_at": ks.CreatedAt,
+		})
+		return ks, nil
+	}
+
+	ks, err := s.loadSpace(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Migrate: seed the journal with a snapshot of the existing JSON state.
+	if err := s.journal.MigrateFromJSON(ks); err != nil {
+		s.logEvent(fmt.Sprintf("warning: migrate %q to journal: %v", name, err))
+	} else {
+		s.logEvent(fmt.Sprintf("migrated space %q from JSON to event journal", name))
+	}
+
+	return ks, nil
 }
 
 func (s *Server) loadSpace(name string) (*KnowledgeSpace, error) {
@@ -443,7 +506,14 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			action := strings.TrimRight(parts[3], "/")
 			switch action {
 			case "message":
-				s.handleAgentMessage(w, r, spaceName, agentName)
+				// /spaces/{space}/agent/{agent}/message — send message
+				// /spaces/{space}/agent/{agent}/message/{id}/ack — ack message
+				if len(parts) >= 6 && strings.TrimRight(parts[5], "/") == "ack" {
+					msgID := strings.TrimRight(parts[4], "/")
+					s.handleMessageAck(w, r, spaceName, agentName, msgID)
+				} else {
+					s.handleAgentMessage(w, r, spaceName, agentName)
+				}
 			case "register":
 				s.handleAgentRegister(w, r, spaceName, agentName)
 			case "heartbeat":
@@ -614,6 +684,7 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 		}
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] shared contracts updated (%d bytes)", spaceName, len(body)))
+		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 
@@ -652,6 +723,7 @@ func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, sp
 		}
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] contracts updated (%d bytes)", spaceName, len(body)))
+		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 
@@ -690,6 +762,7 @@ func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spac
 		}
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] archive updated (%d bytes)", spaceName, len(body)))
+		s.journal.Append(spaceName, EventArchiveUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 
@@ -804,6 +877,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		s.mu.Unlock()
 
 		s.logEvent(fmt.Sprintf("[%s/%s] %s: %s", spaceName, canonical, update.Status, update.Summary))
+		s.journal.Append(spaceName, EventAgentUpdated, canonical, &update)
 		s.recordDecisionInterrupts(spaceName, canonical, &update)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
 		s.broadcastSSE(spaceName, "agent_updated", string(sseData))
@@ -827,6 +901,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s/%s] agent removed", spaceName, canonical))
+		s.journal.Append(spaceName, EventAgentRemoved, canonical, nil)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
 		s.broadcastSSE(spaceName, "agent_removed", string(sseData))
 		w.WriteHeader(http.StatusOK)
@@ -930,6 +1005,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 
 	// Log the message event
 	s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, canonical, senderName, messageReq.Message))
+	s.journal.Append(spaceName, EventMessageSent, canonical, &messageReq)
 
 	// Broadcast SSE event for real-time updates
 	sseData, _ := json.Marshal(map[string]interface{}{
@@ -1308,7 +1384,37 @@ func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	events := s.RecentEvents(200)
+
+	// Extract space name from URL: /spaces/{space}/api/events
+	path := strings.TrimPrefix(r.URL.Path, "/spaces/")
+	spaceName := strings.Split(path, "/")[0]
+	if spaceName == "" {
+		spaceName = DefaultSpaceName
+	}
+
+	var since time.Time
+	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
+		var err error
+		since, err = time.Parse(time.RFC3339Nano, sinceStr)
+		if err != nil {
+			// Try without nanoseconds
+			since, err = time.Parse(time.RFC3339, sinceStr)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("invalid since parameter: %v", err), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	events, err := s.journal.LoadSince(spaceName, since)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("load events: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if events == nil {
+		events = []SpaceEvent{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
 }
@@ -1879,6 +1985,115 @@ func truncateLine(s string, maxLen int) string {
 		return line[:maxLen-3] + "..."
 	}
 	return line
+}
+
+// handleMessageAck marks a message as read.
+// POST /spaces/{space}/agent/{agent}/message/{id}/ack
+// Requires X-Agent-Name header matching the recipient agent.
+func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceName, agentName, msgID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	callerName := r.Header.Get("X-Agent-Name")
+	if callerName == "" {
+		http.Error(w, "missing X-Agent-Name header", http.StatusBadRequest)
+		return
+	}
+	if !strings.EqualFold(callerName, agentName) {
+		http.Error(w, fmt.Sprintf("agent %q cannot ack messages for %q", callerName, agentName), http.StatusForbidden)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	canonical := resolveAgentName(ks, agentName)
+	now := time.Now().UTC()
+
+	s.mu.Lock()
+	agent, exists := ks.Agents[canonical]
+	if !exists {
+		s.mu.Unlock()
+		http.Error(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
+		return
+	}
+
+	found := false
+	for i := range agent.Messages {
+		if agent.Messages[i].ID == msgID {
+			agent.Messages[i].Read = true
+			agent.Messages[i].ReadAt = &now
+			found = true
+			break
+		}
+	}
+	if !found {
+		s.mu.Unlock()
+		http.Error(w, fmt.Sprintf("message %q not found", msgID), http.StatusNotFound)
+		return
+	}
+
+	ks.UpdatedAt = now
+	if err := s.saveSpace(ks); err != nil {
+		s.mu.Unlock()
+		http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.mu.Unlock()
+
+	s.journal.Append(spaceName, EventMessageAcked, canonical, map[string]any{
+		"message_id": msgID,
+		"acked_at":   now,
+	})
+	s.logEvent(fmt.Sprintf("[%s/%s] message %q acknowledged", spaceName, canonical, msgID))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "acked", "message_id": msgID})
+}
+
+// startCompactionLoop periodically compacts the event journal for each space.
+// It runs every compactionInterval and writes a snapshot, truncating old events.
+func (s *Server) startCompactionLoop(interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.stopLiveness:
+				return
+			case <-ticker.C:
+				s.compactAllSpaces()
+			}
+		}
+	}()
+}
+
+func (s *Server) compactAllSpaces() {
+	s.mu.RLock()
+	names := make([]string, 0, len(s.spaces))
+	for name := range s.spaces {
+		names = append(names, name)
+	}
+	s.mu.RUnlock()
+
+	for _, name := range names {
+		s.mu.RLock()
+		ks, ok := s.spaces[name]
+		s.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		if err := s.journal.Compact(name, ks); err != nil {
+			s.logEvent(fmt.Sprintf("compaction failed for %q: %v", name, err))
+		} else {
+			s.logEvent(fmt.Sprintf("compacted journal for %q", name))
+		}
+	}
 }
 
 // serveHTMLFile serves an HTML file from the static directory

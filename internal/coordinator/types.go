@@ -102,6 +102,8 @@ type AgentMessage struct {
 	Sender    string          `json:"sender"`
 	Priority  MessagePriority `json:"priority,omitempty"`
 	Timestamp time.Time       `json:"timestamp"`
+	Read      bool            `json:"read,omitempty"`
+	ReadAt    *time.Time      `json:"read_at,omitempty"`
 }
 
 type Table struct {
