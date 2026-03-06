@@ -62,8 +62,18 @@ const sortedAgents = computed(() => {
   })
 })
 
-// Attention count comes directly from the server's /spaces response
+// Attention count: use server-provided value, but for the selected space
+// also compute from loaded agent data (in case server hasn't been restarted)
 function spaceAttentionCount(space: SpaceSummary): number {
+  // For the selected space, compute from actual agent data (always fresh)
+  if (space.name === props.selectedSpace && props.currentSpace) {
+    let count = 0
+    for (const agent of Object.values(props.currentSpace.agents)) {
+      count += (agent.questions?.length ?? 0) + (agent.blockers?.length ?? 0)
+    }
+    return count
+  }
+  // For other spaces, use the server-provided count
   return space.attention_count ?? 0
 }
 

@@ -545,7 +545,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
       <section class="mt-6" aria-label="Agent messages">
         <Separator class="mb-4" />
         <h2 class="text-sm font-medium text-muted-foreground mb-3">Messages</h2>
-        <Card class="h-[350px]">
+        <Card class="h-[350px] overflow-hidden">
           <AgentMessages
             :messages="agent.messages ?? []"
             :agent-name="agentName"
