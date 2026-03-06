@@ -4,7 +4,7 @@ import { STATUS_DISPLAY } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { computed } from 'vue'
-import { Settings2, StopCircle, CheckCircle2, Pause, AlertCircle } from 'lucide-vue-next'
+import { Activity, StopCircle, CheckCircle2, Pause, AlertCircle } from 'lucide-vue-next'
 
 const props = defineProps<{
   status: AgentStatus
@@ -17,7 +17,7 @@ const config = computed(() => {
     case 'active':
       return {
         badgeClass: 'bg-green-500/15 text-green-400 border-green-500/30',
-        icon: Settings2,
+        icon: Activity,
         pulse: true,
       }
     case 'blocked':

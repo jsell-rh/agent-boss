@@ -196,9 +196,9 @@ const attentionSectionClass = computed(() => {
               :href="agent.pr"
               target="_blank"
               rel="noopener"
-              class="text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              class="text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring font-mono text-xs"
               aria-label="Open pull request in new tab"
-            >PR</a>
+            >{{ agent.pr }}</a>
             <Tooltip>
               <TooltipTrigger as-child>
                 <span class="cursor-default">Updated {{ relativeTime(agent.updated_at) }}</span>
@@ -491,8 +491,8 @@ const attentionSectionClass = computed(() => {
 
       <Separator />
 
-      <!-- Tmux Controls -->
-      <section class="space-y-3" aria-label="Tmux session controls">
+      <!-- Tmux Controls — only shown when agent has a registered tmux session -->
+      <section v-if="agent.tmux_session" class="space-y-3" aria-label="Tmux session controls">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controls</h2>
 
         <!-- Approval button -->
@@ -573,7 +573,12 @@ const attentionSectionClass = computed(() => {
       <!-- Messages -->
       <section class="mt-6" aria-label="Agent messages">
         <Separator class="mb-4" />
-        <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Messages</h2>
+        <div class="flex items-center gap-2 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Messages</h2>
+          <Badge v-if="agent.messages?.length" variant="secondary" class="h-4 min-w-4 px-1 text-[10px] font-semibold tabular-nums">
+            {{ agent.messages.length }}
+          </Badge>
+        </div>
         <div class="h-[350px] rounded-xl border bg-card text-card-foreground flex flex-col overflow-hidden">
           <AgentMessages
             :messages="agent.messages ?? []"

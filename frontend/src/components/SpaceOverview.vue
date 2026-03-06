@@ -463,16 +463,16 @@ const activeSections = computed(() => [
                           variant="outline"
                           size="sm"
                           class="h-8 px-1.5 text-[10px] ml-auto shrink-0"
-                          aria-label="Reply"
+                          aria-label="View agent and respond"
                           @click.stop="emit('select-agent', name)"
                         >
                           <MessageSquareReply class="size-3" />
-                          Reply
+                          Respond
                         </Button>
                       </div>
 
                       <!-- Row 5: Footer Actions -->
-                      <div class="flex items-center gap-2 pt-1 border-t border-border/50 opacity-0 group-hover:opacity-100 focus-within:opacity-100 group-focus-within:opacity-100 transition-opacity" @click.stop>
+                      <div class="flex items-center gap-2 pt-1 border-t border-border/50 opacity-40 group-hover:opacity-100 focus-within:opacity-100 group-focus-within:opacity-100 transition-opacity" @click.stop>
                         <Tooltip>
                           <TooltipTrigger as-child>
                             <Button

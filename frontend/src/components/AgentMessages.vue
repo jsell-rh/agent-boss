@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { AgentMessage } from '@/types'
-import { ref, nextTick, watch, computed } from 'vue'
+import { ref, nextTick, watch, computed, onMounted } from 'vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SendHorizontal, MessageCircle, Check } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
@@ -54,16 +54,19 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-watch(
-  () => props.messages.length,
-  async () => {
-    await nextTick()
+function scrollToBottom() {
+  nextTick(() => {
     const el = scrollRef.value?.$el?.querySelector('[data-radix-scroll-area-viewport]')
-    if (el) {
-      el.scrollTop = el.scrollHeight
-    }
-  },
-)
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+onMounted(scrollToBottom)
+
+watch(() => props.messages.length, scrollToBottom)
+
+// Scroll to bottom when switching to a different agent
+watch(() => props.agentName, scrollToBottom)
 
 type MessageEntry =
   | {
@@ -234,11 +237,12 @@ const enrichedMessages = computed((): MessageEntry[] => {
     <!-- Input area -->
     <div class="border-t p-3 flex gap-2">
       <label for="message-input" class="sr-only">Send a message to {{ agentName }}</label>
-      <Input
+      <Textarea
         id="message-input"
         v-model="messageText"
-        :placeholder="`Message ${agentName}...`"
-        class="flex-1 font-text"
+        :placeholder="`Message ${agentName}… (Enter to send, Shift+Enter for newline)`"
+        class="flex-1 font-text min-h-[38px] max-h-[120px] resize-none"
+        rows="1"
         @keydown="handleKeydown"
       />
       <Button
