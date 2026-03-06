@@ -12,6 +12,7 @@ import { RefreshCw, ShieldCheck, CornerDownLeft, Clock, CheckCheck, X } from 'lu
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { renderMarkdown } from '@/lib/markdown'
 
 const props = defineProps<{
   spaceName: string
@@ -468,9 +469,10 @@ onUnmounted(stopPolling)
             </div>
 
             <!-- Question / content -->
-            <p class="text-sm font-text leading-relaxed">
-              {{ item.question }}
-            </p>
+            <div
+              class="text-sm font-text leading-relaxed md-content"
+              v-html="renderMarkdown(item.question)"
+            />
 
             <!-- Context details (tool name etc.) -->
             <div v-if="item.context && Object.keys(item.context).length > 0" class="flex items-center gap-2 flex-wrap">
@@ -571,9 +573,11 @@ onUnmounted(stopPolling)
                 <span class="text-border">|</span>
                 <span class="tabular-nums">waited {{ formatWaitTime(item.resolution.wait_seconds) }}</span>
               </div>
-              <p v-if="item.resolution.answer && item.resolution.answer !== 'dismissed'" class="text-foreground/70 italic">
-                {{ item.resolution.answer }}
-              </p>
+              <div
+                v-if="item.resolution.answer && item.resolution.answer !== 'dismissed'"
+                class="text-foreground/70 md-content"
+                v-html="renderMarkdown(item.resolution.answer)"
+              />
             </div>
           </CardContent>
         </Card>

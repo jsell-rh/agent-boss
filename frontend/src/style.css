@@ -243,6 +243,112 @@
   50%       { box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 20%, transparent); }
 }
 
+/* Markdown content rendering — used with v-html for agent messages, summaries, etc. */
+.md-content {
+  /* Block-level markdown */
+}
+.md-content > * + * {
+  margin-top: 0.5em;
+}
+.md-content p {
+  line-height: 1.6;
+}
+.md-content ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+}
+.md-content ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+}
+.md-content li {
+  margin-top: 0.2em;
+  line-height: 1.5;
+}
+.md-content li > p {
+  margin-top: 0;
+}
+.md-content code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: oklch(0 0 0 / 10%);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.dark .md-content code {
+  background: oklch(1 0 0 / 8%);
+}
+.md-content pre {
+  background: oklch(0 0 0 / 8%);
+  border: 1px solid oklch(0 0 0 / 12%);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.dark .md-content pre {
+  background: oklch(1 0 0 / 5%);
+  border-color: oklch(1 0 0 / 10%);
+}
+.md-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8em;
+}
+.md-content blockquote {
+  border-left: 3px solid oklch(0 0 0 / 20%);
+  padding-left: 0.75em;
+  color: oklch(0 0 0 / 60%);
+  font-style: italic;
+  margin: 0.5em 0;
+}
+.dark .md-content blockquote {
+  border-left-color: oklch(1 0 0 / 25%);
+  color: oklch(1 0 0 / 55%);
+}
+.md-content h1, .md-content h2, .md-content h3,
+.md-content h4, .md-content h5, .md-content h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 0.75em;
+}
+.md-content h1 { font-size: 1.15em; }
+.md-content h2 { font-size: 1.05em; }
+.md-content h3, .md-content h4, .md-content h5, .md-content h6 { font-size: 1em; }
+.md-content a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-content a:hover {
+  opacity: 0.8;
+}
+.md-content hr {
+  border: none;
+  border-top: 1px solid oklch(0 0 0 / 12%);
+  margin: 0.75em 0;
+}
+.dark .md-content hr {
+  border-top-color: oklch(1 0 0 / 12%);
+}
+.md-content strong { font-weight: 600; }
+.md-content em { font-style: italic; }
+.md-content del, .md-content s { text-decoration: line-through; opacity: 0.7; }
+
+/* Inline-only markdown (list items, short text) */
+.md-content-inline code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: oklch(0 0 0 / 10%);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.dark .md-content-inline code {
+  background: oklch(1 0 0 / 8%);
+}
+.md-content-inline strong { font-weight: 600; }
+.md-content-inline em { font-style: italic; }
+
 /* Card hover lift utility */
 .card-hover {
   transition: transform 150ms ease, box-shadow 150ms ease;

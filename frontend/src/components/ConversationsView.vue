@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import AgentAvatar from './AgentAvatar.vue'
 import { MessageSquare, Search } from 'lucide-vue-next'
+import { renderMarkdown } from '@/lib/markdown'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -264,9 +265,10 @@ function getDateKey(timestamp: string): string {
                       {{ new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                     </time>
                   </div>
-                  <div class="bg-muted rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words leading-relaxed">
-                    {{ msg.message }}
-                  </div>
+                  <div
+                    class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
+                    v-html="renderMarkdown(msg.message)"
+                  />
                 </div>
               </div>
             </template>

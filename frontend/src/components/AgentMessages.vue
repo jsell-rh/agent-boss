@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { SendHorizontal, MessageCircle, Check, ChevronDown } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 import { formatFullDate } from '@/composables/useTime'
+import { renderMarkdown } from '@/lib/markdown'
 
 const props = defineProps<{
   messages: AgentMessage[]
@@ -219,7 +220,7 @@ const enrichedMessages = computed((): MessageEntry[] => {
                 <TooltipTrigger as-child>
                   <div
                     :class="[
-                      'px-3 py-2 text-sm font-text leading-relaxed whitespace-pre-wrap break-words',
+                      'px-3 py-2 text-sm font-text leading-relaxed break-words md-content',
                       entry.isBoss
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-foreground',
@@ -240,7 +241,8 @@ const enrichedMessages = computed((): MessageEntry[] => {
                                 ? 'rounded-2xl rounded-tl-md'
                                 : 'rounded-xl rounded-l-md'),
                     ]"
-                  >{{ entry.msg.message }}</div>
+                    v-html="renderMarkdown(entry.msg.message)"
+                  />
                 </TooltipTrigger>
                 <TooltipContent>
                   {{ formatFullDate(entry.msg.timestamp) }}

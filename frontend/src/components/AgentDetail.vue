@@ -27,6 +27,7 @@ import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { relativeTime, formatFullDate } from '@/composables/useTime'
+import { renderMarkdown, renderMarkdownInline } from '@/lib/markdown'
 
 const props = defineProps<{
   agent: AgentUpdate
@@ -277,7 +278,7 @@ const attentionSectionClass = computed(() => {
             </div>
             <div class="flex-1 min-w-0">
               <p class="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-1">Question</p>
-              <p class="font-text text-sm leading-relaxed">{{ q }}</p>
+              <div class="font-text text-sm leading-relaxed md-content" v-html="renderMarkdown(q)" />
             </div>
           </div>
 
@@ -327,7 +328,7 @@ const attentionSectionClass = computed(() => {
             </div>
             <div class="flex-1 min-w-0">
               <p class="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wide mb-1">Blocker</p>
-              <p class="font-text text-sm leading-relaxed">{{ b }}</p>
+              <div class="font-text text-sm leading-relaxed md-content" v-html="renderMarkdown(b)" />
             </div>
           </div>
 
@@ -366,7 +367,7 @@ const attentionSectionClass = computed(() => {
       <!-- Summary -->
       <section v-if="agent.summary" aria-label="Agent summary">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Summary</h2>
-        <p class="font-text leading-relaxed">{{ agent.summary }}</p>
+        <div class="font-text leading-relaxed md-content" v-html="renderMarkdown(agent.summary)" />
       </section>
 
       <Separator v-if="agent.summary && (hasItems || hasSections || agent.next_steps)" class="opacity-50" />
@@ -377,7 +378,7 @@ const attentionSectionClass = computed(() => {
         <ol class="space-y-1.5 font-text text-sm">
           <li v-for="(item, i) in agent.items" :key="i" class="flex items-start gap-2.5">
             <span class="shrink-0 mt-0.5 min-w-[1.25rem] text-right text-xs font-mono font-semibold text-muted-foreground/70 select-none">{{ i + 1 }}.</span>
-            <span class="leading-relaxed">{{ item }}</span>
+            <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(item)" />
           </li>
         </ol>
       </section>
@@ -391,7 +392,7 @@ const attentionSectionClass = computed(() => {
           <ol v-if="section.items?.length" class="space-y-1.5 font-text text-sm mb-2">
             <li v-for="(item, ii) in section.items" :key="ii" class="flex items-start gap-2.5">
               <span class="shrink-0 mt-0.5 min-w-[1.25rem] text-right text-xs font-mono font-semibold text-muted-foreground/70 select-none">{{ ii + 1 }}.</span>
-              <span class="leading-relaxed">{{ item }}</span>
+              <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(item)" />
             </li>
           </ol>
           <!-- Table -->
@@ -462,7 +463,7 @@ const attentionSectionClass = computed(() => {
       <!-- Next Steps -->
       <section v-if="agent.next_steps" aria-label="Next steps">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Next Steps</h2>
-        <p class="font-text text-sm leading-relaxed whitespace-pre-wrap">{{ agent.next_steps }}</p>
+        <div class="font-text text-sm leading-relaxed md-content" v-html="renderMarkdown(agent.next_steps)" />
       </section>
 
       <!-- Free Text -->
