@@ -143,11 +143,13 @@ function getBadgeClass(type: string): string {
   return badgeStyles[type] || badgeStyles.info!
 }
 
-// All distinct event types present in the log, sorted
+// All distinct event types present in the log, with counts, sorted by type name
 const availableTypes = computed(() => {
-  const types = new Set<string>()
-  for (const e of entries.value) types.add(e.type)
-  return [...types].sort()
+  const counts = new Map<string, number>()
+  for (const e of entries.value) {
+    counts.set(e.type, (counts.get(e.type) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))
 })
 
 // Entries filtered by the active type selection
@@ -423,10 +425,10 @@ defineExpose({ pushSSEEvent, clearLog })
         All
       </button>
       <button
-        v-for="type in availableTypes"
+        v-for="[type, count] in availableTypes"
         :key="type"
         :class="[
-          'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer',
+          'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer',
           activeTypes.size === 0 || activeTypes.has(type)
             ? getBadgeClass(type)
             : 'bg-muted/30 text-muted-foreground/40 border-border/30',
@@ -435,6 +437,7 @@ defineExpose({ pushSSEEvent, clearLog })
         @click="toggleTypeFilter(type)"
       >
         {{ type }}
+        <span class="tabular-nums opacity-70 font-normal not-italic">{{ count }}</span>
       </button>
     </div>
 
