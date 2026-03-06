@@ -153,8 +153,8 @@ const avatar = computed(() => {
   }
 })
 
-const gradientId = computed(() => `ag-${hashCode(props.name)}`)
-const vignetteId = computed(() => `vg-${hashCode(props.name)}`)
+const gradientId = computed(() => `ag-${hashCode(props.name)}-${props.size}`)
+const vignetteId = computed(() => `vg-${hashCode(props.name)}-${props.size}`)
 const radius = computed(() => props.size * 0.15)
 </script>
 
