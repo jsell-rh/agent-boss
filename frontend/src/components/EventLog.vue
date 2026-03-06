@@ -356,9 +356,9 @@ defineExpose({ pushSSEEvent, clearLog })
                 {{ entry.type }}
               </span>
             </td>
-            <td class="py-0.5 px-2 pr-4 text-foreground/80">
+            <td class="py-0.5 px-2 pr-4 text-foreground/80 max-w-0 w-full">
               <div
-                :class="expandedId === entry.id ? 'whitespace-pre-wrap break-words' : 'truncate'"
+                :class="expandedId === entry.id ? 'whitespace-pre-wrap break-words py-1' : 'truncate'"
               >
                 {{ entry.message }}
               </div>
