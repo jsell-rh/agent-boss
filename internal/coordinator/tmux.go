@@ -336,22 +336,26 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 		s.broadcastProgress(spaceName, canonical+": "+msg)
 	}
 
-	progress("switching to " + checkModel)
-	if err := tmuxSendKeys(tmuxSession, "/model "+checkModel); err != nil {
-		result.addError(canonical + ": model switch failed: " + err.Error())
-		return
-	}
+	// Model economy: switch to a lightweight model for check-ins if configured.
+	// If checkModel is empty, skip model switching entirely.
+	if checkModel != "" {
+		progress("switching to " + checkModel)
+		if err := tmuxSendKeys(tmuxSession, "/model "+checkModel); err != nil {
+			result.addError(canonical + ": model switch failed: " + err.Error())
+			return
+		}
 
-	progress("waiting for model switch...")
-	if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
-		result.addError(canonical + ": model switch did not complete: " + err.Error())
-		return
+		progress("waiting for model switch...")
+		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+			result.addError(canonical + ": model switch did not complete: " + err.Error())
+			return
+		}
 	}
 
 	boardTimeBefore := s.agentUpdatedAt(spaceName, canonical)
 
-	progress("sending /boss-check prompt")
-	if err := tmuxSendKeys(tmuxSession, "/boss-check "+canonical+" "+spaceName); err != nil {
+	progress("sending /boss.check prompt")
+	if err := tmuxSendKeys(tmuxSession, "/boss.check "+canonical+" "+spaceName); err != nil {
 		result.addError(canonical + ": check-in send failed: " + err.Error())
 		return
 	}
@@ -364,20 +368,23 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 	result.addSent(canonical)
 	progress("board post received")
 
-	progress("waiting for idle before model restore...")
-	if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
-		result.addError(canonical + ": post-checkin idle wait failed: " + err.Error())
-	}
+	// Restore the working model if one was specified
+	if workModel != "" {
+		progress("waiting for idle before model restore...")
+		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+			result.addError(canonical + ": post-checkin idle wait failed: " + err.Error())
+		}
 
-	progress("restoring " + workModel)
-	if err := tmuxSendKeys(tmuxSession, "/model "+workModel); err != nil {
-		result.addError(canonical + ": model restore failed: " + err.Error())
-		return
-	}
+		progress("restoring " + workModel)
+		if err := tmuxSendKeys(tmuxSession, "/model "+workModel); err != nil {
+			result.addError(canonical + ": model restore failed: " + err.Error())
+			return
+		}
 
-	progress("waiting for model restore...")
-	if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
-		result.addError(canonical + ": model restore did not complete: " + err.Error())
+		progress("waiting for model restore...")
+		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+			result.addError(canonical + ": model restore did not complete: " + err.Error())
+		}
 	}
 
 	progress("complete")
