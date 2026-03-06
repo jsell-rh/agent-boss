@@ -2,9 +2,11 @@ package coordinator
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -512,6 +514,145 @@ func TestServerPersistsViaJournal(t *testing.T) {
 	}
 	if agent.Summary != "Persistent: active" {
 		t.Errorf("unexpected summary: %s", agent.Summary)
+	}
+}
+
+// TestEventJournalCorruptedLines verifies that corrupted/partial JSONL lines are
+// skipped gracefully and valid lines before and after are still returned.
+func TestEventJournalCorruptedLines(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	// Append two valid events
+	j.Append("s", EventAgentUpdated, "Alpha", map[string]string{"k": "v"})
+	j.Append("s", EventAgentUpdated, "Beta", map[string]string{"k": "v"})
+
+	// Manually inject corrupted lines into the journal file
+	path := filepath.Join(dir, "s.events.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("open journal: %v", err)
+	}
+	f.WriteString("{not valid json\n")
+	f.WriteString("\n") // blank line
+	f.WriteString(`{"id":"x","space":"s","type":"agent_updated","agent":"Gamma","timestamp":"2026-01-01T00:00:00Z"}` + "\n")
+	f.Close()
+
+	events, err := j.LoadSince("s", time.Time{})
+	if err != nil {
+		t.Fatalf("LoadSince with corrupted lines: %v", err)
+	}
+	// Should have Alpha, Beta, and Gamma (3 valid lines; corrupted line skipped)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events (corrupted line skipped), got %d", len(events))
+	}
+	agents := map[string]bool{}
+	for _, ev := range events {
+		agents[ev.Agent] = true
+	}
+	if !agents["Alpha"] || !agents["Beta"] || !agents["Gamma"] {
+		t.Errorf("unexpected agents: %v", agents)
+	}
+}
+
+// TestEventJournalLargePayload verifies behavior with payloads near the scanner buffer limit.
+func TestEventJournalLargePayload(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	// 256KB payload — well within 512KB scanner buffer
+	largeVal := strings.Repeat("x", 256*1024)
+	j.Append("s", EventAgentUpdated, "Big", map[string]string{"data": largeVal})
+
+	events, err := j.LoadSince("s", time.Time{})
+	if err != nil {
+		t.Fatalf("LoadSince large payload: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	// Payload exceeding 512KB scanner buffer: the line will be too long.
+	// LoadSince should return an error (scanner.Err() = bufio.ErrTooLong).
+	tooBig := strings.Repeat("y", 600*1024)
+	j.Append("s", EventAgentUpdated, "TooBig", map[string]string{"data": tooBig})
+
+	_, scanErr := j.LoadSince("s", time.Time{})
+	if scanErr == nil {
+		// Not a hard failure — document current behavior: either error or truncated results.
+		t.Log("NOTE: scanner silently handled >512KB line (behavior may vary by Go version)")
+	}
+}
+
+// TestEventJournalConcurrentWrites verifies no data races under concurrent appends.
+func TestEventJournalConcurrentWrites(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	const goroutines = 20
+	const eventsEach = 50
+	done := make(chan struct{})
+	for g := 0; g < goroutines; g++ {
+		agent := fmt.Sprintf("Agent%d", g)
+		go func(name string) {
+			defer func() { done <- struct{}{} }()
+			for i := 0; i < eventsEach; i++ {
+				j.Append("concurrent", EventAgentUpdated, name, map[string]int{"i": i})
+			}
+		}(agent)
+	}
+	for i := 0; i < goroutines; i++ {
+		<-done
+	}
+
+	events, err := j.LoadSince("concurrent", time.Time{})
+	if err != nil {
+		t.Fatalf("LoadSince after concurrent writes: %v", err)
+	}
+	expected := goroutines * eventsEach
+	if len(events) != expected {
+		t.Errorf("expected %d events, got %d", expected, len(events))
+	}
+}
+
+// TestEventJournalCompactVsConcurrentAppend tests compaction racing with appends.
+func TestEventJournalCompactVsConcurrentAppend(t *testing.T) {
+	dir := t.TempDir()
+	j := NewEventJournal(dir)
+
+	// Pre-seed some events
+	for i := 0; i < 10; i++ {
+		j.Append("race", EventAgentUpdated, "Racer", map[string]int{"i": i})
+	}
+
+	ks := NewKnowledgeSpace("race")
+	ks.Agents["Racer"] = &AgentUpdate{Status: StatusActive, Summary: "Racer: mid", UpdatedAt: time.Now().UTC()}
+
+	// Compact and append concurrently
+	errc := make(chan error, 1)
+	go func() {
+		errc <- j.Compact("race", ks)
+	}()
+	for i := 0; i < 20; i++ {
+		j.Append("race", EventAgentUpdated, "Racer", map[string]int{"post": i})
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("Compact returned error: %v", err)
+	}
+
+	// Journal must still be readable and contain at least the snapshot
+	events, err := j.LoadSince("race", time.Time{})
+	if err != nil {
+		t.Fatalf("LoadSince after compact+append race: %v", err)
+	}
+	hasSnapshot := false
+	for _, ev := range events {
+		if ev.Type == EventSnapshot {
+			hasSnapshot = true
+		}
+	}
+	if !hasSnapshot {
+		t.Error("expected at least one snapshot event after Compact")
 	}
 }
 
