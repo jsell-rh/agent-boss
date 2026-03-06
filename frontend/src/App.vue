@@ -353,21 +353,60 @@ function pushLog(type: string, msg: string) {
   eventLogRef.value?.pushSSEEvent(type, msg)
 }
 
+// Debounced full space reload — batches rapid SSE bursts into a single fetch.
+// When 20+ agents all post simultaneously, this fires once after the burst settles.
+let _spaceReloadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSpaceReload(space: string, delayMs = 300) {
+  if (_spaceReloadTimer !== null) clearTimeout(_spaceReloadTimer)
+  _spaceReloadTimer = setTimeout(() => {
+    _spaceReloadTimer = null
+    loadSpace(space)
+  }, delayMs)
+}
+
+// Debounced spaces-list reload — the sidebar list only changes on space create/delete,
+// not on every agent update. Coalesce multiple triggers into one fetch.
+let _spacesReloadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSpacesReload(delayMs = 1000) {
+  if (_spacesReloadTimer !== null) clearTimeout(_spacesReloadTimer)
+  _spacesReloadTimer = setTimeout(() => {
+    _spacesReloadTimer = null
+    loadSpaces()
+  }, delayMs)
+}
+
 function setupSSE() {
   sse.on('agent_updated', (data) => {
-    if (selectedSpace.value) {
-      loadSpace(selectedSpace.value)
+    // Patch agent in-place immediately for instant UI feedback — no HTTP round-trip.
+    // SSE payload has status+summary; schedule a debounced full reload for
+    // items/questions/blockers that aren't included in the SSE payload.
+    if (currentSpace.value && currentSpace.value.name === data.space) {
+      const agent = currentSpace.value.agents[data.agent]
+      if (agent) {
+        agent.status = data.status as AgentUpdate['status']
+        agent.summary = data.summary
+        agent.updated_at = new Date().toISOString()
+        // Debounced full reload to pick up items, questions, blockers, etc.
+        scheduleSpaceReload(data.space)
+      } else {
+        // New agent in this space — fetch immediately so it appears without delay
+        loadSpace(data.space)
+      }
     }
-    loadSpaces()
+    // Update sidebar attention counts — debounced to avoid per-keystroke fetches
+    scheduleSpacesReload()
     statusAnnouncement.value = `Agent ${data.agent} updated: ${data.status}`
     pushLog('agent_updated', `[${data.agent}] ${data.status}: ${data.summary}`)
   })
 
   sse.on('agent_removed', (data) => {
-    if (selectedSpace.value) {
-      loadSpace(selectedSpace.value)
+    // Remove agent in-place immediately for instant feedback
+    if (currentSpace.value && currentSpace.value.name === data.space) {
+      delete currentSpace.value.agents[data.agent]
+      scheduleSpaceReload(data.space, 200)
     }
-    loadSpaces()
+    // Agent removal changes space agent_count — refresh spaces list promptly
+    scheduleSpacesReload(200)
     statusAnnouncement.value = `Agent ${data.agent} removed`
     pushLog('agent_removed', `[${data.agent}] agent removed`)
   })
@@ -396,7 +435,8 @@ function setupSSE() {
   })
 
   sse.on('agent_message', (data) => {
-    if (selectedSpace.value) {
+    // Messages require a full reload since SSE doesn't carry message body content
+    if (selectedSpace.value && selectedSpace.value === data.space) {
       loadSpace(selectedSpace.value)
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
@@ -412,17 +452,20 @@ function setupSSE() {
 }
 
 // ── Polling fallback ───────────────────────────────────────────────
-// The old dashboard polled every 3s as a fallback for SSE reliability.
-// We do the same — if SSE is working, the poll is redundant but harmless.
+// SSE handles real-time updates. Polling is a reliability fallback only —
+// 15s interval since SSE covers most updates. Skip polls when tab is hidden.
+const POLL_INTERVAL_MS = 15000
+
 function startPolling() {
   stopPolling()
   pollTimer = setInterval(() => {
+    // No point fetching when the tab isn't visible
+    if (document.hidden) return
     if (selectedSpace.value) {
       loadSpace(selectedSpace.value)
       loadTmuxStatus(selectedSpace.value)
     }
-    loadSpaces()
-  }, 5000)
+  }, POLL_INTERVAL_MS)
 }
 
 function stopPolling() {
@@ -558,6 +601,8 @@ onMounted(async () => {
 onUnmounted(() => {
   sse.disconnect()
   stopPolling()
+  if (_spaceReloadTimer !== null) clearTimeout(_spaceReloadTimer)
+  if (_spacesReloadTimer !== null) clearTimeout(_spacesReloadTimer)
   document.removeEventListener('keydown', handleKeydown)
 })
 </script>
