@@ -514,7 +514,7 @@ const activeSections = computed(() => [
                   :key="name"
                   role="listitem"
                   class="group flex items-center gap-2.5 px-3 py-2 rounded-md border border-border/40 bg-muted/10 opacity-70 hover:opacity-100 hover:bg-accent/30 transition-all cursor-pointer"
-                  :class="recentlyUpdated.has(name) ? 'ring-2 ring-primary/50 animate-pulse' : ''"
+                  :class="recentlyUpdated.has(name) ? 'ring-2 ring-primary/40 transition-shadow' : ''"
                   :aria-label="`Agent ${name}, status: ${agent.status}`"
                   tabindex="0"
                   @click="emit('select-agent', name)"
