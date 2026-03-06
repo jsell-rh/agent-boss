@@ -263,18 +263,14 @@ function hasAttention(agent: { questions?: string[]; blockers?: string[] }): boo
                       <TooltipTrigger as-child>
                         <span class="relative inline-block shrink-0">
                           <AgentAvatar :name="name" :size="28" />
-                          <!-- Freshness dot overlaid on bottom-right of avatar -->
+                          <!-- Status dot overlaid on bottom-right corner of avatar -->
                           <span
-                            class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
+                            class="absolute bottom-[-3px] right-[-3px] block size-3 rounded-full border-2 border-card"
                             :class="{
                               'bg-green-500': freshness(agent.updated_at) === 'live' || freshness(agent.updated_at) === 'recent',
                               'bg-muted-foreground/40': freshness(agent.updated_at) === 'normal',
                               'bg-muted-foreground/20': freshness(agent.updated_at) === 'stale',
                             }"
-                          />
-                          <span
-                            v-if="freshness(agent.updated_at) === 'live'"
-                            class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full bg-green-400 animate-ping"
                           />
                         </span>
                       </TooltipTrigger>
@@ -306,7 +302,7 @@ function hasAttention(agent: { questions?: string[]; blockers?: string[] }): boo
                 </p>
 
                 <!-- Row 3: Metadata — compact, one line -->
-                <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground font-text">
+                <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground font-text overflow-hidden">
                   <span v-if="agent.phase" class="truncate max-w-[100px]" :title="`Phase: ${agent.phase}`">
                     {{ agent.phase }}
                   </span>
@@ -338,8 +334,8 @@ function hasAttention(agent: { questions?: string[]; blockers?: string[] }): boo
                   <span v-if="agent.branch || agent.phase || agent.pr" class="text-border">·</span>
                   <Tooltip>
                     <TooltipTrigger as-child>
-                      <span class="inline-flex items-center gap-1 cursor-default">
-                        <Clock class="size-3" />
+                      <span class="inline-flex items-center gap-1 cursor-default whitespace-nowrap shrink-0">
+                        <Clock class="size-3 shrink-0" />
                         {{ relativeTime(agent.updated_at) }}
                       </span>
                     </TooltipTrigger>
