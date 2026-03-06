@@ -517,4 +517,30 @@ function statusLabel(status: string): string {
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+
+  <!-- New Space dialog -->
+  <Dialog v-model:open="newSpaceDialogOpen">
+    <DialogContent class="sm:max-w-sm">
+      <DialogHeader>
+        <DialogTitle>Create new space</DialogTitle>
+        <DialogDescription>
+          Enter a name for the new space. Agents will post updates to it using this name.
+        </DialogDescription>
+      </DialogHeader>
+      <form @submit.prevent="submitNewSpace">
+        <Input
+          ref="newSpaceNameInput"
+          v-model="newSpaceName"
+          placeholder="e.g. MyProject"
+          class="mb-4"
+          autofocus
+          @keydown.escape="newSpaceDialogOpen = false"
+        />
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="newSpaceDialogOpen = false">Cancel</Button>
+          <Button type="submit" :disabled="!newSpaceName.trim()">Create</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
 </template>

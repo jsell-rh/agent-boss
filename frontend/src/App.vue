@@ -303,6 +303,18 @@ async function handleDeleteSpace(spaceName: string) {
   }
 }
 
+async function handleCreateSpace(spaceName: string) {
+  try {
+    await api.createSpace(spaceName)
+    showStatus(`Created space "${spaceName}"`)
+    await loadSpaces()
+    router.push('/' + spaceName)
+  } catch (err) {
+    console.error('Create space failed:', err)
+    showError(`Failed to create space "${spaceName}".`)
+  }
+}
+
 async function handleBroadcastSingleAgent(agentName: string) {
   if (!selectedSpace.value) return
   try {
@@ -668,6 +680,7 @@ onUnmounted(() => {
         @select-agent="handleSelectAgent"
         @broadcast="handleBroadcastSpace"
         @delete-space="handleDeleteSpace"
+        @create-space="handleCreateSpace"
       />
       <SidebarInset class="flex flex-col h-dvh">
         <!-- Header -->

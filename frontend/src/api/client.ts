@@ -49,6 +49,13 @@ class ApiClient {
     })
   }
 
+  createSpace(space: string): Promise<void> {
+    return this.requestVoid(`/spaces/${encodeURIComponent(space)}/contracts`, {
+      method: 'POST',
+      body: '',
+    })
+  }
+
   // --------------- Agents ---------------
 
   fetchAgent(space: string, agent: string): Promise<AgentUpdate> {
