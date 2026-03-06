@@ -15,6 +15,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarInput,
   SidebarSeparator,
 } from '@/components/ui/sidebar'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -49,6 +50,7 @@ function handleSelectAgent(name: string) {
 }
 
 const agentsOpen = ref(true)
+const agentSearch = ref('')
 
 const sortedSpaces = computed(() => {
   return [...props.spaces].sort((a, b) => {
@@ -69,14 +71,23 @@ const sortedAgents = computed(() => {
   })
 })
 
+// Filter agents by search query (name or summary)
+const filteredAgents = computed(() => {
+  const q = agentSearch.value.trim().toLowerCase()
+  if (!q) return sortedAgents.value
+  return sortedAgents.value.filter(([name, a]) =>
+    name.toLowerCase().includes(q) || a.summary?.toLowerCase().includes(q)
+  )
+})
+
 // Agents needing attention: error, blocked, active
 const activeAgents = computed(() =>
-  sortedAgents.value.filter(([, a]) => a.status === 'error' || a.status === 'blocked' || a.status === 'active')
+  filteredAgents.value.filter(([, a]) => a.status === 'error' || a.status === 'blocked' || a.status === 'active')
 )
 
 // Agents at rest: idle, done
 const inactiveAgents = computed(() =>
-  sortedAgents.value.filter(([, a]) => a.status === 'idle' || a.status === 'done')
+  filteredAgents.value.filter(([, a]) => a.status === 'idle' || a.status === 'done')
 )
 
 // Status count summary line: "2 blocked, 3 active, 1 done" (only non-zero)
@@ -141,10 +152,7 @@ function statusLabel(status: string): string {
   return display ? display.label : status
 }
 
-function statusTooltip(status: string): string {
-  const display = STATUS_DISPLAY[status as AgentStatus]
-  return display ? `Task Status: ${display.label} — ${display.tooltip}` : status
-}
+
 </script>
 
 <template>
@@ -203,19 +211,10 @@ function statusTooltip(status: string): string {
           <CollapsibleTrigger as-child>
             <SidebarGroupLabel class="cursor-pointer select-none" :aria-expanded="agentsOpen" role="button">
               Agents
-              <svg
+              <ChevronRight
                 :class="['ml-auto h-4 w-4 transition-transform', agentsOpen && 'rotate-90']"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
                 aria-hidden="true"
-              >
-                <path d="m9 18 6-6-6-6" />
-              </svg>
+              />
               <span class="sr-only">{{ agentsOpen ? 'Collapse' : 'Expand' }} agents list</span>
             </SidebarGroupLabel>
           </CollapsibleTrigger>
@@ -224,6 +223,16 @@ function statusTooltip(status: string): string {
             <p v-if="agentCountSummary" class="px-3 pb-1 text-[11px] text-muted-foreground leading-none">
               {{ agentCountSummary }}
             </p>
+
+            <!-- Agent search input -->
+            <div class="px-3 pb-2">
+              <SidebarInput
+                v-model="agentSearch"
+                placeholder="Search agents…"
+                aria-label="Filter agents by name or summary"
+                class="h-7 text-xs"
+              />
+            </div>
 
             <SidebarGroupContent>
               <SidebarMenu>
@@ -293,6 +302,11 @@ function statusTooltip(status: string): string {
                 <SidebarMenuItem v-if="sortedAgents.length === 0">
                   <div class="px-2 py-3 text-sm text-muted-foreground font-text">
                     No agents in this space yet
+                  </div>
+                </SidebarMenuItem>
+                <SidebarMenuItem v-else-if="filteredAgents.length === 0">
+                  <div class="px-2 py-3 text-sm text-muted-foreground font-text">
+                    No agents match "{{ agentSearch }}"
                   </div>
                 </SidebarMenuItem>
               </SidebarMenu>

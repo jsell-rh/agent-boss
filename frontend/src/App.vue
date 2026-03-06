@@ -9,6 +9,8 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { Separator } from '@/components/ui/separator'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -633,11 +635,11 @@ onUnmounted(() => {
         <div
           v-if="successMessage"
           role="status"
-          class="mx-4 mt-2 rounded-md border border-teal-500/50 bg-teal-500/10 px-4 py-2 text-sm text-teal-600 dark:text-teal-400 flex items-center justify-between gap-2"
+          class="mx-4 mt-2 rounded-md border border-green-500/50 bg-green-500/10 px-4 py-2 text-sm text-green-600 dark:text-green-400 flex items-center justify-between gap-2"
         >
           <span>{{ successMessage }}</span>
           <button
-            class="text-teal-600 dark:text-teal-400 hover:text-foreground text-xs font-medium shrink-0"
+            class="text-green-600 dark:text-green-400 hover:text-foreground text-xs font-medium shrink-0"
             aria-label="Dismiss notification"
             @click="successMessage = null"
           >
@@ -758,22 +760,21 @@ onUnmounted(() => {
         <div class="space-y-3 py-1">
           <div class="space-y-1">
             <label for="kb-sender" class="text-xs font-medium text-muted-foreground">From</label>
-            <input
+            <Input
               id="kb-sender"
               v-model="kbMessageSender"
               type="text"
               placeholder="boss"
-              class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div class="space-y-1">
             <label for="kb-message" class="text-xs font-medium text-muted-foreground">Message</label>
-            <textarea
+            <Textarea
               id="kb-message"
               v-model="kbMessageText"
-              rows="4"
+              :rows="4"
               placeholder="Type your message…"
-              class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              class="resize-none"
               @keydown.ctrl.enter.prevent="handleKbSendMessage"
             />
             <p class="text-xs text-muted-foreground">Ctrl+Enter to send</p>
