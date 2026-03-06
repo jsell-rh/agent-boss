@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { KnowledgeSpace } from '@/types'
+import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import AgentAvatar from './AgentAvatar.vue'
-import { MessageSquare, Search } from 'lucide-vue-next'
+import StatusBadge from './StatusBadge.vue'
+import { MessageSquare, Search, X, GitBranch } from 'lucide-vue-next'
 import { renderMarkdown } from '@/lib/markdown'
+import { relativeTime } from '@/composables/useTime'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -113,10 +116,26 @@ function formatDaySeparator(timestamp: string): string {
 function getDateKey(timestamp: string): string {
   return new Date(timestamp).toDateString()
 }
+
+// ── Agent detail slideover ──────────────────────────────────────────
+const slideoverAgentName = ref<string | null>(null)
+
+const slideoverAgent = computed<AgentUpdate | null>(() => {
+  if (!slideoverAgentName.value) return null
+  return props.space.agents[slideoverAgentName.value] ?? null
+})
+
+function openSlideover(agentName: string) {
+  slideoverAgentName.value = agentName
+}
+
+function closeSlideover() {
+  slideoverAgentName.value = null
+}
 </script>
 
 <template>
-  <div class="flex h-full min-h-0">
+  <div class="flex h-full min-h-0 relative overflow-hidden">
     <!-- Left panel: conversation list -->
     <aside
       class="w-72 shrink-0 border-r flex flex-col min-h-0"
@@ -160,14 +179,22 @@ function getDateKey(timestamp: string): string {
               :class="{ 'bg-muted': selectedKey === conv.key }"
               @click="selectedKey = conv.key"
             >
-              <!-- Stacked avatars -->
-              <div class="relative shrink-0 w-9 h-9 mt-0.5" aria-hidden="true">
-                <AgentAvatar :name="conv.participants[0]" :size="26" class="absolute top-0 left-0" />
-                <AgentAvatar
-                  :name="conv.participants[1]"
-                  :size="22"
-                  class="absolute bottom-0 right-0 ring-2 ring-background rounded-full"
-                />
+              <!-- Stacked avatars (clickable to open agent slideover) -->
+              <div class="relative shrink-0 w-9 h-9 mt-0.5" @click.stop>
+                <button
+                  class="absolute top-0 left-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  :aria-label="`View ${conv.participants[0]} details`"
+                  @click="openSlideover(conv.participants[0])"
+                >
+                  <AgentAvatar :name="conv.participants[0]" :size="26" />
+                </button>
+                <button
+                  class="absolute bottom-0 right-0 rounded-full ring-2 ring-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  :aria-label="`View ${conv.participants[1]} details`"
+                  @click="openSlideover(conv.participants[1])"
+                >
+                  <AgentAvatar :name="conv.participants[1]" :size="22" />
+                </button>
               </div>
 
               <!-- Info -->
@@ -253,7 +280,13 @@ function getDateKey(timestamp: string): string {
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
               >
-                <AgentAvatar :name="msg.sender" :size="28" class="shrink-0 mt-0.5" />
+                <button
+                  class="shrink-0 mt-0.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  :aria-label="`View ${msg.sender} details`"
+                  @click="openSlideover(msg.sender)"
+                >
+                  <AgentAvatar :name="msg.sender" :size="28" />
+                </button>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-baseline gap-1.5 mb-1">
                     <span class="text-xs font-semibold">{{ msg.sender }}</span>
@@ -291,5 +324,103 @@ function getDateKey(timestamp: string): string {
         </div>
       </div>
     </div>
+
+    <!-- Agent detail slideover -->
+    <Transition
+      enter-active-class="transition-transform duration-200 ease-out"
+      enter-from-class="translate-x-full"
+      enter-to-class="translate-x-0"
+      leave-active-class="transition-transform duration-150 ease-in"
+      leave-from-class="translate-x-0"
+      leave-to-class="translate-x-full"
+    >
+      <aside
+        v-if="slideoverAgentName && slideoverAgent"
+        class="absolute inset-y-0 right-0 w-80 border-l bg-background shadow-lg flex flex-col z-20"
+        aria-label="Agent details"
+        role="complementary"
+      >
+        <!-- Slideover header -->
+        <div class="flex items-center gap-3 px-4 py-3 border-b shrink-0">
+          <AgentAvatar :name="slideoverAgentName" :size="32" />
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold truncate">{{ slideoverAgentName }}</h3>
+            <StatusBadge :status="slideoverAgent.status" />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close agent details"
+            @click="closeSlideover"
+          >
+            <X class="size-4" />
+          </Button>
+        </div>
+
+        <!-- Slideover content -->
+        <ScrollArea class="flex-1 min-h-0">
+          <div class="px-4 py-3 space-y-4 text-sm">
+            <!-- Summary -->
+            <div>
+              <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Summary</p>
+              <p class="leading-relaxed">{{ slideoverAgent.summary }}</p>
+            </div>
+
+            <!-- Meta: branch, updated -->
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span v-if="slideoverAgent.branch" class="flex items-center gap-1">
+                <GitBranch class="size-3" />{{ slideoverAgent.branch }}
+              </span>
+              <span>Updated {{ relativeTime(slideoverAgent.updated_at) }}</span>
+            </div>
+
+            <!-- Items -->
+            <div v-if="slideoverAgent.items && slideoverAgent.items.length > 0">
+              <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Activity</p>
+              <ul class="space-y-1">
+                <li
+                  v-for="(item, i) in slideoverAgent.items"
+                  :key="i"
+                  class="flex gap-2 text-xs leading-relaxed"
+                >
+                  <span class="text-muted-foreground mt-0.5 shrink-0">•</span>
+                  <span v-html="renderMarkdown(item)" class="md-content" />
+                </li>
+              </ul>
+            </div>
+
+            <!-- Next steps -->
+            <div v-if="slideoverAgent.next_steps">
+              <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Next steps</p>
+              <p class="text-xs leading-relaxed text-muted-foreground">{{ slideoverAgent.next_steps }}</p>
+            </div>
+
+            <!-- Questions -->
+            <div v-if="slideoverAgent.questions && slideoverAgent.questions.length > 0">
+              <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Questions</p>
+              <ul class="space-y-1">
+                <li
+                  v-for="(q, i) in slideoverAgent.questions"
+                  :key="i"
+                  class="text-xs text-yellow-600 dark:text-yellow-400 leading-relaxed"
+                >• {{ q }}</li>
+              </ul>
+            </div>
+
+            <!-- Blockers -->
+            <div v-if="slideoverAgent.blockers && slideoverAgent.blockers.length > 0">
+              <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Blockers</p>
+              <ul class="space-y-1">
+                <li
+                  v-for="(b, i) in slideoverAgent.blockers"
+                  :key="i"
+                  class="text-xs text-destructive leading-relaxed"
+                >🔴 {{ b }}</li>
+              </ul>
+            </div>
+          </div>
+        </ScrollArea>
+      </aside>
+    </Transition>
   </div>
 </template>
