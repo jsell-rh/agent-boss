@@ -20,6 +20,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Radio } from 'lucide-vue-next'
 
 const props = defineProps<{
   spaces: SpaceSummary[]
@@ -222,7 +223,7 @@ function statusTooltip(status: string): string {
             class="w-full"
             @click="emit('broadcast')"
           >
-            Nudge {{ currentSpace.name }}
+            <Radio class="size-4" /> Nudge {{ currentSpace.name }}
           </Button>
         </TooltipTrigger>
         <TooltipContent>

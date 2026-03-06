@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SendHorizontal } from 'lucide-vue-next'
 
 const props = defineProps<{
   messages: AgentMessage[]
@@ -148,7 +149,7 @@ const sortedMessages = computed(() => {
         :aria-label="`Send message to ${agentName}`"
         @click="send"
       >
-        Send
+        <SendHorizontal class="size-4" /> Send
       </Button>
     </div>
   </div>

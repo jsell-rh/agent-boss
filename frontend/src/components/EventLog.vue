@@ -3,6 +3,7 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
+import { XCircle } from 'lucide-vue-next'
 
 export interface EventLogEntry {
   id: number
@@ -302,7 +303,7 @@ defineExpose({ pushSSEEvent, clearLog })
           class="h-5 px-2 text-[10px] text-muted-foreground hover:text-foreground"
           @click.stop="clearLog"
         >
-          Clear
+          <XCircle class="size-3.5" /> Clear
         </Button>
         <!-- Chevron indicator -->
         <svg

@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
+import { Bell, Trash2, ShieldCheck, Terminal, X } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 
@@ -181,7 +182,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
           <Tooltip>
             <TooltipTrigger as-child>
               <Button variant="outline" size="sm" @click="emit('broadcast')">
-                Nudge
+                <Bell class="size-4" /> Nudge
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -191,7 +192,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
           <Tooltip>
             <TooltipTrigger as-child>
               <Button variant="outline" size="sm" class="text-destructive hover:bg-destructive hover:text-destructive-foreground" @click="deleteDialogOpen = true">
-                Delete
+                <Trash2 class="size-4" /> Delete
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -282,7 +283,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
                   :aria-label="`Dismiss question: ${q}`"
                   @click="requestDismissQuestion(qi)"
                 >
-                  Dismiss
+                  <X class="size-3.5" /> Dismiss
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -314,7 +315,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
                   :aria-label="`Dismiss blocker: ${b}`"
                   @click="requestDismissBlocker(bi)"
                 >
-                  Dismiss
+                  <X class="size-3.5" /> Dismiss
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -337,7 +338,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="confirmDismiss()">
-              Dismiss
+              <X class="size-4" /> Dismiss
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -355,7 +356,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="emit('delete')">
-              Delete
+              <Trash2 class="size-4" /> Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -414,7 +415,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
                 <Tooltip>
                   <TooltipTrigger as-child>
                     <Button @click="emit('approve')" aria-label="Approve tool execution">
-                      Approve
+                      <ShieldCheck class="size-4" /> Approve
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -453,7 +454,7 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
                   aria-label="Send reply to tmux session"
                   @click="handleReply"
                 >
-                  Reply
+                  <Terminal class="size-4" /> Reply
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

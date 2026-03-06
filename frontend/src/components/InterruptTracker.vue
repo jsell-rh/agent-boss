@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { RefreshCw, ShieldCheck, CornerDownLeft } from 'lucide-vue-next'
 
 const props = defineProps<{
   spaceName: string
@@ -163,20 +164,7 @@ onMounted(fetchData)
     <div class="flex items-center justify-between">
       <h2 class="text-lg font-semibold tracking-tight">Inbox</h2>
       <Button variant="outline" size="sm" :disabled="loading" @click="fetchData">
-        <svg
-          :class="['h-4 w-4 mr-1.5', loading && 'animate-spin']"
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-          <path d="M21 3v5h-5" />
-        </svg>
+        <RefreshCw :class="['size-4', loading && 'animate-spin']" />
         Refresh
       </Button>
     </div>
@@ -295,7 +283,7 @@ onMounted(fetchData)
                   :disabled="acting[item.id]"
                   @click="handleApprove(item)"
                 >
-                  Approve
+                  <ShieldCheck class="size-4" /> Approve
                 </Button>
               </template>
 
@@ -314,7 +302,7 @@ onMounted(fetchData)
                   :disabled="acting[item.id] || !(replyTexts[item.id] ?? '').trim()"
                   @click="handleReply(item)"
                 >
-                  Reply
+                  <CornerDownLeft class="size-4" /> Reply
                 </Button>
               </template>
 

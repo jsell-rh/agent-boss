@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Radio, Bell, Trash2, MessageSquare, SendHorizontal } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
 
@@ -125,7 +126,7 @@ const inboxPending = computed(() => inboxRef.value?.pendingCount ?? 0)
         <Tooltip>
           <TooltipTrigger as-child>
             <Button variant="outline" size="sm" @click="emit('broadcast')">
-              Nudge All
+              <Radio class="size-4" /> Nudge All
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -257,7 +258,7 @@ const inboxPending = computed(() => inboxRef.value?.pendingCount ?? 0)
                     @keydown.escape="messageAgent = null"
                   />
                   <Button type="submit" size="sm" class="h-8 px-3 shrink-0" :disabled="!messageText.trim()">
-                    Send
+                    <SendHorizontal class="size-3.5" /> Send
                   </Button>
                 </form>
               </div>
@@ -265,13 +266,13 @@ const inboxPending = computed(() => inboxRef.value?.pendingCount ?? 0)
               <!-- Card footer with action buttons -->
               <CardFooter class="pt-0 pb-3 px-4 gap-2" @click.stop>
                 <Button variant="outline" size="sm" class="h-7 text-xs" @click.stop="emit('broadcast-agent', name)">
-                  Nudge
+                  <Bell class="size-3.5" /> Nudge
                 </Button>
                 <Button variant="outline" size="sm" class="h-7 text-xs" @click.stop="openMessageInput(name)">
-                  Message
+                  <MessageSquare class="size-3.5" /> Message
                 </Button>
                 <Button variant="ghost" size="sm" class="h-7 text-xs text-destructive hover:text-destructive ml-auto" @click.stop="openDeleteDialog(name)">
-                  Delete
+                  <Trash2 class="size-3.5" /> Delete
                 </Button>
               </CardFooter>
             </Card>
@@ -300,7 +301,7 @@ const inboxPending = computed(() => inboxRef.value?.pendingCount ?? 0)
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="confirmDeleteAgent()">
-              Delete
+              <Trash2 class="size-4" /> Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
