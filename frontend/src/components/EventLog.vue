@@ -19,12 +19,19 @@ const props = defineProps<{
 }>()
 
 const entries = ref<EventLogEntry[]>([])
-const isOpen = ref(false)
+const isOpen = ref(true)
 const autoScroll = ref(true)
 const scrollContainer = ref<HTMLElement | null>(null)
 const panelHeight = ref(220)
 const expandedId = ref<number | null>(null)
 const isResizing = ref(false)
+// Unread count: events that arrived while panel was closed or user scrolled up
+const unreadCount = ref(0)
+// Live SSE indicator: pulses briefly when a live event arrives
+const sseActive = ref(false)
+let sseActiveTimer: ReturnType<typeof setTimeout> | null = null
+// Text search
+const searchQuery = ref('')
 
 // Filter state — empty set = show all
 const activeTypes = ref<Set<string>>(new Set())
@@ -143,22 +150,30 @@ function getBadgeClass(type: string): string {
   return badgeStyles[type] || badgeStyles.info!
 }
 
-// All distinct event types present in the log, with counts, sorted by type name
+// All distinct event types present in the log, with counts, sorted by count desc
 const availableTypes = computed(() => {
   const counts = new Map<string, number>()
   for (const e of entries.value) {
     counts.set(e.type, (counts.get(e.type) ?? 0) + 1)
   }
-  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))
+  return [...counts.entries()].sort(([, a], [, b]) => b - a)
 })
 
-// Entries filtered by the active type selection
+// Entries filtered by the active type selection and text search
 const filteredEntries = computed(() => {
-  if (activeTypes.value.size === 0) return entries.value
-  return entries.value.filter(e => activeTypes.value.has(e.type))
+  let result = entries.value
+  if (activeTypes.value.size > 0) {
+    result = result.filter(e => activeTypes.value.has(e.type))
+  }
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    result = result.filter(e => e.message.toLowerCase().includes(q) || e.type.toLowerCase().includes(q))
+  }
+  return result
 })
 
-const entryCount = computed(() => filteredEntries.value.length)
+// Badge always shows total entry count (not filtered)
+const entryCount = computed(() => entries.value.length)
 
 function toggleTypeFilter(type: string) {
   const next = new Set(activeTypes.value)
@@ -186,6 +201,9 @@ async function loadEvents() {
         for (const r of raw) {
           seenServerMessages.add(r)
         }
+        if (isOpen.value) {
+          nextTick(scrollToBottom)
+        }
       } else {
         // On refresh, only add new entries we haven't seen
         let added = false
@@ -196,8 +214,20 @@ async function loadEvents() {
             added = true
           }
         }
-        if (added && autoScroll.value) {
-          scrollToBottom()
+        if (added) {
+          if (!isOpen.value) {
+            // Auto-open on first live event arriving while panel is closed
+            if (entries.value.length <= 1) {
+              isOpen.value = true
+              nextTick(scrollToBottom)
+            } else {
+              unreadCount.value++
+            }
+          } else if (autoScroll.value) {
+            scrollToBottom()
+          } else {
+            unreadCount.value++
+          }
         }
       }
       // Cap entries
@@ -211,9 +241,12 @@ async function loadEvents() {
 }
 
 // Start periodic refresh of server events (catches things SSE doesn't push)
+// Only poll when panel is open — saves bandwidth when collapsed
 function startRefresh() {
   stopRefresh()
-  refreshTimer = setInterval(loadEvents, 3000)
+  refreshTimer = setInterval(() => {
+    if (isOpen.value) loadEvents()
+  }, 3000)
   tickTimer = setInterval(() => { tick.value++ }, 10000)
 }
 
@@ -243,8 +276,17 @@ function pushSSEEvent(sseType: string, summary: string) {
   if (entries.value.length > 500) {
     entries.value = entries.value.slice(-500)
   }
-  if (autoScroll.value) {
+  // Flash the SSE indicator
+  sseActive.value = true
+  if (sseActiveTimer !== null) clearTimeout(sseActiveTimer)
+  sseActiveTimer = setTimeout(() => { sseActive.value = false }, 1500)
+
+  if (!isOpen.value) {
+    unreadCount.value++
+  } else if (autoScroll.value) {
     scrollToBottom()
+  } else {
+    unreadCount.value++
   }
 }
 
@@ -256,7 +298,10 @@ function clearLog() {
 function toggleOpen() {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
+    unreadCount.value = 0
     nextTick(scrollToBottom)
+    // Resume polling immediately on open
+    loadEvents()
   }
 }
 
@@ -274,6 +319,7 @@ function handleScroll() {
   if (!el) return
   const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
   autoScroll.value = atBottom
+  if (atBottom) unreadCount.value = 0
 }
 
 // ── Resize handling ──────────────────────────────────────────────
