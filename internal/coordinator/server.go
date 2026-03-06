@@ -874,13 +874,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	s.mu.Unlock()
 
 	// Log the message event
-	s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, canonical, senderName,
-		func() string {
-			if len(messageReq.Message) > 50 {
-				return messageReq.Message[:47] + "..."
-			}
-			return messageReq.Message
-		}()))
+	s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, canonical, senderName, messageReq.Message))
 
 	// Broadcast SSE event for real-time updates
 	sseData, _ := json.Marshal(map[string]interface{}{
