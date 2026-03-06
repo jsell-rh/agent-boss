@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -39,6 +40,7 @@ import {
   ExternalLink,
   Clock,
   Layers,
+  Search,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
@@ -57,6 +59,7 @@ const emit = defineEmits<{
   'send-message-to-agent': [agentName: string, text: string]
 }>()
 
+const agentSearch = ref('')
 const deleteDialogOpen = ref(false)
 const deleteDialogAgent = ref<string | null>(null)
 const messageDialogOpen = ref(false)
@@ -189,21 +192,30 @@ function hasAttention(agent: { questions?: string[]; blockers?: string[] }): boo
   return (agent.questions?.length ?? 0) > 0 || (agent.blockers?.length ?? 0) > 0
 }
 
+/** Agents filtered by the search query */
+const filteredSortedAgents = computed(() => {
+  const q = agentSearch.value.trim().toLowerCase()
+  if (!q) return sortedAgents.value
+  return sortedAgents.value.filter(([name, agent]) =>
+    name.toLowerCase().includes(q) || agent.summary?.toLowerCase().includes(q)
+  )
+})
+
 /** Agents with blockers/questions — shown first as full cards */
 const needsAttentionAgents = computed(() =>
-  sortedAgents.value.filter(([, agent]) => hasAttention(agent))
+  filteredSortedAgents.value.filter(([, agent]) => hasAttention(agent))
 )
 
 /** Active/error/blocked agents without attention items — shown as full cards */
 const activeAgents = computed(() =>
-  sortedAgents.value.filter(([, agent]) =>
+  filteredSortedAgents.value.filter(([, agent]) =>
     !hasAttention(agent) && !['done', 'idle'].includes(agent.status)
   )
 )
 
 /** Done/idle agents without attention items — shown as compact rows to save space */
 const doneIdleAgents = computed(() =>
-  sortedAgents.value.filter(([, agent]) =>
+  filteredSortedAgents.value.filter(([, agent]) =>
     !hasAttention(agent) && ['done', 'idle'].includes(agent.status)
   )
 )
@@ -258,6 +270,17 @@ const activeSections = computed(() => [
             Send a nudge to all {{ agentCount }} agent{{ agentCount !== 1 ? 's' : '' }} in this space
           </TooltipContent>
         </Tooltip>
+      </div>
+
+      <!-- Agent search bar -->
+      <div class="relative">
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
+        <Input
+          v-model="agentSearch"
+          placeholder="Search agents by name or summary…"
+          class="pl-9"
+          aria-label="Filter agents by name or summary"
+        />
       </div>
 
       <!-- Tabs: Agents / Inbox -->
@@ -593,6 +616,14 @@ const activeSections = computed(() => [
             >
               <p class="text-lg">No agents in this space yet</p>
               <p class="text-sm mt-1">Agents will appear here when they register via the API</p>
+            </div>
+            <div
+              v-else-if="filteredSortedAgents.length === 0"
+              class="flex flex-col items-center justify-center py-12 text-muted-foreground font-text text-center"
+            >
+              <Search class="size-8 mb-3 opacity-30" aria-hidden="true" />
+              <p class="text-base">No agents match "{{ agentSearch }}"</p>
+              <p class="text-sm mt-1">Try a different search term</p>
             </div>
           </div>
         </TabsContent>
