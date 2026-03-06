@@ -154,6 +154,17 @@ class ApiClient {
     )
   }
 
+  resolveInterrupt(space: string, id: string, answer = 'dismissed'): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/factory/interrupts`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, answer, resolved_by: 'human' }),
+      },
+    )
+  }
+
   dismissItem(space: string, agent: string, index: number, type: 'question' | 'blocker' = 'question'): Promise<void> {
     return this.requestVoid(
       `/spaces/${encodeURIComponent(space)}/dismiss/${encodeURIComponent(agent)}`,

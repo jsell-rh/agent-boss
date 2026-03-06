@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import type { Interrupt, InterruptMetrics } from '@/types'
 import { api } from '@/api/client'
 import { relativeTime, formatFullDate, formatWaitTime } from '@/composables/useTime'
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { RefreshCw, ShieldCheck, CornerDownLeft, Clock, CheckCheck } from 'lucide-vue-next'
+import { RefreshCw, ShieldCheck, CornerDownLeft, Clock, CheckCheck, X } from 'lucide-vue-next'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -22,6 +22,8 @@ const metrics = ref<InterruptMetrics | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const showAll = ref(false)
+const lastFetched = ref<Date | null>(null)
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Per-interrupt reply text for decision types
 const replyTexts = ref<Record<string, string>>({})
@@ -46,6 +48,7 @@ async function fetchData() {
     ])
     interrupts.value = interruptList
     metrics.value = metricData
+    lastFetched.value = new Date()
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to fetch inbox'
     interrupts.value = []
@@ -55,12 +58,14 @@ async function fetchData() {
   }
 }
 
-// Expose pending count for parent components
+// Expose pending count and refresh for parent (SSE-triggered refresh)
 const pendingCount = computed(() => {
   return interrupts.value.filter(i => !i.resolution).length
 })
 
 defineExpose({ pendingCount, refresh: fetchData })
+
+const totalCount = computed(() => interrupts.value.length)
 
 const filteredInterrupts = computed(() => {
   const sorted = [...interrupts.value].sort((a, b) => {
@@ -86,6 +91,14 @@ const resolvedTodayCount = computed(() => {
     if (!i.resolution?.resolved_at) return false
     return new Date(i.resolution.resolved_at).getTime() >= todayStart.getTime()
   }).length
+})
+
+const lastFetchedLabel = computed(() => {
+  if (!lastFetched.value) return ''
+  const seconds = Math.floor((Date.now() - lastFetched.value.getTime()) / 1000)
+  if (seconds < 5) return 'just now'
+  if (seconds < 60) return `${seconds}s ago`
+  return `${Math.floor(seconds / 60)}m ago`
 })
 
 function waitingLabel(dateStr: string): string {
@@ -153,12 +166,46 @@ async function handleApprove(item: Interrupt) {
         delete actionFeedback.value[item.id]
       }
     }, 3000)
-    // Refresh data after a short delay to let backend process
     setTimeout(() => fetchData(), 500)
   } catch (err) {
     actionFeedback.value[item.id] = {
       ok: false,
       msg: err instanceof Error ? err.message : 'Approve failed',
+    }
+    setTimeout(() => {
+      delete actionFeedback.value[item.id]
+    }, 3000)
+  } finally {
+    acting.value[item.id] = false
+  }
+}
+
+async function handleDismiss(item: Interrupt) {
+  acting.value[item.id] = true
+  actionFeedback.value[item.id] = { ok: true, msg: '' }
+  try {
+    await api.resolveInterrupt(props.spaceName, item.id, 'dismissed')
+    actionFeedback.value[item.id] = { ok: true, msg: 'Dismissed' }
+    // Optimistically update local state
+    interrupts.value = interrupts.value.map(i => {
+      if (i.id === item.id) {
+        return {
+          ...i,
+          resolution: {
+            resolved_by: 'human',
+            answer: 'dismissed',
+            resolved_at: new Date().toISOString(),
+            wait_seconds: (Date.now() - new Date(i.created_at).getTime()) / 1000,
+          },
+        }
+      }
+      return i
+    })
+    setTimeout(() => fetchData(), 500)
+  } catch (err) {
+    actionFeedback.value[item.id] = {
+      ok: false,
+      msg: err instanceof Error ? err.message : 'Dismiss failed',
     }
     setTimeout(() => {
       delete actionFeedback.value[item.id]
@@ -175,6 +222,8 @@ async function handleReply(item: Interrupt) {
   actionFeedback.value[item.id] = { ok: true, msg: '' }
   try {
     await api.sendMessage(props.spaceName, item.agent, text, 'boss')
+    // Resolve the decision interrupt after replying
+    await api.resolveInterrupt(props.spaceName, item.id, text)
     replyTexts.value[item.id] = ''
     actionFeedback.value[item.id] = { ok: true, msg: 'Sent' }
     setTimeout(() => {
@@ -203,27 +252,19 @@ function handleReplyKeydown(e: KeyboardEvent, item: Interrupt) {
   }
 }
 
-function handleCardKeydown(e: KeyboardEvent, index: number) {
-  // Arrow key navigation between interrupt cards
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault()
-    const cards = document.querySelectorAll<HTMLElement>('[data-interrupt-card]')
-    const next = cards[e.key === 'ArrowDown' ? index + 1 : index - 1]
-    next?.focus()
-  }
-}
-
 async function confirmMarkAllResolved() {
   markAllDialogOpen.value = false
   markingAll.value = true
   try {
     const pending = interrupts.value.filter(i => !i.resolution)
-    // For approval items, trigger actual approval signal
-    await Promise.allSettled(
-      pending
+    await Promise.allSettled([
+      ...pending
         .filter(item => item.type === 'approval')
         .map(item => api.approveAgent(props.spaceName, item.agent)),
-    )
+      ...pending
+        .filter(item => item.type !== 'approval')
+        .map(item => api.resolveInterrupt(props.spaceName, item.id, 'Bulk resolved')),
+    ])
     // Optimistically mark all pending items as resolved locally
     const resolvedAt = new Date().toISOString()
     interrupts.value = interrupts.value.map(i => {
@@ -231,7 +272,7 @@ async function confirmMarkAllResolved() {
         return {
           ...i,
           resolution: {
-            resolved_by: 'boss',
+            resolved_by: 'human',
             answer: 'Bulk resolved',
             resolved_at: resolvedAt,
             wait_seconds: (Date.now() - new Date(i.created_at).getTime()) / 1000,
@@ -246,6 +287,18 @@ async function confirmMarkAllResolved() {
   }
 }
 
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = setInterval(fetchData, 15000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 // Refetch when the space changes
 watch(() => props.spaceName, () => {
   interrupts.value = []
@@ -254,17 +307,28 @@ watch(() => props.spaceName, () => {
   acting.value = {}
   actionFeedback.value = {}
   showAll.value = false
+  lastFetched.value = null
   fetchData()
 })
 
-onMounted(fetchData)
+onMounted(() => {
+  fetchData()
+  startPolling()
+})
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
   <div class="space-y-4">
     <!-- Header with refresh and bulk action -->
     <div class="flex items-center justify-between gap-2">
-      <h2 class="text-lg font-semibold tracking-tight">Inbox</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-lg font-semibold tracking-tight">Inbox</h2>
+        <span v-if="lastFetched" class="text-xs text-muted-foreground font-text tabular-nums">
+          &middot; {{ lastFetchedLabel }}
+        </span>
+      </div>
       <div class="flex items-center gap-2">
         <Button
           variant="outline"
@@ -305,7 +369,7 @@ onMounted(fetchData)
       </CardContent>
     </Card>
 
-    <!-- Filter toggle -->
+    <!-- Filter toggle with counts -->
     <div class="flex items-center gap-2" role="group" aria-label="Filter interrupts">
       <Button
         :variant="!showAll ? 'default' : 'outline'"
@@ -313,7 +377,7 @@ onMounted(fetchData)
         :aria-pressed="!showAll"
         @click="showAll = false"
       >
-        Pending
+        Pending<span v-if="pendingCount > 0" class="ml-1 tabular-nums">({{ pendingCount }})</span>
       </Button>
       <Button
         :variant="showAll ? 'default' : 'outline'"
@@ -321,7 +385,7 @@ onMounted(fetchData)
         :aria-pressed="showAll"
         @click="showAll = true"
       >
-        All
+        All<span v-if="totalCount > 0" class="ml-1 tabular-nums">({{ totalCount }})</span>
       </Button>
     </div>
 
@@ -341,23 +405,19 @@ onMounted(fetchData)
     <template v-else>
       <div v-if="filteredInterrupts.length === 0" class="text-center py-8 text-muted-foreground font-text text-sm">
         <template v-if="showAll">No interrupts recorded yet</template>
-        <template v-else>No pending items — all clear</template>
+        <template v-else>No pending items &mdash; all clear</template>
       </div>
 
       <div class="space-y-2">
         <Card
-          v-for="(item, index) in filteredInterrupts"
+          v-for="item in filteredInterrupts"
           :key="item.id"
-          data-interrupt-card
-          tabindex="0"
           :class="[
-            'transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2',
+            'transition-colors',
             item.resolution ? 'opacity-60' : '',
             urgencyClass(item),
           ]"
           :role="item.resolution ? undefined : 'alert'"
-          :aria-label="`${item.type} from ${item.agent}${item.resolution ? ', resolved' : ', pending'}`"
-          @keydown="handleCardKeydown($event, index)"
         >
           <CardContent class="p-4 space-y-2">
             <!-- Top row: agent badge, type badge, urgency wait time, timestamp -->
@@ -424,9 +484,9 @@ onMounted(fetchData)
             </div>
 
             <!-- Actions for PENDING items -->
-            <div v-if="!item.resolution" class="flex items-center gap-2 pt-1">
-              <!-- Approval type: confirm then approve -->
-              <template v-if="item.type === 'approval'">
+            <div v-if="!item.resolution" class="pt-1 space-y-2">
+              <!-- Approval type: confirm then approve + dismiss -->
+              <div v-if="item.type === 'approval'" class="flex items-center gap-2">
                 <Button
                   size="sm"
                   :disabled="acting[item.id]"
@@ -434,32 +494,59 @@ onMounted(fetchData)
                 >
                   <ShieldCheck class="size-4" /> Approve
                 </Button>
-              </template>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="acting[item.id]"
+                  class="text-muted-foreground hover:text-foreground"
+                  @click="handleDismiss(item)"
+                >
+                  <X class="size-4" /> Dismiss
+                </Button>
+              </div>
 
-              <!-- Decision type: inline reply -->
-              <template v-if="item.type === 'decision'">
-                <div class="flex-1 space-y-1.5">
-                  <Textarea
-                    :model-value="replyTexts[item.id] ?? ''"
-                    placeholder="Type reply… (Enter to send, Shift+Enter for newline)"
-                    class="min-h-[60px] text-sm font-text resize-y"
+              <!-- Decision type: inline reply textarea + dismiss -->
+              <div v-else-if="item.type === 'decision'" class="space-y-1.5">
+                <Textarea
+                  :model-value="replyTexts[item.id] ?? ''"
+                  placeholder="Type reply... (Enter to send, Shift+Enter for newline)"
+                  class="min-h-[60px] text-sm font-text resize-y"
+                  :disabled="acting[item.id]"
+                  @update:model-value="(v: string | number) => replyTexts[item.id] = String(v)"
+                  @keydown="handleReplyKeydown($event, item)"
+                />
+                <div class="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    :disabled="acting[item.id] || !(replyTexts[item.id] ?? '').trim()"
+                    @click="handleReply(item)"
+                  >
+                    <CornerDownLeft class="size-4" /> {{ acting[item.id] ? 'Sending...' : 'Reply' }}
+                  </Button>
+                  <span class="text-xs text-muted-foreground font-text">Enter to send</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     :disabled="acting[item.id]"
-                    :aria-label="`Reply to ${item.type} from ${item.agent}`"
-                    @update:model-value="(v: string | number) => replyTexts[item.id] = String(v)"
-                    @keydown="handleReplyKeydown($event, item)"
-                  />
-                  <div class="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      :disabled="acting[item.id] || !(replyTexts[item.id] ?? '').trim()"
-                      @click="handleReply(item)"
-                    >
-                      <CornerDownLeft class="size-4" /> {{ acting[item.id] ? 'Sending…' : 'Reply' }}
-                    </Button>
-                    <span class="text-xs text-muted-foreground font-text">Enter to send</span>
-                  </div>
+                    class="ml-auto text-muted-foreground hover:text-foreground"
+                    @click="handleDismiss(item)"
+                  >
+                    <X class="size-4" /> Dismiss
+                  </Button>
                 </div>
-              </template>
+              </div>
+
+              <!-- All other types (staleness, review, sequencing): dismiss -->
+              <div v-else class="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="acting[item.id]"
+                  @click="handleDismiss(item)"
+                >
+                  <X class="size-4" /> {{ acting[item.id] ? 'Dismissing...' : 'Dismiss' }}
+                </Button>
+              </div>
 
               <!-- Feedback -->
               <span
@@ -484,7 +571,7 @@ onMounted(fetchData)
                 <span class="text-border">|</span>
                 <span class="tabular-nums">waited {{ formatWaitTime(item.resolution.wait_seconds) }}</span>
               </div>
-              <p v-if="item.resolution.answer" class="text-foreground/70 italic">
+              <p v-if="item.resolution.answer && item.resolution.answer !== 'dismissed'" class="text-foreground/70 italic">
                 {{ item.resolution.answer }}
               </p>
             </div>

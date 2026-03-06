@@ -150,6 +150,65 @@ func (l *InterruptLedger) LoadAll(space string) []Interrupt {
 	return interrupts
 }
 
+// Resolve marks a pending interrupt as resolved by rewriting the ledger file.
+func (l *InterruptLedger) Resolve(space, id, resolvedBy, answer string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	path := l.ledgerPath(space)
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open ledger: %w", err)
+	}
+
+	var interrupts []Interrupt
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	found := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var intr Interrupt
+		if err := json.Unmarshal([]byte(line), &intr); err != nil {
+			continue
+		}
+		if intr.ID == id && intr.Resolution == nil {
+			now := time.Now().UTC()
+			intr.Resolution = &InterruptResolution{
+				ResolvedBy:   resolvedBy,
+				Answer:       answer,
+				ResolvedAt:   now,
+				WaitDuration: now.Sub(intr.CreatedAt).Seconds(),
+			}
+			found = true
+		}
+		interrupts = append(interrupts, intr)
+	}
+	f.Close()
+
+	if !found {
+		return fmt.Errorf("interrupt %q not found or already resolved", id)
+	}
+
+	tmp := path + ".tmp"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("create tmp: %w", err)
+	}
+	for _, intr := range interrupts {
+		data, err := json.Marshal(intr)
+		if err != nil {
+			continue
+		}
+		out.Write(data)
+		out.Write([]byte("\n"))
+	}
+	out.Close()
+	return os.Rename(tmp, path)
+}
+
 func (l *InterruptLedger) Metrics(space string) InterruptMetrics {
 	all := l.LoadAll(space)
 	m := InterruptMetrics{
