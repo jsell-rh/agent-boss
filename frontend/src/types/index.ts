@@ -1,0 +1,186 @@
+// Types matching the Go backend (internal/coordinator/types.go)
+
+export type AgentStatus = 'active' | 'blocked' | 'done' | 'idle' | 'error'
+
+export interface Table {
+  headers: string[]
+  rows: string[][]
+}
+
+export interface Section {
+  title: string
+  items?: string[]
+  table?: Table
+}
+
+export interface AgentDocument {
+  slug: string
+  title: string
+  content: string
+}
+
+export interface AgentMessage {
+  id: string
+  message: string
+  sender: string
+  timestamp: string
+}
+
+export interface AgentUpdate {
+  status: AgentStatus
+  summary: string
+  branch?: string
+  worktree?: string
+  pr?: string
+  phase?: string
+  test_count?: number
+  items?: string[]
+  sections?: Section[]
+  questions?: string[]
+  blockers?: string[]
+  next_steps?: string
+  free_text?: string
+  documents?: AgentDocument[]
+  tmux_session?: string
+  repo_url?: string
+  messages?: AgentMessage[]
+  updated_at: string
+}
+
+export interface KnowledgeSpace {
+  name: string
+  agents: Record<string, AgentUpdate>
+  shared_contracts?: string
+  archive?: string
+  created_at: string
+  updated_at: string
+}
+
+// GET /spaces response item
+export interface SpaceSummary {
+  name: string
+  agent_count: number
+  created_at: string
+  updated_at: string
+}
+
+// GET /spaces/{space}/api/tmux-status response values
+export interface TmuxAgentStatus {
+  exists: boolean
+  idle: boolean
+  needs_approval: boolean
+  tool_name: string
+  prompt_text: string
+}
+
+// GET /spaces/{space}/factory/interrupts response items
+// Field names match Go struct json tags in interrupts.go
+export interface InterruptResolution {
+  resolved_by: string
+  answer: string
+  resolved_at: string
+  wait_seconds: number
+}
+
+export interface Interrupt {
+  id: string
+  space: string
+  agent: string
+  type: 'decision' | 'approval' | 'staleness' | 'review' | 'sequencing'
+  question: string
+  context?: Record<string, string>
+  resolution?: InterruptResolution
+  created_at: string
+}
+
+// GET /spaces/{space}/factory/metrics response
+// Field names match Go struct json tags in interrupts.go
+export interface InterruptMetrics {
+  total_interrupts: number
+  human_interrupts: number
+  auto_resolved: number
+  pending_interrupts: number
+  by_type: Record<string, number>
+  by_agent: Record<string, number>
+  avg_wait_seconds: number
+}
+
+// SSE event data shapes
+export interface SSEAgentUpdated {
+  space: string
+  agent: string
+  status: string
+  summary: string
+}
+
+export interface SSEAgentRemoved {
+  space: string
+  agent: string
+}
+
+export interface SSEAgentMessage {
+  space: string
+  agent: string
+  sender: string
+  message: string
+}
+
+export interface SSETmuxLiveness {
+  agent: string
+  session: string
+  exists: boolean
+  idle: boolean
+  needs_approval: boolean
+  tool_name?: string
+  prompt_text?: string
+}
+
+export interface SSEBroadcastProgress {
+  space: string
+  message: string
+}
+
+// Status color class mapping — Red Hat brand palette semantics:
+//   active  -> green  (success)
+//   blocked -> red    (attention/brand, not "negative")
+//   done    -> teal   (info)
+//   idle    -> gray   (muted)
+//   error   -> orange (danger per Red Hat guidelines)
+export const statusColorClass: Record<AgentStatus, string> = {
+  active: 'status-green',
+  blocked: 'status-red',
+  done: 'status-teal',
+  idle: 'status-gray',
+  error: 'status-orange',
+}
+
+// Agent/Task Status display labels and tooltips.
+// These describe the agent's self-reported work status.
+export const STATUS_DISPLAY: Record<AgentStatus, { label: string; tooltip: string }> = {
+  active:  { label: 'Working', tooltip: 'Agent reports it is actively working on its task' },
+  blocked: { label: 'Blocked', tooltip: 'Agent reports it cannot proceed — check blockers' },
+  done:    { label: 'Done',    tooltip: 'Agent reports its assigned task is complete' },
+  idle:    { label: 'Idle',    tooltip: 'Agent is not currently assigned work' },
+  error:   { label: 'Error',   tooltip: 'Agent encountered an unrecoverable error' },
+}
+
+// Tmux/Terminal Status display labels and tooltips.
+// These describe the observed state of the agent's tmux session.
+export type TmuxDisplayState = 'ready' | 'running' | 'approval' | 'offline' | 'no-session'
+
+export const TMUX_STATUS_DISPLAY: Record<TmuxDisplayState, { label: string; tooltip: string }> = {
+  ready:      { label: 'Ready',      tooltip: 'Terminal is at a prompt, ready for input' },
+  running:    { label: 'Running',    tooltip: 'A process is actively running in the terminal' },
+  approval:   { label: 'Approval',   tooltip: 'Agent is waiting for tool-use approval' },
+  offline:    { label: 'Offline',    tooltip: 'No tmux session found for this agent' },
+  'no-session': { label: 'No Session', tooltip: 'No tmux session registered for this agent' },
+}
+
+/** Derive the TmuxDisplayState from a TmuxAgentStatus (or null). */
+export function getTmuxDisplayState(tmux: TmuxAgentStatus | null | undefined): TmuxDisplayState {
+  if (!tmux) return 'no-session'
+  if (!tmux.exists) return 'offline'
+  if (tmux.needs_approval) return 'approval'
+  if (tmux.idle) return 'ready'
+  return 'running'
+}
