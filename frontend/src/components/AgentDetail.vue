@@ -26,6 +26,7 @@ import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, Alert
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
+import { relativeTime, formatFullDate } from '@/composables/useTime'
 
 const props = defineProps<{
   agent: AgentUpdate
@@ -172,8 +173,8 @@ const hasItems = computed(() => (props.agent.items?.length ?? 0) > 0)
 const statusAccentClass = computed(() => {
   switch (props.agent.status) {
     case 'active': return 'border-t-green-500'
-    case 'done': return 'border-t-sky-500'
-    case 'blocked': return 'border-t-orange-500'
+    case 'done': return 'border-t-teal-500'
+    case 'blocked': return 'border-t-amber-500'
     case 'error': return 'border-t-red-500'
     case 'idle': return 'border-t-slate-400'
     default: return 'border-t-border'
@@ -181,8 +182,8 @@ const statusAccentClass = computed(() => {
 })
 
 const attentionSectionClass = computed(() => {
-  if (hasBlockers.value && !hasQuestions.value) return 'bg-red-500/5 border-red-500/20'
-  return 'bg-amber-500/5 border-amber-500/20'
+  if (hasBlockers.value && !hasQuestions.value) return 'bg-red-500/10 border-red-500/30'
+  return 'bg-amber-500/10 border-amber-500/30'
 })
 </script>
 
