@@ -23,6 +23,7 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import SpaceOverview from '@/components/SpaceOverview.vue'
 import AgentDetail from '@/components/AgentDetail.vue'
 import EventLog from '@/components/EventLog.vue'
+import ConversationsView from '@/components/ConversationsView.vue'
 import { Keyboard } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 
@@ -77,8 +78,10 @@ const selectedAgent = computed(() => {
 })
 
 // ── Computed ───────────────────────────────────────────────────────
+const showConversations = computed(() => selectedAgent.value === 'conversations')
+
 const selectedAgentData = computed<AgentUpdate | null>(() => {
-  if (!currentSpace.value || !selectedAgent.value) return null
+  if (!currentSpace.value || !selectedAgent.value || showConversations.value) return null
   return currentSpace.value.agents[selectedAgent.value] ?? null
 })
 
@@ -711,6 +714,15 @@ onUnmounted(() => {
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="Keyboard shortcuts (?)"
+              title="Keyboard shortcuts (?)"
+              @click="showHelpOverlay = !showHelpOverlay"
+            >
+              <Keyboard class="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
               :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
               @click="toggleTheme"
@@ -798,6 +810,7 @@ onUnmounted(() => {
 
           <!-- Space overview -->
           <SpaceOverview
+            ref="spaceOverviewRef"
             v-else-if="currentSpace"
             :space="currentSpace"
             :tmux-status="tmuxStatus"
@@ -860,6 +873,12 @@ onUnmounted(() => {
 
             <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">/</kbd>
             <span>Focus search / filter input</span>
+
+            <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">i</kbd>
+            <span>Switch to inbox tab (space overview)</span>
+
+            <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">[ ]</kbd>
+            <span>Switch between spaces</span>
           </div>
         </div>
         <DialogFooter>
