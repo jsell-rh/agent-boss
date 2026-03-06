@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import type { Interrupt, InterruptMetrics } from '@/types'
 import { api } from '@/api/client'
 import { Card, CardContent } from '@/components/ui/card'
@@ -134,7 +134,7 @@ async function handleReply(item: Interrupt) {
   acting.value[item.id] = true
   actionFeedback.value[item.id] = { ok: true, msg: '' }
   try {
-    await api.replyToAgent(props.spaceName, item.agent, text)
+    await api.sendMessage(props.spaceName, item.agent, text, 'boss')
     replyTexts.value[item.id] = ''
     actionFeedback.value[item.id] = { ok: true, msg: 'Sent' }
     setTimeout(() => fetchData(), 500)
@@ -154,6 +154,17 @@ function handleReplyKeydown(e: KeyboardEvent, item: Interrupt) {
     handleReply(item)
   }
 }
+
+// Refetch when the space changes
+watch(() => props.spaceName, () => {
+  interrupts.value = []
+  metrics.value = null
+  replyTexts.value = {}
+  acting.value = {}
+  actionFeedback.value = {}
+  showAll.value = false
+  fetchData()
+})
 
 onMounted(fetchData)
 </script>

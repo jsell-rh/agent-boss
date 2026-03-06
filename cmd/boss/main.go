@@ -54,7 +54,7 @@ Commands:
   spaces                    List all spaces
   delete                    Delete a space or agent
   ignite                    Generate ignition prompt for an agent
-  broadcast                 Trigger boss-check broadcast for a space
+  broadcast                 Trigger boss.check broadcast for a space
 
 Examples:
   boss serve
