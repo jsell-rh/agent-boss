@@ -6,6 +6,7 @@ import type {
   InterruptMetrics,
   Interrupt,
   StatusSnapshot,
+  IntrospectResponse,
 } from '@/types'
 
 class ApiClient {
@@ -185,6 +186,39 @@ class ApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, index }),
       },
+    )
+  }
+
+  // --------------- Lifecycle ---------------
+
+  spawnAgent(space: string, agent: string, command?: string): Promise<{ ok: boolean; tmux_session: string }> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/spawn`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': agent },
+        body: JSON.stringify(command ? { command } : {}),
+      },
+    )
+  }
+
+  stopAgent(space: string, agent: string): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/stop`,
+      { method: 'POST', headers: { 'X-Agent-Name': agent } },
+    )
+  }
+
+  restartAgent(space: string, agent: string): Promise<{ ok: boolean; tmux_session: string }> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/restart`,
+      { method: 'POST', headers: { 'X-Agent-Name': agent } },
+    )
+  }
+
+  introspectAgent(space: string, agent: string): Promise<IntrospectResponse> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/introspect`,
     )
   }
 }

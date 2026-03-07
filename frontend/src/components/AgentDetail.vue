@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState } from '@/types'
+import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState, IntrospectResponse } from '@/types'
 import { TMUX_STATUS_DISPLAY, getTmuxDisplayState } from '@/types'
 import { ref, computed } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,12 +22,13 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Search } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { relativeTime, formatFullDate } from '@/composables/useTime'
 import { renderMarkdown, renderMarkdownInline } from '@/lib/markdown'
+import api from '@/api/client'
 
 const props = defineProps<{
   agent: AgentUpdate
@@ -167,6 +168,70 @@ const attentionSectionClass = computed(() => {
   if (hasBlockers.value && !hasQuestions.value) return 'bg-orange-500/10 border-orange-500/30'
   return 'bg-amber-500/10 border-amber-500/30'
 })
+
+// --------------- Lifecycle ---------------
+const lifecycleLoading = ref<'spawn' | 'stop' | 'restart' | null>(null)
+const lifecycleError = ref<string | null>(null)
+
+async function handleSpawn() {
+  lifecycleLoading.value = 'spawn'
+  lifecycleError.value = null
+  try {
+    await api.spawnAgent(props.spaceName, props.agentName)
+  } catch (e) {
+    lifecycleError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    lifecycleLoading.value = null
+  }
+}
+
+async function handleStop() {
+  lifecycleLoading.value = 'stop'
+  lifecycleError.value = null
+  try {
+    await api.stopAgent(props.spaceName, props.agentName)
+  } catch (e) {
+    lifecycleError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    lifecycleLoading.value = null
+  }
+}
+
+async function handleRestart() {
+  lifecycleLoading.value = 'restart'
+  lifecycleError.value = null
+  try {
+    await api.restartAgent(props.spaceName, props.agentName)
+  } catch (e) {
+    lifecycleError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    lifecycleLoading.value = null
+  }
+}
+
+// --------------- Introspection ---------------
+const introspectOpen = ref(false)
+const introspectLoading = ref(false)
+const introspectData = ref<IntrospectResponse | null>(null)
+const introspectError = ref<string | null>(null)
+
+async function loadIntrospect() {
+  if (introspectLoading.value) return
+  introspectLoading.value = true
+  introspectError.value = null
+  try {
+    introspectData.value = await api.introspectAgent(props.spaceName, props.agentName)
+  } catch (e) {
+    introspectError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    introspectLoading.value = false
+  }
+}
+
+function toggleIntrospect() {
+  introspectOpen.value = !introspectOpen.value
+  if (introspectOpen.value) loadIntrospect()
+}
 </script>
 
 <template>
@@ -179,6 +244,22 @@ const attentionSectionClass = computed(() => {
             <AgentAvatar :name="agentName" :size="36" />
             <h1 class="text-2xl font-semibold tracking-tight">{{ agentName }}</h1>
             <StatusBadge :status="agent.status" />
+            <Tooltip v-if="agent.stale">
+              <TooltipTrigger as-child>
+                <Badge variant="outline" class="border-orange-500/50 text-orange-500 text-[10px] h-5 px-1.5">
+                  Stale
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>Agent has not posted an update recently</TooltipContent>
+            </Tooltip>
+            <Tooltip v-if="agent.inferred_status && agent.inferred_status !== 'working'">
+              <TooltipTrigger as-child>
+                <Badge variant="outline" class="border-muted-foreground/40 text-muted-foreground text-[10px] h-5 px-1.5 capitalize">
+                  {{ agent.inferred_status.replace('_', ' ') }}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>Server-inferred status from tmux observation</TooltipContent>
+            </Tooltip>
             <Tooltip v-if="agent.test_count != null">
               <TooltipTrigger as-child>
                 <div class="flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums cursor-default">
@@ -244,6 +325,90 @@ const attentionSectionClass = computed(() => {
               Remove this agent from the space
             </TooltipContent>
           </Tooltip>
+
+          <!-- Lifecycle buttons -->
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline" size="sm"
+                :disabled="lifecycleLoading !== null"
+                @click="handleSpawn"
+              >
+                <Play class="size-4" />
+                {{ lifecycleLoading === 'spawn' ? '…' : 'Spawn' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Create tmux session and launch agent</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline" size="sm"
+                :disabled="lifecycleLoading !== null"
+                @click="handleRestart"
+              >
+                <RotateCcw class="size-4" />
+                {{ lifecycleLoading === 'restart' ? '…' : 'Restart' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Kill and respawn agent session</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline" size="sm"
+                :disabled="lifecycleLoading !== null"
+                @click="handleStop"
+              >
+                <Square class="size-4" />
+                {{ lifecycleLoading === 'stop' ? '…' : 'Stop' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Kill the agent's tmux session</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button variant="outline" size="sm" @click="toggleIntrospect">
+                <Search class="size-4" />
+                Inspect
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Capture live tmux pane output</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      <!-- Lifecycle error -->
+      <div v-if="lifecycleError" class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        {{ lifecycleError }}
+        <button class="ml-2 underline" @click="lifecycleError = null">dismiss</button>
+      </div>
+
+      <!-- Introspection panel -->
+      <div v-if="introspectOpen" class="rounded-lg border bg-muted/30 p-4 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pane — {{ agent.tmux_session || 'no session' }}</span>
+          <div class="flex items-center gap-2">
+            <Button variant="ghost" size="sm" class="h-6 text-xs" :disabled="introspectLoading" @click="loadIntrospect">
+              {{ introspectLoading ? 'Loading…' : 'Refresh' }}
+            </Button>
+            <button class="text-muted-foreground hover:text-foreground" @click="introspectOpen = false">
+              <X class="size-4" />
+            </button>
+          </div>
+        </div>
+        <div v-if="introspectError" class="text-xs text-destructive">{{ introspectError }}</div>
+        <div v-else-if="!introspectData" class="text-xs text-muted-foreground italic">Loading…</div>
+        <div v-else>
+          <div class="flex gap-3 mb-2 text-[11px] text-muted-foreground">
+            <span :class="introspectData.session_exists ? 'text-green-500' : 'text-red-500'">
+              {{ introspectData.session_exists ? 'session online' : 'session offline' }}
+            </span>
+            <span v-if="introspectData.idle">idle</span>
+            <span v-if="introspectData.needs_approval" class="text-primary">awaiting approval: {{ introspectData.tool_name }}</span>
+            <span class="ml-auto">captured {{ new Date(introspectData.captured_at).toLocaleTimeString() }}</span>
+          </div>
+          <pre class="text-[11px] leading-snug text-foreground/80 bg-background rounded border border-border p-3 overflow-x-auto max-h-64 overflow-y-auto font-mono whitespace-pre-wrap">{{ introspectData.lines.join('\n') }}</pre>
         </div>
       </div>
 
