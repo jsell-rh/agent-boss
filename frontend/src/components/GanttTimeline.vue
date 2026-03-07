@@ -7,6 +7,10 @@ const props = defineProps<{
   spaceName: string
 }>()
 
+const emit = defineEmits<{
+  'select-agent': [name: string]
+}>()
+
 // Window options in hours
 const WINDOW_OPTIONS = [1, 2, 4, 8]
 const windowHours = ref(2)
@@ -198,12 +202,13 @@ onUnmounted(() => {
         class="grid items-center gap-2"
         style="grid-template-columns: 88px 1fr"
       >
-        <span
-          class="truncate text-[11px] font-semibold text-muted-foreground text-right pr-1"
-          :title="row.agent"
+        <button
+          class="truncate text-[11px] font-semibold text-muted-foreground text-right pr-1 hover:text-primary transition-colors cursor-pointer"
+          :title="`View ${row.agent}`"
+          @click="emit('select-agent', row.agent)"
         >
           {{ row.agent }}
-        </span>
+        </button>
         <div class="relative h-4 rounded bg-muted border border-border overflow-hidden">
           <div
             v-for="(seg, si) in row.segments"

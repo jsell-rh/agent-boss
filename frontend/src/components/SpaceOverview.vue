@@ -45,6 +45,7 @@ import {
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
 import AgentAvatar from './AgentAvatar.vue'
+import AgentProfileCard from './AgentProfileCard.vue'
 import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
 
@@ -403,18 +404,20 @@ const activeSections = computed(() => [
                       <!-- Row 1: Header — Avatar + Name + StatusBadge -->
                       <div class="flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2.5 min-w-0">
-                          <Tooltip>
-                            <TooltipTrigger as-child>
-                              <div class="relative inline-block shrink-0 cursor-default">
-                                <AgentAvatar :name="name" :size="28" aria-hidden="true" />
-                                <span
-                                  class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
-                                  :class="freshnessDotClass(agent.updated_at)"
-                                />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>Updated {{ relativeTime(agent.updated_at) }}</TooltipContent>
-                          </Tooltip>
+                          <AgentProfileCard
+                            :agent-name="name"
+                            :agent="agent"
+                            :space-name="space.name"
+                            @select-agent="emit('select-agent', $event)"
+                          >
+                            <div class="relative inline-block shrink-0" @click.stop>
+                              <AgentAvatar :name="name" :size="28" aria-hidden="true" />
+                              <span
+                                class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
+                                :class="freshnessDotClass(agent.updated_at)"
+                              />
+                            </div>
+                          </AgentProfileCard>
                           <h3 class="text-base font-semibold truncate m-0">{{ name }}</h3>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
@@ -466,23 +469,31 @@ const activeSections = computed(() => [
                       </p>
 
                       <!-- Row 2c: Hierarchy badges (parent / role) -->
-                      <div v-if="agent.parent || agent.role" class="flex items-center gap-1.5 flex-wrap">
+                      <div v-if="agent.parent || agent.role || agent.children?.length" class="flex items-center gap-1.5 flex-wrap" @click.stop>
                         <Tooltip v-if="agent.parent">
                           <TooltipTrigger as-child>
-                            <span class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground cursor-default shrink-0">
+                            <button
+                              class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors shrink-0"
+                              @click.stop="emit('select-agent', agent.parent!)"
+                            >
                               ↑ {{ agent.parent }}
-                            </span>
+                            </button>
                           </TooltipTrigger>
-                          <TooltipContent>Reports to {{ agent.parent }}</TooltipContent>
+                          <TooltipContent>Go to parent: {{ agent.parent }}</TooltipContent>
                         </Tooltip>
-                        <Tooltip v-if="agent.children?.length">
-                          <TooltipTrigger as-child>
-                            <span class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground cursor-default shrink-0">
-                              ↓ {{ agent.children!.join(', ') }}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Manages: {{ agent.children!.join(', ') }}</TooltipContent>
-                        </Tooltip>
+                        <template v-if="agent.children?.length">
+                          <Tooltip v-for="child in agent.children" :key="child">
+                            <TooltipTrigger as-child>
+                              <button
+                                class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors shrink-0"
+                                @click.stop="emit('select-agent', child)"
+                              >
+                                ↓ {{ child }}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Go to: {{ child }}</TooltipContent>
+                          </Tooltip>
+                        </template>
                         <span
                           v-if="agent.role"
                           class="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded text-[10px] text-purple-600 dark:text-purple-400 shrink-0"
@@ -740,7 +751,7 @@ const activeSections = computed(() => [
         </TabsContent>
 
         <TabsContent value="timeline">
-          <GanttTimeline :space-name="space.name" />
+          <GanttTimeline :space-name="space.name" @select-agent="emit('select-agent', $event)" />
         </TabsContent>
 
         <TabsContent value="hierarchy">

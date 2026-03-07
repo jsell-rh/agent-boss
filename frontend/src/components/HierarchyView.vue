@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { HierarchyTree, HierarchyNode, AgentUpdate } from '@/types'
 import { computed } from 'vue'
-import { Network, ArrowUp, ArrowDown } from 'lucide-vue-next'
+import { Network, ArrowDown, Users } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { Badge } from '@/components/ui/badge'
@@ -58,14 +58,19 @@ const flatTree = computed(() => {
         :style="{ paddingLeft: `${12 + depth * 24}px` }"
         @click="emit('select-agent', name)"
       >
-        <!-- Tree connector -->
-        <span
-          v-if="depth > 0"
-          class="text-muted-foreground/40 text-xs shrink-0 select-none font-mono"
-          aria-hidden="true"
-        >
-          └
-        </span>
+        <!-- Tree connectors: one "│  " per ancestor level, then "└─" -->
+        <template v-if="depth > 0">
+          <span
+            v-for="d in depth - 1"
+            :key="d"
+            class="text-muted-foreground/20 text-xs shrink-0 select-none font-mono w-4 inline-block"
+            aria-hidden="true"
+          >│</span>
+          <span
+            class="text-muted-foreground/40 text-xs shrink-0 select-none font-mono"
+            aria-hidden="true"
+          >└─</span>
+        </template>
 
         <!-- Avatar -->
         <AgentAvatar :name="name" :size="24" class="shrink-0" aria-hidden="true" />
@@ -121,10 +126,10 @@ const flatTree = computed(() => {
     </div>
 
     <!-- Legend -->
-    <div v-if="hasHierarchy" class="flex items-center gap-4 text-[11px] text-muted-foreground pt-2 border-t">
-      <span class="inline-flex items-center gap-1"><ArrowUp class="size-3" /> Reports to parent</span>
+    <div v-if="hasHierarchy" class="flex items-center gap-4 text-[11px] text-muted-foreground pt-2 border-t flex-wrap">
       <span class="inline-flex items-center gap-1"><ArrowDown class="size-3" /> Manages children</span>
-      <span>L0 = root, L1 = first level, …</span>
+      <span class="inline-flex items-center gap-1"><Users class="size-3" /> Click a row to view agent details</span>
+      <span>L0 = root · L1 = first level · …</span>
     </div>
   </div>
 </template>

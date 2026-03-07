@@ -875,6 +875,7 @@ onUnmounted(() => {
             @send-message="handleSendMessage"
             @reply-to-question="handleReplyToQuestion"
             @reply-to-blocker="handleReplyToBlocker"
+            @select-agent="handleSelectAgent"
           />
 
           <!-- Space overview -->

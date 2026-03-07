@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState, IntrospectResponse } from '@/types'
 import { TMUX_STATUS_DISPLAY, getTmuxDisplayState } from '@/types'
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,7 @@ const emit = defineEmits<{
   'send-message': [text: string, sender: string]
   'reply-to-question': [agentName: string, questionIndex: number, questionText: string, replyText: string]
   'reply-to-blocker': [agentName: string, blockerIndex: number, blockerText: string, replyText: string]
+  'select-agent': [name: string]
 }>()
 
 const replyText = ref('')
@@ -270,8 +271,16 @@ function toggleIntrospect() {
   }
 }
 
+// Reset introspect state whenever we navigate to a different agent
+watch(() => props.agentName, () => {
+  introspectOpen.value = false
+  introspectLive.value = false
+  introspectData.value = null
+  introspectError.value = null
+  stopLivePoll()
+})
+
 // Clean up on unmount
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
   stopLivePoll()
   if (toastTimer) clearTimeout(toastTimer)
@@ -333,6 +342,40 @@ onUnmounted(() => {
                 {{ formatFullDate(agent.updated_at) }}
               </TooltipContent>
             </Tooltip>
+          </div>
+
+          <!-- Hierarchy info row -->
+          <div v-if="agent.parent || agent.role || agent.children?.length" class="flex items-center gap-2 flex-wrap mt-1">
+            <span
+              v-if="agent.role"
+              class="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded text-xs text-purple-600 dark:text-purple-400"
+            >
+              {{ agent.role }}
+            </span>
+            <Tooltip v-if="agent.parent">
+              <TooltipTrigger as-child>
+                <button
+                  class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-2 py-0.5 rounded text-xs text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+                  @click="emit('select-agent', agent.parent!)"
+                >
+                  ↑ {{ agent.parent }}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Navigate to parent: {{ agent.parent }}</TooltipContent>
+            </Tooltip>
+            <template v-if="agent.children?.length">
+              <Tooltip v-for="child in agent.children" :key="child">
+                <TooltipTrigger as-child>
+                  <button
+                    class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-2 py-0.5 rounded text-xs text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+                    @click="emit('select-agent', child)"
+                  >
+                    ↓ {{ child }}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Navigate to: {{ child }}</TooltipContent>
+              </Tooltip>
+            </template>
           </div>
         </div>
         <div class="flex items-center gap-2">
