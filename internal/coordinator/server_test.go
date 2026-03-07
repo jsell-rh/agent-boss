@@ -1531,3 +1531,185 @@ func TestIsShellPrompt(t *testing.T) {
 	}
 }
 
+// TestServerDataDirAutoCreate verifies the server creates DATA_DIR if it does not exist.
+func TestServerDataDirAutoCreate(t *testing.T) {
+	parent := t.TempDir()
+	dataDir := filepath.Join(parent, "nested", "data")
+
+	srv := NewServer(":0", dataDir)
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start with missing dataDir: %v", err)
+	}
+	defer srv.Stop()
+
+	if _, err := os.Stat(dataDir); err != nil {
+		t.Errorf("expected dataDir to be created, got: %v", err)
+	}
+}
+
+// TestServerMissingXAgentNameHeader verifies POST without X-Agent-Name returns 400 JSON error.
+func TestServerMissingXAgentNameHeader(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	req, _ := http.NewRequest(http.MethodPost,
+		base+"/spaces/s/agent/Bot",
+		strings.NewReader(`{"status":"active","summary":"Bot: hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	// Intentionally no X-Agent-Name header
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type, got %q", ct)
+	}
+	var errResp map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Errorf("response body should be JSON: %v", err)
+	}
+	if errResp["error"] == "" {
+		t.Error("expected non-empty 'error' field in JSON response")
+	}
+}
+
+// TestServerMalformedJSONBody verifies POST with malformed JSON returns 400 JSON error without panic.
+func TestServerMalformedJSONBody(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	req, _ := http.NewRequest(http.MethodPost,
+		base+"/spaces/s/agent/Bot",
+		strings.NewReader(`{not valid json`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Bot")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type on error, got %q", ct)
+	}
+}
+
+// TestServerForbiddenCrossChannelPost verifies posting to another agent's channel returns 403 JSON.
+func TestServerForbiddenCrossChannelPost(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	req, _ := http.NewRequest(http.MethodPost,
+		base+"/spaces/s/agent/Alice",
+		strings.NewReader(`{"status":"active","summary":"Bob: sneaky"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Bob") // posting to Alice's channel
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type on 403, got %q", ct)
+	}
+}
+
+// TestAgentRegisterThenMessageThenJournalEvent is a cross-feature integration test:
+// an agent registers, another sends it a message, verify both events appear in the journal.
+func TestAgentRegisterThenMessageThenJournalEvent(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "crossfeature"
+
+	// 1. Register agent Alpha
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/Alpha", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Alpha: ready",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("register Alpha: expected 202, got %d", resp.StatusCode)
+	}
+
+	// 2. Send a message from Beta to Alpha
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Alpha/message",
+		map[string]string{"message": "cross-feature test message"},
+		"Beta",
+	)
+	if code != http.StatusOK {
+		t.Fatalf("send message: expected 200, got %d: %s", code, body)
+	}
+
+	// 3. Journal should contain both agent_updated and message_sent events
+	code2, evBody := getBody(t, base+"/spaces/"+space+"/api/events")
+	if code2 != http.StatusOK {
+		t.Fatalf("get events: expected 200, got %d", code2)
+	}
+	var events []SpaceEvent
+	if err := json.Unmarshal([]byte(evBody), &events); err != nil {
+		t.Fatalf("unmarshal events: %v", err)
+	}
+
+	hasAgentUpdated := false
+	hasMessageSent := false
+	for _, ev := range events {
+		if ev.Type == EventAgentUpdated && strings.EqualFold(ev.Agent, "Alpha") {
+			hasAgentUpdated = true
+		}
+		if ev.Type == EventMessageSent && strings.EqualFold(ev.Agent, "Alpha") {
+			hasMessageSent = true
+		}
+	}
+	if !hasAgentUpdated {
+		t.Error("expected agent_updated event for Alpha in journal")
+	}
+	if !hasMessageSent {
+		t.Error("expected message_sent event for Alpha in journal")
+	}
+}
+
+// TestServerEmptyMessageBody verifies sending a message with empty content returns 400.
+func TestServerEmptyMessageBody(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "emptymsg"
+
+	// Create agent first
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/Recv", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Recv: ready",
+	})
+	resp.Body.Close()
+
+	// Send empty message
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Recv/message",
+		map[string]string{"message": ""},
+		"Sender",
+	)
+	if code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty message, got %d: %s", code, body)
+	}
+}
+

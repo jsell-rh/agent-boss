@@ -21,6 +21,15 @@ const (
 	DefaultSpaceName = "default"
 )
 
+// writeJSONError writes a JSON {"error":"..."} response with the given status code.
+// All API error paths should use this instead of http.Error to ensure consistent
+// Content-Type and body format for programmatic clients.
+func writeJSONError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	fmt.Fprintf(w, `{"error":%q}`, msg)
+}
+
 //go:embed protocol.md
 var protocolTemplate string
 
@@ -812,11 +821,11 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 	case http.MethodPost:
 		callerName := r.Header.Get("X-Agent-Name")
 		if callerName == "" {
-			http.Error(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
+			writeJSONError(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
 			return
 		}
 		if !strings.EqualFold(callerName, agentName) {
-			http.Error(w, fmt.Sprintf("agent %q cannot post to %q's channel", callerName, agentName), http.StatusForbidden)
+			writeJSONError(w, fmt.Sprintf("agent %q cannot post to %q's channel", callerName, agentName), http.StatusForbidden)
 			return
 		}
 
@@ -825,7 +834,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		contentType := r.Header.Get("Content-Type")
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
 		defer r.Body.Close()
@@ -834,7 +843,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 
 		if strings.Contains(contentType, "application/json") {
 			if err := json.Unmarshal(body, &update); err != nil {
-				http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+				writeJSONError(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
 				return
 			}
 		} else {
@@ -848,7 +857,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		sanitizeAgentUpdate(&update)
 
 		if err := update.Validate(); err != nil {
-			http.Error(w, fmt.Sprintf("validation: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("validation: %v", err), http.StatusBadRequest)
 			return
 		}
 
@@ -884,7 +893,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		ks.UpdatedAt = time.Now().UTC()
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 			return
 		}
 		s.mu.Unlock()
@@ -941,19 +950,19 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	// Sender authentication - require X-Agent-Name header
 	senderName := r.Header.Get("X-Agent-Name")
 	if senderName == "" {
-		http.Error(w, "missing X-Agent-Name header: sender must identify themselves", http.StatusBadRequest)
+		writeJSONError(w, "missing X-Agent-Name header: sender must identify themselves", http.StatusBadRequest)
 		return
 	}
 
 	var messageReq AgentMessage
 	if err := json.NewDecoder(r.Body).Decode(&messageReq); err != nil {
-		http.Error(w, fmt.Sprintf("decode: %v", err), http.StatusBadRequest)
+		writeJSONError(w, fmt.Sprintf("decode: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	// Validate required fields
 	if strings.TrimSpace(messageReq.Message) == "" {
-		http.Error(w, "message content is required", http.StatusBadRequest)
+		writeJSONError(w, "message content is required", http.StatusBadRequest)
 		return
 	}
 
