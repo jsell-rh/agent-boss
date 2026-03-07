@@ -27,7 +27,14 @@ var protocolTemplate string
 type sseClient struct {
 	ch    chan []byte
 	space string
-	agent string // if non-empty, only receive events mentioning this agent
+	agent string // if non-empty, only receive events targeted at this specific agent
+}
+
+// sseEvent holds a buffered SSE event for Last-Event-ID replay.
+type sseEvent struct {
+	ID        string
+	EventType string
+	Data      string
 }
 
 type Server struct {
@@ -42,8 +49,9 @@ type Server struct {
 	EventLog        []string
 	eventMu         sync.Mutex
 	stopLiveness    chan struct{}
-	sseClients      map[*sseClient]struct{}
-	sseMu           sync.Mutex
+	sseClients   map[*sseClient]struct{}
+	sseMu        sync.Mutex
+	agentSSEBuf  map[string][]sseEvent // keyed by "space/agent"; guarded by sseMu; ring buffer cap 200
 	interrupts      *InterruptLedger
 	approvalTracked map[string]time.Time
 	// nudgePending tracks agents that should be nudged (check-in triggered)
@@ -77,6 +85,7 @@ func NewServer(port, dataDir string) *Server {
 		spaces:             make(map[string]*KnowledgeSpace),
 		stopLiveness:       make(chan struct{}),
 		sseClients:         make(map[*sseClient]struct{}),
+		agentSSEBuf:        make(map[string][]sseEvent),
 		interrupts:         NewInterruptLedger(dataDir),
 		approvalTracked:    make(map[string]time.Time),
 		nudgePending:       make(map[string]time.Time),
@@ -653,7 +662,7 @@ func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, space
 	os.Remove(s.spaceMarkdownPath(spaceName))
 
 	s.logEvent(fmt.Sprintf("space %q deleted", spaceName))
-	s.broadcastSSE(spaceName, "space_deleted", spaceName)
+	s.broadcastSSE(spaceName, "", "space_deleted", spaceName)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "deleted space %q", spaceName)
 }
@@ -889,7 +898,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			s.logEvent(fmt.Sprintf("[%s/%s] warning: failed to append snapshot: %v", spaceName, canonical, err))
 		}
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
-		s.broadcastSSE(spaceName, "agent_updated", string(sseData))
+		s.broadcastSSE(spaceName, canonical, "agent_updated", string(sseData))
 		w.WriteHeader(http.StatusAccepted)
 		fmt.Fprintf(w, "accepted for [%s] in space %q", canonical, spaceName)
 
@@ -912,7 +921,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		s.logEvent(fmt.Sprintf("[%s/%s] agent removed", spaceName, canonical))
 		s.journal.Append(spaceName, EventAgentRemoved, canonical, nil)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
-		s.broadcastSSE(spaceName, "agent_removed", string(sseData))
+		s.broadcastSSE(spaceName, canonical, "agent_removed", string(sseData))
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "removed [%s] from space %q", canonical, spaceName)
 
@@ -1041,7 +1050,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		"message":  messageReq.Message,
 		"priority": string(messageReq.Priority),
 	})
-	s.broadcastSSE(spaceName, "agent_message", string(sseData))
+	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
 
 	// Attempt webhook delivery if the agent has registered a callback URL.
 	// Falls back to tmux nudge below if not registered or webhook fails.
@@ -1361,7 +1370,7 @@ func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceNa
 	go func() {
 		result := s.BroadcastCheckIn(spaceName, "", "")
 		sseData, _ := json.Marshal(result)
-		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
+		s.broadcastSSE(spaceName, "", "broadcast_complete", string(sseData))
 	}()
 
 	w.WriteHeader(http.StatusAccepted)
@@ -1382,7 +1391,7 @@ func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, s
 	go func() {
 		result := s.SingleAgentCheckIn(spaceName, agentName, "", "")
 		sseData, _ := json.Marshal(result)
-		s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
+		s.broadcastSSE(spaceName, "", "broadcast_complete", string(sseData))
 	}()
 
 	w.WriteHeader(http.StatusAccepted)
@@ -1679,23 +1688,41 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 
 	s.logEvent(fmt.Sprintf("[%s/%s] boss dismissed %s #%d via dashboard", spaceName, canonical, payload.Type, payload.Index))
 	sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
-	s.broadcastSSE(spaceName, "agent_updated", string(sseData))
+	s.broadcastSSE(spaceName, canonical, "agent_updated", string(sseData))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "dismissed", "agent": canonical})
 }
 
-func (s *Server) broadcastSSE(space, event, data string) {
-	msg := fmt.Sprintf("event: %s\ndata: %s\n\n", event, data)
+// broadcastSSE fans out an SSE event to connected clients.
+// targetAgent, if non-empty, restricts delivery to per-agent SSE clients subscribed
+// to that specific agent (exact case-insensitive match). Space-wide clients always
+// receive the event regardless of targetAgent. Per-agent clients (c.agent != "") only
+// receive events where targetAgent matches their agent — they never receive space-wide
+// noise (targetAgent == "").
+func (s *Server) broadcastSSE(space, targetAgent, event, data string) {
+	id := fmt.Sprintf("%d", time.Now().UnixNano())
+	msg := fmt.Sprintf("id: %s\nevent: %s\ndata: %s\n\n", id, event, data)
 	payload := []byte(msg)
 	s.sseMu.Lock()
 	defer s.sseMu.Unlock()
+	// Buffer targeted events for Last-Event-ID replay (cap 200 per agent).
+	if targetAgent != "" {
+		key := space + "/" + strings.ToLower(targetAgent)
+		s.agentSSEBuf[key] = append(s.agentSSEBuf[key], sseEvent{ID: id, EventType: event, Data: data})
+		const bufCap = 200
+		if len(s.agentSSEBuf[key]) > bufCap {
+			s.agentSSEBuf[key] = s.agentSSEBuf[key][len(s.agentSSEBuf[key])-bufCap:]
+		}
+	}
 	for c := range s.sseClients {
 		if c.space != "" && c.space != space {
 			continue
 		}
-		// Per-agent clients only receive events that mention their agent name
-		if c.agent != "" && !strings.Contains(strings.ToLower(data), strings.ToLower(c.agent)) {
-			continue
+		if c.agent != "" {
+			// Per-agent client: only receive events targeted at exactly this agent.
+			if !strings.EqualFold(c.agent, targetAgent) {
+				continue
+			}
 		}
 		select {
 		case c.ch <- payload:
@@ -1723,6 +1750,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
@@ -1737,6 +1765,9 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 		s.sseMu.Unlock()
 	}()
 
+	keepalive := time.NewTicker(15 * time.Second)
+	defer keepalive.Stop()
+
 	ctx := r.Context()
 	for {
 		select {
@@ -1744,6 +1775,9 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 			return
 		case msg := <-client.ch:
 			w.Write(msg)
+			flusher.Flush()
+		case t := <-keepalive.C:
+			fmt.Fprintf(w, ": keepalive %s\n\n", t.UTC().Format(time.RFC3339))
 			flusher.Flush()
 		}
 	}
@@ -1878,7 +1912,7 @@ func (s *Server) checkAllSessionLiveness() {
 			}
 		}
 		data, _ := json.Marshal(payload)
-		s.broadcastSSE(space, "tmux_liveness", string(data))
+		s.broadcastSSE(space, "", "tmux_liveness", string(data))
 	}
 }
 
@@ -1902,7 +1936,7 @@ func (s *Server) executeNudge(spaceName, agentName string) {
 	}
 
 	sseData, _ := json.Marshal(result)
-	s.broadcastSSE(spaceName, "broadcast_complete", string(sseData))
+	s.broadcastSSE(spaceName, "", "broadcast_complete", string(sseData))
 }
 
 func (s *Server) recordDecisionInterrupts(spaceName, agentName string, update *AgentUpdate) {

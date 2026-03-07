@@ -338,7 +338,7 @@ func (s *Server) checkHeartbeatStaleness() {
 				if !rec.Stale {
 					rec.Stale = true
 					s.logEvent(fmt.Sprintf("[%s/%s] marked stale (no heartbeat since registration)", rec.SpaceName, rec.AgentName))
-					s.broadcastSSE(rec.SpaceName, "agent_stale", fmt.Sprintf(`{"space":%q,"agent":%q}`, rec.SpaceName, rec.AgentName))
+					s.broadcastSSE(rec.SpaceName, rec.AgentName, "agent_stale", fmt.Sprintf(`{"space":%q,"agent":%q}`, rec.SpaceName, rec.AgentName))
 				}
 			}
 		} else {
@@ -347,7 +347,7 @@ func (s *Server) checkHeartbeatStaleness() {
 				rec.Stale = true
 				s.logEvent(fmt.Sprintf("[%s/%s] marked stale (last heartbeat %s ago)",
 					rec.SpaceName, rec.AgentName, now.Sub(rec.LastHeartbeat).Round(time.Second)))
-				s.broadcastSSE(rec.SpaceName, "agent_stale", fmt.Sprintf(`{"space":%q,"agent":%q}`, rec.SpaceName, rec.AgentName))
+				s.broadcastSSE(rec.SpaceName, rec.AgentName, "agent_stale", fmt.Sprintf(`{"space":%q,"agent":%q}`, rec.SpaceName, rec.AgentName))
 			}
 		}
 		if rec.Stale != wasStale {
@@ -410,11 +410,38 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceNam
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
 	// Send an initial comment to confirm the stream is open
 	fmt.Fprintf(w, ": connected to agent stream %s/%s\n\n", spaceName, canonical)
 	flusher.Flush()
+
+	// Replay missed events from ring buffer if Last-Event-ID or ?since= is provided.
+	sinceID := r.Header.Get("Last-Event-ID")
+	if sinceID == "" {
+		sinceID = r.URL.Query().Get("since")
+	}
+	if sinceID != "" {
+		key := spaceName + "/" + strings.ToLower(canonical)
+		s.sseMu.Lock()
+		buf := s.agentSSEBuf[key]
+		var replay []sseEvent
+		for _, ev := range buf {
+			if ev.ID > sinceID {
+				replay = append(replay, ev)
+			}
+		}
+		s.sseMu.Unlock()
+		if len(replay) > 0 {
+			fmt.Fprintf(w, ": replaying %d missed events\n\n", len(replay))
+			for _, ev := range replay {
+				fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", ev.ID, ev.EventType, ev.Data)
+			}
+			fmt.Fprintf(w, ": replay complete\n\n")
+			flusher.Flush()
+		}
+	}
 
 	client := &sseClient{
 		ch:    make(chan []byte, 64),
@@ -431,6 +458,9 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceNam
 		s.sseMu.Unlock()
 	}()
 
+	keepalive := time.NewTicker(15 * time.Second)
+	defer keepalive.Stop()
+
 	ctx := r.Context()
 	for {
 		select {
@@ -438,6 +468,9 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceNam
 			return
 		case msg := <-client.ch:
 			w.Write(msg)
+			flusher.Flush()
+		case t := <-keepalive.C:
+			fmt.Fprintf(w, ": keepalive %s\n\n", t.UTC().Format(time.RFC3339))
 			flusher.Flush()
 		}
 	}

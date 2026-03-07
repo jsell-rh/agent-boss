@@ -432,7 +432,7 @@ func (r *BroadcastResult) addError(s string) {
 
 func (s *Server) broadcastProgress(spaceName, msg string) {
 	data, _ := json.Marshal(map[string]string{"space": spaceName, "message": msg})
-	s.broadcastSSE(spaceName, "broadcast_progress", string(data))
+	s.broadcastSSE(spaceName, "", "broadcast_progress", string(data))
 }
 
 func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, workModel string, result *BroadcastResult) {
