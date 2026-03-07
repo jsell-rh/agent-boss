@@ -97,9 +97,10 @@ function goToAgent() {
 function goToConversations() {
   visible.value = false
   if (props.spaceName) {
-    router.push(
-      `/${encodeURIComponent(props.spaceName)}/conversations?to=${encodeURIComponent(props.agentName)}`,
-    )
+    router.push({
+      name: 'conversation',
+      params: { space: props.spaceName, conversationAgent: props.agentName },
+    })
   }
 }
 

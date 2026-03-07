@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -10,13 +10,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus } from 'lucide-vue-next'
 import { renderMarkdown } from '@/lib/markdown'
 import { relativeTime } from '@/composables/useTime'
 import api from '@/api/client'
 
 const props = defineProps<{
   space: KnowledgeSpace
+  preselectAgent?: string
 }>()
 
 interface ConversationMessage {
@@ -69,71 +70,64 @@ const conversations = computed((): Conversation[] => {
   )
 })
 
-// All sidebar items: existing conversations + virtual boss↔agent stubs for every agent
-const allListItems = computed((): Conversation[] => {
-  const convMap = new Map<string, Conversation>()
-
-  for (const conv of conversations.value) {
-    convMap.set(conv.key, conv)
-  }
-
-  // Add virtual boss↔agent conversations for agents not yet in one
-  for (const [agentName, agentData] of Object.entries(props.space.agents)) {
-    const sorted = [agentName, 'boss'].sort()
-    const key = sorted.join('\u2194')
-    if (!convMap.has(key)) {
-      convMap.set(key, {
-        key,
-        participants: sorted as [string, string],
-        messages: [],
-        lastMessageAt: agentData.updated_at ?? new Date(0).toISOString(),
-      })
-    }
-  }
-
-  return [...convMap.values()].sort((a, b) => {
-    const aHas = a.messages.length > 0
-    const bHas = b.messages.length > 0
-    if (aHas !== bHas) return aHas ? -1 : 1
-    if (aHas) return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-    // Both empty: sort alphabetically by the non-boss participant
-    const aAgent = a.participants.find(p => p !== 'boss') ?? a.participants[0]!
-    const bAgent = b.participants.find(p => p !== 'boss') ?? b.participants[0]!
-    return aAgent.localeCompare(bAgent)
-  })
-})
-
 const searchQuery = ref('')
 const selectedKey = ref<string | null>(null)
 
-const filteredListItems = computed(() => {
+const filteredConversations = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  if (!q) return allListItems.value
-  return allListItems.value.filter(conv =>
+  if (!q) return conversations.value
+  return conversations.value.filter(conv =>
     conv.participants.some(p => p.toLowerCase().includes(q)),
   )
 })
 
-const selectedConversation = computed(() =>
-  allListItems.value.find(c => c.key === selectedKey.value) ?? null,
-)
+// selectedConversation — includes virtual entry for preselectAgent with no history
+const selectedConversation = computed((): Conversation | null => {
+  const found = conversations.value.find(c => c.key === selectedKey.value)
+  if (found) return found
+  // Virtual conversation (no messages yet) from preselectAgent or New Message picker
+  if (selectedKey.value) {
+    const parts = selectedKey.value.split('\u2194') as [string, string]
+    return { key: selectedKey.value, participants: parts, messages: [], lastMessageAt: '' }
+  }
+  return null
+})
 
-// Pre-select from ?to=agentName query param (used by AgentProfileCard Message button)
-const route = useRoute()
+// Unread tracking — conversations not yet visited this session
+const readKeys = ref(new Set<string>())
+
+function unreadCount(conv: Conversation): number {
+  if (readKeys.value.has(conv.key)) return 0
+  return conv.messages.length
+}
+
+// Mark conversation as read when selected
+watch(selectedKey, key => {
+  if (key) readKeys.value.add(key)
+})
+
+// Pre-select from preselectAgent prop (set by App.vue from router param or when starting new conv)
 onMounted(() => {
-  const to = route.query.to as string | undefined
-  if (to) {
-    const sorted = [to, 'boss'].sort()
+  if (props.preselectAgent) {
+    const sorted = [props.preselectAgent, 'boss'].sort()
     selectedKey.value = sorted.join('\u2194')
   }
 })
 
-// Auto-select first item on load if nothing is selected
+// Also react to preselectAgent prop changes (e.g. navigating between conversation routes)
+watch(() => props.preselectAgent, agent => {
+  if (agent) {
+    const sorted = [agent, 'boss'].sort()
+    selectedKey.value = sorted.join('\u2194')
+  }
+})
+
+// Auto-select first conversation if nothing is selected
 watch(
-  allListItems,
-  items => {
-    if (!selectedKey.value && items.length > 0) {
-      selectedKey.value = items[0]!.key
+  conversations,
+  convs => {
+    if (!selectedKey.value && convs.length > 0) {
+      selectedKey.value = convs[0]!.key
     }
   },
   { immediate: true },
@@ -196,9 +190,43 @@ function prLink(agent: { pr?: string; repo_url?: string }): string | null {
   return `${repoBase}/pull/${prNum}`
 }
 
+// ── New Message picker ──────────────────────────────────────────────
+const newMsgPickerOpen = ref(false)
+const newMsgSearch = ref('')
+const newMsgInputRef = ref<HTMLInputElement | null>(null)
+
+const allAgentNames = computed(() => Object.keys(props.space.agents).sort())
+
+const filteredAgentNames = computed(() => {
+  const q = newMsgSearch.value.toLowerCase()
+  if (!q) return allAgentNames.value
+  return allAgentNames.value.filter(n => n.toLowerCase().includes(q))
+})
+
+function openNewMsgPicker() {
+  newMsgSearch.value = ''
+  newMsgPickerOpen.value = true
+  // Focus the search input after render
+  setTimeout(() => newMsgInputRef.value?.focus(), 50)
+}
+
+function selectNewMsgAgent(agentName: string) {
+  newMsgPickerOpen.value = false
+  newMsgSearch.value = ''
+  // Navigate to the named conversation route so URL is bookmarkable
+  router.push({
+    name: 'conversation',
+    params: { space: props.space.name, conversationAgent: agentName },
+  })
+  // Also immediately set selectedKey so the thread shows before navigation processes
+  const sorted = [agentName, 'boss'].sort()
+  selectedKey.value = sorted.join('\u2194')
+}
+
 // ── Inline compose ──────────────────────────────────────────────────
 const inlineMessage = ref('')
 const inlineSending = ref(false)
+const composeRef = ref<HTMLTextAreaElement | null>(null)
 
 // Boss can compose to the other participant (only if boss is in the conversation)
 const composeRecipient = computed(() => {
@@ -217,7 +245,7 @@ async function sendInlineCompose() {
     await api.sendMessage(props.space.name, recipient, text, 'boss')
     inlineMessage.value = ''
   } catch (_) {
-    // silently handle; the message was likely delivered
+    // silently handle
   } finally {
     inlineSending.value = false
   }
@@ -238,20 +266,66 @@ function handleComposeKeydown(e: KeyboardEvent) {
       class="w-72 shrink-0 border-r flex flex-col min-h-0"
       aria-label="Conversations"
     >
-      <!-- Search -->
+      <!-- Search + New Message button -->
       <div class="p-3 border-b shrink-0">
-        <div class="relative">
-          <Search
-            class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none"
-            aria-hidden="true"
-          />
-          <Input
-            v-model="searchQuery"
-            type="search"
-            placeholder="Filter agents…"
-            class="pl-8 h-8 text-sm"
-            aria-label="Filter agents by name"
-          />
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <Search
+              class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <Input
+              v-model="searchQuery"
+              type="search"
+              placeholder="Filter conversations…"
+              class="pl-8 h-8 text-sm"
+              aria-label="Filter conversations by agent name"
+            />
+          </div>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                class="shrink-0 h-8 w-8"
+                aria-label="Start new conversation"
+                @click="openNewMsgPicker"
+              >
+                <Plus class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>New message</TooltipContent>
+          </Tooltip>
+        </div>
+
+        <!-- New message agent picker -->
+        <div
+          v-if="newMsgPickerOpen"
+          class="mt-2 rounded-md border bg-popover shadow-md"
+        >
+          <div class="p-2 border-b">
+            <Input
+              ref="newMsgInputRef"
+              v-model="newMsgSearch"
+              placeholder="Search agents…"
+              class="h-7 text-xs"
+              @keydown.escape="newMsgPickerOpen = false"
+            />
+          </div>
+          <ScrollArea class="max-h-48">
+            <div v-if="filteredAgentNames.length === 0" class="px-3 py-4 text-xs text-muted-foreground text-center">
+              No agents found
+            </div>
+            <button
+              v-for="name in filteredAgentNames"
+              :key="name"
+              class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent transition-colors text-left"
+              @click="selectNewMsgAgent(name)"
+            >
+              <AgentAvatar :name="name" :size="18" />
+              {{ name }}
+            </button>
+          </ScrollArea>
         </div>
       </div>
 
@@ -259,24 +333,31 @@ function handleComposeKeydown(e: KeyboardEvent) {
       <ScrollArea class="flex-1 min-h-0">
         <!-- Empty state -->
         <div
-          v-if="filteredListItems.length === 0"
+          v-if="filteredConversations.length === 0"
           class="flex flex-col items-center justify-center h-40 text-center text-muted-foreground p-4"
           role="status"
         >
           <MessageSquare class="size-7 mb-2 opacity-40" aria-hidden="true" />
           <p class="text-sm">
-            {{ searchQuery ? 'No matching agents' : 'No agents in this space' }}
+            {{ searchQuery ? 'No matching conversations' : 'No messages yet' }}
           </p>
+          <button
+            v-if="!searchQuery"
+            class="mt-2 text-xs text-primary hover:underline"
+            @click="openNewMsgPicker"
+          >
+            Start a conversation →
+          </button>
         </div>
 
-        <ul v-else class="py-1" role="listbox" aria-label="Agent list">
-          <li v-for="conv in filteredListItems" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
+        <ul v-else class="py-1" role="listbox" aria-label="Conversation list">
+          <li v-for="conv in filteredConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
             <button
               class="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               :class="{ 'bg-muted': selectedKey === conv.key }"
               @click="selectedKey = conv.key"
             >
-              <!-- Stacked avatars -->
+              <!-- Stacked avatars (clickable to open agent slideover) -->
               <div class="relative shrink-0 w-9 h-9 mt-0.5" @click.stop>
                 <AgentProfileCard
                   :agent-name="conv.participants[0]"
@@ -314,13 +395,19 @@ function handleComposeKeydown(e: KeyboardEvent) {
                   <span class="text-sm font-medium truncate">
                     {{ conv.participants[0] }} ↔ {{ conv.participants[1] }}
                   </span>
-                  <time
-                    v-if="conv.messages.length > 0"
-                    :datetime="conv.lastMessageAt"
-                    class="text-xs text-muted-foreground shrink-0"
-                  >
-                    {{ formatRelativeTime(conv.lastMessageAt) }}
-                  </time>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <!-- Unread badge -->
+                    <span
+                      v-if="unreadCount(conv) > 0"
+                      class="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold min-w-[16px] h-4 px-1"
+                    >{{ unreadCount(conv) }}</span>
+                    <time
+                      :datetime="conv.lastMessageAt"
+                      class="text-xs text-muted-foreground"
+                    >
+                      {{ formatRelativeTime(conv.lastMessageAt) }}
+                    </time>
+                  </div>
                 </div>
                 <p v-if="conv.messages.length > 0" class="text-xs text-muted-foreground truncate mt-0.5">
                   <span class="font-medium">{{ conv.messages[conv.messages.length - 1]!.sender }}:</span>
@@ -376,8 +463,10 @@ function handleComposeKeydown(e: KeyboardEvent) {
               role="status"
             >
               <MessageSquare class="size-8 opacity-30" aria-hidden="true" />
-              <p class="text-sm">No messages yet.</p>
-              <p v-if="composeRecipient" class="text-xs">Send the first message to {{ composeRecipient }} below.</p>
+              <p class="text-sm font-medium text-foreground">No messages yet</p>
+              <p v-if="composeRecipient" class="text-xs">
+                Say hello to {{ composeRecipient }} using the compose box below.
+              </p>
             </div>
 
             <template
@@ -466,6 +555,7 @@ function handleComposeKeydown(e: KeyboardEvent) {
         <div v-if="composeRecipient" class="border-t p-3 shrink-0">
           <form class="flex items-end gap-2" @submit.prevent="sendInlineCompose">
             <Textarea
+              ref="composeRef"
               v-model="inlineMessage"
               :placeholder="`Message ${composeRecipient}… (Enter to send, Shift+Enter for newline)`"
               class="flex-1 min-h-[38px] max-h-40 resize-none text-sm"
@@ -496,8 +586,8 @@ function handleComposeKeydown(e: KeyboardEvent) {
           <MessageSquare class="size-8" />
         </div>
         <div>
-          <p class="text-sm font-medium text-foreground">Select an agent</p>
-          <p class="text-xs mt-0.5">Choose an agent to view or start a conversation</p>
+          <p class="text-sm font-medium text-foreground">Select a conversation</p>
+          <p class="text-xs mt-0.5">Choose a conversation from the list to view its thread</p>
         </div>
       </div>
     </div>

@@ -79,7 +79,14 @@ const selectedAgent = computed(() => {
 })
 
 // ── Computed ───────────────────────────────────────────────────────
-const showConversations = computed(() => selectedAgent.value === 'conversations')
+const conversationAgent = computed(() => {
+  const p = route.params.conversationAgent
+  return typeof p === 'string' ? p : ''
+})
+
+const showConversations = computed(() =>
+  selectedAgent.value === 'conversations' || !!conversationAgent.value,
+)
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {
   if (!currentSpace.value || !selectedAgent.value || showConversations.value) return null
@@ -914,6 +921,7 @@ onUnmounted(() => {
           <ConversationsView
             v-else-if="showConversations && currentSpace"
             :space="currentSpace"
+            :preselect-agent="conversationAgent || undefined"
           />
 
           <!-- Agent detail view -->
