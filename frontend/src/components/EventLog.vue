@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
@@ -16,7 +17,43 @@ export interface EventLogEntry {
 
 const props = defineProps<{
   spaceName: string
+  agentNames?: string[]
 }>()
+
+const router = useRouter()
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function linkifyMessage(msg: string): string {
+  const names = props.agentNames
+  if (!names?.length) return escapeHtml(msg)
+  let result = escapeHtml(msg)
+  for (const name of names) {
+    const safe = escapeHtml(name)
+    result = result.replace(
+      new RegExp(`\\b${escapeRegex(safe)}\\b`, 'g'),
+      `<button class="font-medium text-primary hover:underline cursor-pointer" data-agent="${safe}">${safe}</button>`,
+    )
+  }
+  return result
+}
+
+function handleLogClick(e: MouseEvent) {
+  const target = (e.target as HTMLElement).closest('[data-agent]') as HTMLElement | null
+  if (target?.dataset.agent && props.spaceName) {
+    router.push(`/${encodeURIComponent(props.spaceName)}/${encodeURIComponent(target.dataset.agent)}`)
+  }
+}
 
 const entries = ref<EventLogEntry[]>([])
 const isOpen = ref(true)
@@ -599,7 +636,7 @@ defineExpose({ pushSSEEvent, clearLog })
                 {{ entry.type }}
               </span>
             </td>
-            <td class="py-0.5 px-2 pr-4 text-foreground/80 max-w-0 w-full">
+            <td class="py-0.5 px-2 pr-4 text-foreground/80 max-w-0 w-full" @click.stop="handleLogClick">
               <div
                 v-if="expandedId === entry.id"
                 class="py-1.5 whitespace-pre-wrap break-words leading-relaxed text-foreground/90 overflow-x-auto"
@@ -607,11 +644,11 @@ defineExpose({ pushSSEEvent, clearLog })
                 <div class="text-muted-foreground text-[9px] mb-1 uppercase tracking-wider">
                   {{ entry.timestamp }} · {{ entry.source }}
                 </div>
-                {{ entry.message }}
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <span v-html="linkifyMessage(entry.message)" />
               </div>
-              <div v-else class="truncate">
-                {{ entry.message }}
-              </div>
+              <!-- eslint-disable-next-line vue/no-v-html -->
+              <div v-else class="truncate" v-html="linkifyMessage(entry.message)" />
             </td>
           </tr>
         </tbody>

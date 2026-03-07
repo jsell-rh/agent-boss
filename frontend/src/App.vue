@@ -90,6 +90,10 @@ const selectedAgentTmux = computed<TmuxAgentStatus | null>(() => {
   return tmuxStatus.value[selectedAgent.value] ?? null
 })
 
+const currentAgentNames = computed<string[]>(() =>
+  Object.keys(currentSpace.value?.agents ?? {}),
+)
+
 // ── Error feedback ────────────────────────────────────────────────
 function showError(msg: string) {
   errorMessage.value = msg
@@ -893,6 +897,7 @@ onUnmounted(() => {
         <EventLog
           ref="eventLogRef"
           :space-name="selectedSpace"
+          :agent-names="currentAgentNames"
         />
       </SidebarInset>
     </SidebarProvider>

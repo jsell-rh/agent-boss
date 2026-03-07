@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import AgentAvatar from './AgentAvatar.vue'
 import StatusBadge from './StatusBadge.vue'
-import { MessageSquare, Search, X, GitBranch } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink } from 'lucide-vue-next'
 import { renderMarkdown } from '@/lib/markdown'
 import { relativeTime } from '@/composables/useTime'
 
@@ -131,6 +133,13 @@ function openSlideover(agentName: string) {
 
 function closeSlideover() {
   slideoverAgentName.value = null
+}
+
+const router = useRouter()
+
+function goToAgentDetail(agentName: string) {
+  slideoverAgentName.value = null
+  router.push(`/${encodeURIComponent(props.space.name)}/${encodeURIComponent(agentName)}`)
 }
 </script>
 
@@ -347,6 +356,19 @@ function closeSlideover() {
             <h3 class="text-sm font-semibold truncate">{{ slideoverAgentName }}</h3>
             <StatusBadge :status="slideoverAgent.status" />
           </div>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Open full agent detail page"
+                @click="goToAgentDetail(slideoverAgentName)"
+              >
+                <ExternalLink class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Open full detail page</TooltipContent>
+          </Tooltip>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -366,11 +388,19 @@ function closeSlideover() {
               <p class="leading-relaxed">{{ slideoverAgent.summary }}</p>
             </div>
 
-            <!-- Meta: branch, updated -->
+            <!-- Meta: branch, PR, phase, updated -->
             <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span v-if="slideoverAgent.branch" class="flex items-center gap-1">
+              <span v-if="slideoverAgent.phase">Phase: {{ slideoverAgent.phase }}</span>
+              <span v-if="slideoverAgent.branch" class="flex items-center gap-1 font-mono">
                 <GitBranch class="size-3" />{{ slideoverAgent.branch }}
               </span>
+              <a
+                v-if="slideoverAgent.pr"
+                :href="slideoverAgent.pr"
+                target="_blank"
+                rel="noopener"
+                class="text-primary hover:underline font-mono"
+              >{{ slideoverAgent.pr }}</a>
               <span>Updated {{ relativeTime(slideoverAgent.updated_at) }}</span>
             </div>
 
