@@ -479,6 +479,25 @@ header h1 span{color:var(--blue);font-weight:400;margin-left:6px;font-size:14px}
 .agent-card.is-done{opacity:.5;border-color:var(--border)}
 .agent-card.is-done:hover{opacity:.75;border-color:var(--text3)}
 </style>
+/* Gantt timeline panel */
+.gantt-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.gantt-card .card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--bg3);border-bottom:1px solid var(--border)}
+.gantt-card .card-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--cyan)}
+.gantt-controls{display:flex;gap:6px}
+.gantt-btn{font-size:11px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg4);color:var(--text2);cursor:pointer}
+.gantt-btn.active{background:var(--cyan-bg);border-color:rgba(57,210,192,.4);color:var(--cyan)}
+.gantt-body{padding:12px 16px}
+.gantt-empty{color:var(--text3);font-size:12px;font-style:italic;text-align:center;padding:20px 0}
+.gantt-row{display:grid;grid-template-columns:90px 1fr;align-items:center;height:26px;margin-bottom:4px}
+.gantt-label{font-size:11px;font-weight:600;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+.gantt-track{position:relative;height:16px;background:var(--bg3);border-radius:3px;border:1px solid var(--border)}
+.gantt-bar{position:absolute;height:100%;border-radius:2px;cursor:pointer;transition:opacity .15s}
+.gantt-bar:hover{opacity:.75}
+.gantt-axis{display:grid;grid-template-columns:90px 1fr;margin-top:6px}
+.gantt-axis-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);padding:0 1px}
+.gantt-tooltip{position:fixed;z-index:1000;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:8px 10px;font-size:11px;color:var(--text);pointer-events:none;max-width:260px;box-shadow:0 4px 12px rgba(0,0,0,.4);display:none}
+.gantt-tooltip-status{font-weight:700;margin-bottom:2px}
+.gantt-tooltip-time{color:var(--text3);font-size:10px}
 </head>
 <body>
 <header>
@@ -607,7 +626,7 @@ function loadSpace(name){
 
   if (evtSource) evtSource.close();
   evtSource = new EventSource('/spaces/' + encodeURIComponent(name) + '/events');
-  evtSource.addEventListener('agent_updated', function(){ loadSpace(SPACE); });
+  evtSource.addEventListener('agent_updated', function(){ loadSpace(SPACE); if (SPACE) loadGantt(SPACE); });
   evtSource.addEventListener('agent_removed', function(){ loadSpace(SPACE); });
   evtSource.addEventListener('broadcast_progress', function(e){
     try {
@@ -1427,6 +1446,7 @@ function ensureBoardSkeleton(){
   o += '<div id="panel-interrupts"></div>';
   o += '</div>';
   o += '<div id="panel-agents"></div>';
+  o += '<div id="panel-gantt"></div>';
   document.getElementById('page').innerHTML = o;
   boardSkeletonReady = true;
 }
@@ -1447,6 +1467,7 @@ function renderBoard(data, tmuxData, eventLog, interruptMetrics, interruptLog){
   if (!inboxLocked) renderPanelInbox(data, sorted);
   renderPanelInterrupts(interruptMetrics, interruptLog);
   renderPanelAgents(data, sorted, tmuxData);
+  if (SPACE) loadGantt(SPACE);
 
   var dot = '<span class="header-dot" style="background:var(--green)"></span>';
   document.getElementById('agent-count').innerHTML = dot + names.length + ' agents';
@@ -1790,5 +1811,164 @@ function renderFreeText(text){
   return h;
 }
 </script>
+
+/* ── Gantt timeline ── */
+var ganttWindowHours = 2;
+var ganttData = [];
+var ganttTooltipEl = null;
+
+function ganttStatusColor(status, stale, inferredStatus){
+  if (stale || inferredStatus === 'stale') return 'var(--orange)';
+  switch(status){
+    case 'active':  return 'var(--green)';
+    case 'blocked': return 'var(--red)';
+    case 'done':    return 'var(--blue)';
+    case 'idle':    return 'var(--text3)';
+    case 'error':   return 'var(--red)';
+    default:        return 'var(--text3)';
+  }
+}
+
+function fmtTime(d){
+  return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function loadGantt(spaceName){
+  if (!spaceName) return;
+  var windowMs = ganttWindowHours * 3600 * 1000;
+  var since = new Date(Date.now() - windowMs);
+  var sinceStr = since.toISOString();
+  fetch('/spaces/' + encodeURIComponent(spaceName) + '/history?since=' + encodeURIComponent(sinceStr))
+    .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(data){
+      ganttData = Array.isArray(data) ? data : [];
+      renderGantt(spaceName);
+    })
+    .catch(function(){ /* silently skip if endpoint not ready */ });
+}
+
+function renderGantt(spaceName){
+  var el = document.getElementById('panel-gantt');
+  if (!el) return;
+
+  var now = Date.now();
+  var windowMs = ganttWindowHours * 3600 * 1000;
+  var windowStart = now - windowMs;
+
+  // Build per-agent sorted snapshot lists
+  var byAgent = {};
+  ganttData.forEach(function(snap){
+    var name = snap.agent_name || '';
+    if (!byAgent[name]) byAgent[name] = [];
+    byAgent[name].push(snap);
+  });
+  var agentNames = Object.keys(byAgent).sort();
+
+  // Also include agents currently in the space with no history yet
+  if (cachedBoardData && cachedBoardData.agents){
+    Object.keys(cachedBoardData.agents).forEach(function(name){
+      if (!byAgent[name]) { byAgent[name] = []; agentNames.push(name); }
+    });
+    agentNames.sort();
+  }
+
+  var o = '<div class="gantt-card">';
+  o += '<div class="card-header">';
+  o += '<span class="card-title">Timeline</span>';
+  o += '<div class="gantt-controls">';
+  [2, 6, 24].forEach(function(h){
+    var cls = 'gantt-btn' + (ganttWindowHours === h ? ' active' : '');
+    o += '<button class="' + cls + '" onclick="setGanttWindow(' + h + ')">' + h + 'h</button>';
+  });
+  o += '</div></div>';
+  o += '<div class="gantt-body">';
+
+  if (agentNames.length === 0){
+    o += '<div class="gantt-empty">No agents yet</div>';
+  } else {
+    agentNames.forEach(function(name){
+      var snaps = byAgent[name].slice().sort(function(a,b){
+        return new Date(a.timestamp) - new Date(b.timestamp);
+      });
+
+      o += '<div class="gantt-row">';
+      o += '<div class="gantt-label">' + esc(name) + '</div>';
+      o += '<div class="gantt-track">';
+
+      if (snaps.length === 0){
+        // No history in window — show a dim bar for current status if known
+        if (cachedBoardData && cachedBoardData.agents && cachedBoardData.agents[name]){
+          var cur = cachedBoardData.agents[name];
+          var color = ganttStatusColor(cur.status, cur.stale, cur.inferred_status);
+          o += '<div class="gantt-bar" style="left:0;width:100%;background:' + color + ';opacity:.35" title="' + esc(cur.status) + '"></div>';
+        }
+      } else {
+        snaps.forEach(function(snap, i){
+          var segStart = Math.max(new Date(snap.timestamp).getTime(), windowStart);
+          var segEnd = i + 1 < snaps.length
+            ? Math.min(new Date(snaps[i+1].timestamp).getTime(), now)
+            : now;
+          if (segEnd <= segStart) return;
+
+          var leftPct = (segStart - windowStart) / windowMs * 100;
+          var widthPct = (segEnd - segStart) / windowMs * 100;
+          if (widthPct < 0.1) return;
+
+          var color = ganttStatusColor(snap.status, snap.stale, snap.inferred_status);
+          var label = snap.status + (snap.stale ? ' (stale)' : '') + (snap.inferred_status ? ' [' + snap.inferred_status + ']' : '');
+          var timeRange = fmtTime(new Date(segStart)) + ' – ' + fmtTime(new Date(segEnd));
+          var tipData = 'data-tip-agent="' + esc(name) + '" data-tip-status="' + esc(label) + '" data-tip-time="' + esc(timeRange) + '"';
+
+          o += '<div class="gantt-bar" style="left:' + leftPct.toFixed(2) + '%;width:' + widthPct.toFixed(2) + '%;background:' + color + '" ' + tipData + '></div>';
+        });
+      }
+
+      o += '</div></div>';
+    });
+
+    // Time axis
+    var tickCount = ganttWindowHours <= 2 ? 4 : (ganttWindowHours <= 6 ? 6 : 8);
+    o += '<div class="gantt-axis"><div></div><div class="gantt-axis-labels">';
+    for (var t = 0; t <= tickCount; t++){
+      var ts = new Date(windowStart + (windowMs / tickCount) * t);
+      o += '<span>' + fmtTime(ts) + '</span>';
+    }
+    o += '</div></div>';
+  }
+
+  o += '</div></div>';
+  el.innerHTML = o;
+
+  // Attach tooltip listeners
+  if (!ganttTooltipEl){
+    ganttTooltipEl = document.createElement('div');
+    ganttTooltipEl.className = 'gantt-tooltip';
+    ganttTooltipEl.id = 'gantt-tooltip';
+    document.body.appendChild(ganttTooltipEl);
+  }
+  el.querySelectorAll('.gantt-bar[data-tip-status]').forEach(function(bar){
+    bar.addEventListener('mousemove', function(e){
+      var tip = ganttTooltipEl;
+      tip.style.display = 'block';
+      var agent = bar.getAttribute('data-tip-agent') || '';
+      var status = bar.getAttribute('data-tip-status') || '';
+      var time = bar.getAttribute('data-tip-time') || '';
+      tip.innerHTML = '<div class="gantt-tooltip-status">' + esc(agent) + ' — ' + esc(status) + '</div>' +
+                      '<div class="gantt-tooltip-time">' + esc(time) + '</div>';
+      var x = e.clientX + 12, y = e.clientY - 10;
+      if (x + 270 > window.innerWidth) x = e.clientX - 280;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+    bar.addEventListener('mouseleave', function(){
+      if (ganttTooltipEl) ganttTooltipEl.style.display = 'none';
+    });
+  });
+}
+
+function setGanttWindow(hours){
+  ganttWindowHours = hours;
+  if (SPACE) loadGantt(SPACE);
+}
 </body>
 </html>
