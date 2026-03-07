@@ -22,13 +22,16 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Search, Loader2, CheckCircle2, XCircle, Radio } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { relativeTime, formatFullDate } from '@/composables/useTime'
 import { renderMarkdown, renderMarkdownInline } from '@/lib/markdown'
+import { useRouter } from 'vue-router'
 import api from '@/api/client'
+
+const router = useRouter()
 
 const props = defineProps<{
   agent: AgentUpdate
@@ -394,6 +397,20 @@ onUnmounted(() => {
           </div>
           <Tooltip>
             <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                @click="router.push(`/${encodeURIComponent(spaceName)}/conversations`)"
+              >
+                <MessageSquare class="size-4" /> Conversations
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              View all conversations in this space
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
               <Button variant="outline" size="sm" @click="emit('broadcast')">
                 <Bell class="size-4" /> Nudge
               </Button>
@@ -467,7 +484,7 @@ onUnmounted(() => {
                 class="gap-1 text-xs"
                 @click="toggleIntrospect"
               >
-                <Search class="size-3.5" />
+                <Terminal class="size-3.5" />
                 Inspect
               </Button>
             </TooltipTrigger>
@@ -817,7 +834,7 @@ onUnmounted(() => {
         </nav>
       </section>
 
-      <Separator />
+      <Separator v-if="agent.tmux_session" />
 
       <!-- Tmux Controls — only shown when agent has a registered tmux session -->
       <section v-if="agent.tmux_session" class="space-y-3" aria-label="Tmux session controls">

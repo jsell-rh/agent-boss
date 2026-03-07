@@ -298,8 +298,18 @@ function goToAgentDetail(agentName: string) {
                 </button>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-baseline gap-1.5 mb-1">
-                    <span class="text-xs font-semibold">{{ msg.sender }}</span>
-                    <span class="text-xs text-muted-foreground">→ {{ msg.recipient }}</span>
+                    <button
+                      class="text-xs font-semibold hover:text-primary transition-colors hover:underline cursor-pointer"
+                      :aria-label="`View ${msg.sender} details`"
+                      @click="openSlideover(msg.sender)"
+                    >{{ msg.sender }}</button>
+                    <span class="text-xs text-muted-foreground">→
+                      <button
+                        class="hover:text-foreground transition-colors hover:underline cursor-pointer"
+                        :aria-label="`View ${msg.recipient} details`"
+                        @click="openSlideover(msg.recipient)"
+                      >{{ msg.recipient }}</button>
+                    </span>
                     <time
                       :datetime="msg.timestamp"
                       class="text-xs text-muted-foreground ml-auto"
