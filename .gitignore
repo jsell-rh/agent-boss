@@ -10,6 +10,11 @@ boss
 # Data directory
 data/
 
+# Vue frontend build output (populated by `npm run build` in frontend/)
+# These are embedded into the Go binary at compile time — do not commit.
+internal/coordinator/frontend/*
+!internal/coordinator/frontend/.gitkeep
+
 # Build artifacts
 *.exe
 *.exe~

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -169,11 +170,14 @@ func (s *Server) Start() error {
 	mux.Handle("/css/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
 	mux.Handle("/js/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
 
-	// Serve Vue frontend assets when frontendDir is configured
+	// Serve Vue frontend assets: runtime FRONTEND_DIR overrides embedded assets.
 	if s.frontendDir != "" {
 		if info, err := os.Stat(s.frontendDir); err == nil && info.IsDir() {
 			mux.Handle("/assets/", http.FileServer(http.Dir(s.frontendDir)))
 		}
+	} else if sub, err := fs.Sub(embeddedFrontend, "frontend"); err == nil {
+		// Serve compiled Vue assets from the embedded filesystem.
+		mux.Handle("/assets/", http.FileServer(http.FS(sub)))
 	}
 	mux.HandleFunc("/spaces", s.handleListSpaces)
 	mux.HandleFunc("/spaces/", s.handleSpaceRoute)
@@ -417,7 +421,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// Serve Vue SPA index.html when frontendDir is configured and exists
+	// Serve Vue SPA index.html: runtime FRONTEND_DIR takes priority, then embedded.
 	if s.frontendDir != "" {
 		indexPath := filepath.Join(s.frontendDir, "index.html")
 		if _, err := os.Stat(indexPath); err == nil {
@@ -431,7 +435,13 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Fallback to legacy dashboard
+	// Try embedded frontend (compiled Vue dist).
+	if content, err := embeddedFrontend.ReadFile("frontend/index.html"); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(content)
+		return
+	}
+	// Final fallback: legacy static dashboard.
 	s.serveHTMLFile(w, r, "mission-control.html")
 }
 

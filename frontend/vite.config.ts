@@ -6,6 +6,14 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  build: {
+    // Output directly into the Go embed directory so `go build` picks it up.
+    // Run `npm run build` inside frontend/ before running `go build`.
+    outDir: '../internal/coordinator/frontend',
+    // Don't auto-empty: the dir is outside the project root and contains
+    // .gitkeep which must persist for go:embed to compile on fresh checkouts.
+    emptyOutDir: false,
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

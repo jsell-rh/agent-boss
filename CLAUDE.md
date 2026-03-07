@@ -2,19 +2,21 @@
 
 ## Build
 
-Requires Go 1.24.4. The system Go may differ — always use the explicit GOROOT:
+The Vue frontend is embedded in the Go binary via `//go:embed`. You **must** build the frontend before building Go:
 
 ```bash
-GOROOT=/home/mturansk/go/go1.24.4.linux-amd64/go \
-PATH=/home/mturansk/go/go1.24.4.linux-amd64/go/bin:$PATH \
+# Step 1: Build the Vue frontend (outputs to internal/coordinator/frontend/)
+cd frontend && npm install && npm run build && cd ..
+
+# Step 2: Build the Go binary (embeds the compiled frontend)
 go build -o /tmp/boss ./cmd/boss/
 ```
+
+The binary is self-contained — no `FRONTEND_DIR` env var needed at runtime.
 
 ## Test
 
 ```bash
-GOROOT=/home/mturansk/go/go1.24.4.linux-amd64/go \
-PATH=/home/mturansk/go/go1.24.4.linux-amd64/go/bin:$PATH \
 go test -race -v ./internal/coordinator/
 ```
 
@@ -26,6 +28,26 @@ DATA_DIR=./data /tmp/boss serve
 
 Server starts on `:8899`. Dashboard at `http://localhost:8899`. Data persists to `DATA_DIR` as JSON + rendered markdown.
 
+### Development (hot-reload frontend)
+
+During frontend development, run the Vite dev server and the Go binary together:
+
+```bash
+# Terminal 1 — Go backend
+DATA_DIR=./data /tmp/boss serve
+
+# Terminal 2 — Vite dev server (proxies API to :8899)
+cd frontend && npm run dev
+```
+
+The Vite dev server proxies `/spaces`, `/events`, `/api`, `/raw`, and `/agent` to the Go backend. Open `http://localhost:5173` for the Vue app with hot-reload.
+
+To override the embedded frontend at runtime (e.g. for testing a fresh build):
+
+```bash
+DATA_DIR=./data FRONTEND_DIR=./internal/coordinator/frontend /tmp/boss serve
+```
+
 ## Project Structure
 
 ```
@@ -36,7 +58,11 @@ internal/coordinator/
   server_test.go                       Integration tests with -race
   client.go                            Go client for programmatic access
   deck.go                              Multi-space deck management
-  static/mission-control.html          Dashboard frontend (HTML+CSS+JS, go:embed)
+  frontend_embed.go                    go:embed declaration for Vue dist
+  frontend/                            Vue build output (gitignored, built by npm run build)
+frontend/
+  src/                                 Vue 3 + TypeScript source
+  vite.config.ts                       Vite config (outDir → ../internal/coordinator/frontend)
 data/
   {space}.json                         Source of truth per space
   {space}.md                           Rendered markdown snapshot
@@ -45,9 +71,10 @@ data/
 
 ## Key Conventions
 
-- Zero external dependencies — stdlib only (see `go.mod`)
-- Dashboard is a single embedded HTML file — all CSS and JS inline
-- `static/mission-control.html` is embedded via `//go:embed` at compile time
+- Zero external dependencies in Go — stdlib only (see `go.mod`)
+- Vue SPA is embedded in the binary via `//go:embed all:frontend` in `frontend_embed.go`
+- `npm run build` inside `frontend/` must run before `go build` to populate the embed dir
+- `FRONTEND_DIR` env var overrides the embedded assets at runtime (useful during development)
 - JSON is canonical; `.md` files are regenerated from JSON on every write
 - Agent channel enforcement: POST requires `X-Agent-Name` header matching the URL path agent name
 - Agent updates are structured JSON (`AgentUpdate` in `types.go`), not raw markdown
@@ -59,6 +86,7 @@ data/
 | `COORDINATOR_PORT` | `8899` | Server listen port |
 | `DATA_DIR` | `./data` | Persistence directory |
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
 
 ## Restart Procedure
 
