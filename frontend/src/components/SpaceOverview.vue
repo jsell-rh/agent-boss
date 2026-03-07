@@ -410,15 +410,17 @@ const activeSections = computed(() => [
                             :space-name="space.name"
                             @select-agent="emit('select-agent', $event)"
                           >
-                            <div class="relative inline-block shrink-0" @click.stop>
-                              <AgentAvatar :name="name" :size="28" aria-hidden="true" />
-                              <span
-                                class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
-                                :class="freshnessDotClass(agent.updated_at)"
-                              />
+                            <div class="flex items-center gap-2.5 min-w-0" @click.stop>
+                              <div class="relative inline-block shrink-0">
+                                <AgentAvatar :name="name" :size="28" aria-hidden="true" />
+                                <span
+                                  class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
+                                  :class="freshnessDotClass(agent.updated_at)"
+                                />
+                              </div>
+                              <h3 class="text-base font-semibold truncate m-0">{{ name }}</h3>
                             </div>
                           </AgentProfileCard>
-                          <h3 class="text-base font-semibold truncate m-0">{{ name }}</h3>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                           <StatusBadge :status="agent.status" />
@@ -751,7 +753,7 @@ const activeSections = computed(() => [
         </TabsContent>
 
         <TabsContent value="timeline">
-          <GanttTimeline :space-name="space.name" @select-agent="emit('select-agent', $event)" />
+          <GanttTimeline :space-name="space.name" :agents="space.agents" @select-agent="emit('select-agent', $event)" />
         </TabsContent>
 
         <TabsContent value="hierarchy">
