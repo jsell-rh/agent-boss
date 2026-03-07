@@ -60,6 +60,11 @@ type AgentUpdate struct {
 	RepoURL     string          `json:"repo_url,omitempty"`
 	Messages    []AgentMessage  `json:"messages,omitempty"`
 	UpdatedAt   time.Time       `json:"updated_at"`
+
+	// Protocol registration fields — preserved across status updates (sticky).
+	Registration  *AgentRegistration `json:"registration,omitempty"`
+	LastHeartbeat time.Time          `json:"last_heartbeat,omitempty"`
+	HeartbeatStale bool              `json:"heartbeat_stale,omitempty"`
 }
 
 type Section struct {

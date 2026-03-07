@@ -27,6 +27,7 @@ var protocolTemplate string
 type sseClient struct {
 	ch    chan []byte
 	space string
+	agent string // if non-empty, only receive events mentioning this agent
 }
 
 type Server struct {
@@ -52,6 +53,10 @@ type Server struct {
 	nudgePending  map[string]time.Time
 	nudgeInFlight map[string]bool // prevents duplicate concurrent nudges
 	nudgeMu       sync.Mutex
+	// registrations holds registration records for agents that have called /register.
+	// Keyed by registrationKey(space, agent). Guarded by regMu.
+	registrations map[string]*AgentRegistrationRecord
+	regMu         sync.RWMutex
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -68,6 +73,7 @@ func NewServer(port, dataDir string) *Server {
 		approvalTracked: make(map[string]time.Time),
 		nudgePending:    make(map[string]time.Time),
 		nudgeInFlight:   make(map[string]bool),
+		registrations:   make(map[string]*AgentRegistrationRecord),
 	}
 }
 
@@ -430,6 +436,14 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			switch action {
 			case "message":
 				s.handleAgentMessage(w, r, spaceName, agentName)
+			case "register":
+				s.handleAgentRegister(w, r, spaceName, agentName)
+			case "heartbeat":
+				s.handleAgentHeartbeat(w, r, spaceName, agentName)
+			case "messages":
+				s.handleAgentMessages(w, r, spaceName, agentName)
+			case "events":
+				s.handleAgentSSE(w, r, spaceName, agentName)
 			default:
 				// Handle document path: /spaces/{space}/agent/{agent}/{slug}
 				s.handleAgentDocument(w, r, spaceName, agentName, action)
@@ -755,6 +769,14 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			if len(update.Documents) == 0 && len(existing.Documents) > 0 {
 				update.Documents = existing.Documents
 			}
+			// Preserve protocol registration fields (set via /register and /heartbeat)
+			if update.Registration == nil && existing.Registration != nil {
+				update.Registration = existing.Registration
+			}
+			if update.LastHeartbeat.IsZero() && !existing.LastHeartbeat.IsZero() {
+				update.LastHeartbeat = existing.LastHeartbeat
+			}
+			update.HeartbeatStale = existing.HeartbeatStale
 		}
 		ks.Agents[canonical] = &update
 		ks.UpdatedAt = time.Now().UTC()
@@ -890,6 +912,10 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		"message": messageReq.Message,
 	})
 	s.broadcastSSE(spaceName, "agent_message", string(sseData))
+
+	// Attempt webhook delivery if the agent has registered a callback URL.
+	// Falls back to tmux nudge below if not registered or webhook fails.
+	s.tryWebhookDelivery(spaceName, canonical, messageReq)
 
 	// Mark agent for nudge — the liveness loop will trigger a check-in
 	// when the agent is next idle, so it reads the message via /raw.
@@ -1504,11 +1530,16 @@ func (s *Server) broadcastSSE(space, event, data string) {
 	s.sseMu.Lock()
 	defer s.sseMu.Unlock()
 	for c := range s.sseClients {
-		if c.space == "" || c.space == space {
-			select {
-			case c.ch <- payload:
-			default:
-			}
+		if c.space != "" && c.space != space {
+			continue
+		}
+		// Per-agent clients only receive events that mention their agent name
+		if c.agent != "" && !strings.Contains(strings.ToLower(data), strings.ToLower(c.agent)) {
+			continue
+		}
+		select {
+		case c.ch <- payload:
+		default:
 		}
 	}
 }
@@ -1561,12 +1592,16 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 func (s *Server) livenessLoop() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	heartbeatTicker := time.NewTicker(10 * time.Second)
+	defer heartbeatTicker.Stop()
 	for {
 		select {
 		case <-s.stopLiveness:
 			return
 		case <-ticker.C:
 			s.checkAllSessionLiveness()
+		case <-heartbeatTicker.C:
+			s.checkHeartbeatStaleness()
 		}
 	}
 }

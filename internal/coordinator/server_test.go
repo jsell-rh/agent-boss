@@ -31,7 +31,12 @@ func extractAgentName(url string) string {
 	if len(parts) < 2 {
 		return ""
 	}
-	return strings.TrimRight(parts[1], "/")
+	name := strings.TrimRight(parts[1], "/")
+	// Strip sub-route (e.g. "bot1/register" -> "bot1")
+	if idx := strings.Index(name, "/"); idx >= 0 {
+		name = name[:idx]
+	}
+	return name
 }
 
 func postJSON(t *testing.T, url string, payload any) *http.Response {
@@ -1525,3 +1530,4 @@ func TestIsShellPrompt(t *testing.T) {
 		})
 	}
 }
+
