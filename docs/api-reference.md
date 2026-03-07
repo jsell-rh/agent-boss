@@ -178,9 +178,8 @@ POST /spaces/{space}/agent/{name}/message
 ```json
 {
   "status": "delivered",
-  "id": "1772846468308665376",
-  "agent": "TargetAgent",
-  "delivery": "stored"
+  "messageId": "1772846468308665376",
+  "recipient": "TargetAgent"
 }
 ```
 
@@ -228,7 +227,7 @@ Use `cursor` as `?since=` on the next request to get only new messages.
 POST /spaces/{space}/agent/{name}/message/{id}/ack
 ```
 
-Marks a message as acknowledged. Triggers an `message_acked` SSE event.
+Marks a message as acknowledged. Recorded in the event journal.
 
 **Required headers:**
 - `X-Agent-Name: {name}`
@@ -333,7 +332,7 @@ Receives all events for the given space.
 GET /spaces/{space}/agent/{name}/events
 ```
 
-Receives only events relevant to this specific agent (messages sent to it, its status updates, lifecycle events). This is the recommended delivery mode for registered agents — zero polling overhead, instant delivery.
+Receives only events targeted at this specific agent (messages, status updates, spawn/stop/restart). This is the recommended delivery mode for registered agents — zero polling overhead, instant delivery.
 
 **Query parameters:**
 
@@ -390,8 +389,9 @@ data: {"space":"...","agent":"...","sender":"...","message":"..."}
 | `message` | Message sent to this agent | `space`, `agent`, `sender`, `message` |
 | `agent_updated` | This agent's status updated | `space`, `agent`, `status`, `summary` |
 | `agent_removed` | This agent deleted | `space`, `agent` |
-| `agent_stale` | Heartbeat timeout | `space`, `agent` |
-| `lifecycle` | Spawn/stop/restart | `action`, `agent`, `space` |
+| `agent_spawned` | This agent's tmux session started | agent name (string) |
+| `agent_stopped` | This agent's tmux session stopped | agent name (string) |
+| `agent_restarted` | This agent's tmux session restarted | agent name (string) |
 
 **Event types on space/global stream:**
 
@@ -400,7 +400,9 @@ data: {"space":"...","agent":"...","sender":"...","message":"..."}
 | `agent_updated` | Any agent status update |
 | `agent_removed` | Agent deleted |
 | `agent_message` | Message sent between agents |
-| `agent_stale` | Agent heartbeat timeout |
+| `agent_spawned` | Agent tmux session started |
+| `agent_stopped` | Agent tmux session stopped |
+| `agent_restarted` | Agent tmux session restarted |
 | `space_deleted` | Space deleted |
 | `broadcast_complete` | Check-in broadcast finished |
 | `tmux_liveness` | Tmux session liveness probe (every second) |
@@ -473,10 +475,9 @@ Returns historical status snapshots for the agent.
 
 **Query parameters:**
 
-| Parameter | Description |
-|-----------|-------------|
-| `since` | RFC3339 timestamp — snapshots after this time |
-| `window` | Duration string (e.g., `2h`, `24h`) — snapshots within this window |
+| Parameter | Format | Description |
+|-----------|--------|-------------|
+| `since` | RFC3339 | Only return snapshots after this time |
 
 ### Space History
 
@@ -485,6 +486,13 @@ GET /spaces/{space}/history
 ```
 
 Returns status snapshots for all agents in the space.
+
+**Query parameters:**
+
+| Parameter | Format | Description |
+|-----------|--------|-------------|
+| `since` | RFC3339 | Only return snapshots after this time |
+| `agent` | string | Filter snapshots to a specific agent name |
 
 ---
 
