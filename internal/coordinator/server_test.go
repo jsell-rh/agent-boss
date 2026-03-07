@@ -2074,3 +2074,588 @@ func TestChildrenNotClientSettable(t *testing.T) {
 	}
 }
 
+// ---- Task Management Tests ----
+
+func taskURL(base, space, rest string) string {
+	if rest == "" {
+		return base + "/spaces/" + space + "/tasks"
+	}
+	return base + "/spaces/" + space + "/tasks/" + rest
+}
+
+func postTaskJSON(t *testing.T, url string, payload any, agentName string) *http.Response {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", agentName)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	return resp
+}
+
+func putTaskJSON(t *testing.T, url string, payload any, agentName string) *http.Response {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", agentName)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT %s: %v", url, err)
+	}
+	return resp
+}
+
+func deleteReq(t *testing.T, url, agentName string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if agentName != "" {
+		req.Header.Set("X-Agent-Name", agentName)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE %s: %v", url, err)
+	}
+	return resp
+}
+
+func TestTaskCreate(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := postTaskJSON(t, taskURL(base, "myspace", ""), map[string]any{
+		"title":       "Fix SSE reconnect",
+		"priority":    "high",
+		"assigned_to": "DevAgent",
+		"labels":      []string{"backend"},
+	}, "ManagerAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+
+	if task.ID != "TASK-001" {
+		t.Errorf("expected TASK-001, got %q", task.ID)
+	}
+	if task.Status != TaskStatusBacklog {
+		t.Errorf("expected backlog status, got %q", task.Status)
+	}
+	if task.CreatedBy != "ManagerAgent" {
+		t.Errorf("created_by = %q, want ManagerAgent", task.CreatedBy)
+	}
+	if task.Priority != "high" {
+		t.Errorf("priority = %q, want high", task.Priority)
+	}
+	if task.AssignedTo != "DevAgent" {
+		t.Errorf("assigned_to = %q, want DevAgent", task.AssignedTo)
+	}
+}
+
+func TestTaskCreateMissingTitle(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := postTaskJSON(t, taskURL(base, "myspace", ""), map[string]any{
+		"priority": "high",
+	}, "ManagerAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestTaskCreateMissingAgentName(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	data, _ := json.Marshal(map[string]any{"title": "Some task"})
+	req, _ := http.NewRequest(http.MethodPost, taskURL(base, "myspace", ""), strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestTaskListEmpty(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	code, body := getBody(t, taskURL(base, "emptyspace", ""))
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 0 {
+		t.Errorf("expected 0 tasks, got %d", result.Total)
+	}
+}
+
+func TestTaskListWithTasks(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "listspace"
+
+	// Create 3 tasks
+	for i, title := range []string{"Task A", "Task B", "Task C"} {
+		resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": title, "priority": "low"}, "Creator")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create task %d: got %d", i, resp.StatusCode)
+		}
+	}
+
+	code, body := getBody(t, taskURL(base, space, ""))
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 3 {
+		t.Errorf("expected 3 tasks, got %d", result.Total)
+	}
+}
+
+func TestTaskListFilterByStatus(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "filterspace"
+
+	// Create task then move it
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Movable"}, "Mgr")
+	resp.Body.Close()
+	postTaskJSON(t, taskURL(base, space, "TASK-001/move"), map[string]any{"status": "in_progress"}, "Mgr").Body.Close()
+
+	// Filter by in_progress
+	code, body := getBody(t, taskURL(base, space, "")+"?status=in_progress")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 1 || result.Tasks[0].Status != TaskStatusInProgress {
+		t.Errorf("expected 1 in_progress task, got %+v", result)
+	}
+
+	// Filter by backlog — should be 0 now
+	code, body = getBody(t, taskURL(base, space, "")+"?status=backlog")
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 0 {
+		t.Errorf("expected 0 backlog tasks, got %d", result.Total)
+	}
+}
+
+func TestTaskListFilterByAssignee(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "assignspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "For Alice", "assigned_to": "Alice"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "For Bob", "assigned_to": "Bob"}, "Mgr").Body.Close()
+
+	code, body := getBody(t, taskURL(base, space, "")+"?assigned_to=Alice")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 1 || result.Tasks[0].AssignedTo != "Alice" {
+		t.Errorf("expected 1 Alice task, got %+v", result)
+	}
+}
+
+func TestTaskListFilterByLabel(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "labelspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Backend task", "labels": []string{"backend", "api"}}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Frontend task", "labels": []string{"frontend"}}, "Mgr").Body.Close()
+
+	code, body := getBody(t, taskURL(base, space, "")+"?label=backend")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 1 {
+		t.Errorf("expected 1 backend task, got %d", result.Total)
+	}
+}
+
+func TestTaskListFilterByPriority(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "priospace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Urgent one", "priority": "urgent"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Low one", "priority": "low"}, "Mgr").Body.Close()
+
+	code, body := getBody(t, taskURL(base, space, "")+"?priority=urgent")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var result struct {
+		Tasks []Task `json:"tasks"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal([]byte(body), &result)
+	if result.Total != 1 || result.Tasks[0].Priority != "urgent" {
+		t.Errorf("expected 1 urgent task, got %+v", result)
+	}
+}
+
+func TestTaskGet(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "getspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Gettable task"}, "Mgr").Body.Close()
+
+	code, body := getBody(t, taskURL(base, space, "TASK-001"))
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", code, body)
+	}
+	var task Task
+	json.Unmarshal([]byte(body), &task)
+	if task.ID != "TASK-001" {
+		t.Errorf("expected TASK-001, got %q", task.ID)
+	}
+	if task.Title != "Gettable task" {
+		t.Errorf("expected 'Gettable task', got %q", task.Title)
+	}
+}
+
+func TestTaskGetNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	code, _ := getBody(t, taskURL(base, "myspace", "TASK-999"))
+	if code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", code)
+	}
+}
+
+func TestTaskUpdate(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "updatespace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Original title"}, "Mgr").Body.Close()
+
+	newTitle := "Updated title"
+	resp := putTaskJSON(t, taskURL(base, space, "TASK-001"), map[string]any{
+		"title":    newTitle,
+		"priority": "high",
+	}, "Mgr")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+	if task.Title != newTitle {
+		t.Errorf("title = %q, want %q", task.Title, newTitle)
+	}
+	if task.Priority != "high" {
+		t.Errorf("priority = %q, want high", task.Priority)
+	}
+}
+
+func TestTaskDelete(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "delspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "To delete"}, "Mgr").Body.Close()
+
+	resp := deleteReq(t, taskURL(base, space, "TASK-001"), "Mgr")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+
+	// Verify gone
+	code, _ := getBody(t, taskURL(base, space, "TASK-001"))
+	if code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d", code)
+	}
+}
+
+func TestTaskMove(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "movespace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Movable"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/move"), map[string]any{"status": "in_progress"}, "DevAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+	if task.Status != TaskStatusInProgress {
+		t.Errorf("status = %q, want in_progress", task.Status)
+	}
+}
+
+func TestTaskMoveInvalidStatus(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "movevalspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Task"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/move"), map[string]any{"status": "nonexistent"}, "DevAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestTaskAssign(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "assigntestspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Assignable"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/assign"), map[string]any{"assigned_to": "WorkerBot"}, "Mgr")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+	if task.AssignedTo != "WorkerBot" {
+		t.Errorf("assigned_to = %q, want WorkerBot", task.AssignedTo)
+	}
+}
+
+func TestTaskComment(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "commentspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Commentable"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/comment"), map[string]any{"body": "Started investigation."}, "DevAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+	if len(task.Comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(task.Comments))
+	}
+	if task.Comments[0].Author != "DevAgent" {
+		t.Errorf("comment author = %q, want DevAgent", task.Comments[0].Author)
+	}
+	if task.Comments[0].Body != "Started investigation." {
+		t.Errorf("comment body = %q", task.Comments[0].Body)
+	}
+}
+
+func TestTaskCommentEmptyBody(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "commentvalspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Task"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/comment"), map[string]any{"body": "  "}, "DevAgent")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty comment, got %d", resp.StatusCode)
+	}
+}
+
+func TestTaskSSEBroadcast(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "ssespace"
+
+	// Subscribe to SSE before creating the task
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/spaces/"+space+"/events", nil)
+	sseResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("SSE connect: %v", err)
+	}
+	defer sseResp.Body.Close()
+
+	// Create a task — should trigger SSE task_updated event
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "SSE test task"}, "Mgr").Body.Close()
+
+	// Read SSE stream until we see task_updated or timeout
+	buf := make([]byte, 4096)
+	sseResp.Body.Read(buf)
+	got := string(buf)
+	if !strings.Contains(got, "task_updated") {
+		t.Errorf("expected task_updated SSE event, got: %q", got)
+	}
+}
+
+func TestTaskJournalReplay(t *testing.T) {
+	dataDir := t.TempDir()
+	space := "replayspace"
+
+	// First server: create tasks and mutate them
+	srv1 := NewServer(":0", dataDir)
+	if err := srv1.Start(); err != nil {
+		t.Fatalf("start srv1: %v", err)
+	}
+	base1 := serverBaseURL(srv1)
+
+	postTaskJSON(t, taskURL(base1, space, ""), map[string]any{"title": "Replay task", "priority": "high"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base1, space, "TASK-001/move"), map[string]any{"status": "in_progress"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base1, space, "TASK-001/assign"), map[string]any{"assigned_to": "Worker"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base1, space, "TASK-001/comment"), map[string]any{"body": "Working on it."}, "Worker").Body.Close()
+	srv1.Stop()
+
+	// Second server: replay from journal
+	srv2 := NewServer(":0", dataDir)
+	if err := srv2.Start(); err != nil {
+		t.Fatalf("start srv2: %v", err)
+	}
+	defer srv2.Stop()
+	base2 := serverBaseURL(srv2)
+
+	code, body := getBody(t, taskURL(base2, space, "TASK-001"))
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 after replay, got %d; body: %s", code, body)
+	}
+	var task Task
+	json.Unmarshal([]byte(body), &task)
+	if task.Status != TaskStatusInProgress {
+		t.Errorf("replayed status = %q, want in_progress", task.Status)
+	}
+	if task.AssignedTo != "Worker" {
+		t.Errorf("replayed assigned_to = %q, want Worker", task.AssignedTo)
+	}
+	if len(task.Comments) != 1 {
+		t.Errorf("replayed comments = %d, want 1", len(task.Comments))
+	}
+}
+
+func TestTaskSequentialIDs(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "idspace"
+
+	var ids []string
+	for i := 0; i < 5; i++ {
+		resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Task"}, "Mgr")
+		var task Task
+		json.NewDecoder(resp.Body).Decode(&task)
+		resp.Body.Close()
+		ids = append(ids, task.ID)
+	}
+
+	expected := []string{"TASK-001", "TASK-002", "TASK-003", "TASK-004", "TASK-005"}
+	for i, id := range ids {
+		if id != expected[i] {
+			t.Errorf("task[%d] ID = %q, want %q", i, id, expected[i])
+		}
+	}
+}
+
+func TestTaskUpdateNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := putTaskJSON(t, taskURL(base, "myspace", "TASK-999"), map[string]any{"title": "Ghost"}, "Mgr")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestTaskDeleteNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := deleteReq(t, taskURL(base, "myspace", "TASK-999"), "Mgr")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
