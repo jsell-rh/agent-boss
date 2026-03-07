@@ -27,6 +27,7 @@ var protocolTemplate string
 type sseClient struct {
 	ch    chan []byte
 	space string
+	agent string // if non-empty, only receive events mentioning this agent
 }
 
 type Server struct {
@@ -441,6 +442,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleAgentHeartbeat(w, r, spaceName, agentName)
 			case "messages":
 				s.handleAgentMessages(w, r, spaceName, agentName)
+			case "events":
+				s.handleAgentSSE(w, r, spaceName, agentName)
 			default:
 				// Handle document path: /spaces/{space}/agent/{agent}/{slug}
 				s.handleAgentDocument(w, r, spaceName, agentName, action)
@@ -1527,11 +1530,16 @@ func (s *Server) broadcastSSE(space, event, data string) {
 	s.sseMu.Lock()
 	defer s.sseMu.Unlock()
 	for c := range s.sseClients {
-		if c.space == "" || c.space == space {
-			select {
-			case c.ch <- payload:
-			default:
-			}
+		if c.space != "" && c.space != space {
+			continue
+		}
+		// Per-agent clients only receive events that mention their agent name
+		if c.agent != "" && !strings.Contains(strings.ToLower(data), strings.ToLower(c.agent)) {
+			continue
+		}
+		select {
+		case c.ch <- payload:
+		default:
 		}
 	}
 }

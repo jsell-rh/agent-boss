@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -344,5 +345,92 @@ func TestAgentMessagesHaveCursorField(t *testing.T) {
 	msgs := result["messages"].([]any)
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+// TestAgentMessagesUnknownSpace verifies that /messages returns 404 for a
+// space that does not exist (as opposed to an unknown agent in a known space
+// which returns 200 with empty messages).
+func TestAgentMessagesUnknownSpace(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp, err := http.Get(base + "/spaces/nonexistent-space/agent/someone/messages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 404 for unknown space, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+// TestAgentSSEEndpoint verifies the per-agent SSE stream connects and delivers
+// events targeted at the subscribed agent.
+func TestAgentSSEEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create agent
+	postJSONWithCaller(t, base+"/spaces/test/agent/StreamAgent", "StreamAgent", map[string]any{
+		"status":  "active",
+		"summary": "StreamAgent: ready",
+	})
+
+	// Connect to the per-agent SSE stream with a timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		base+"/spaces/test/agent/StreamAgent/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect to agent SSE: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from agent SSE, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Errorf("expected text/event-stream, got %q", ct)
+	}
+
+	// Read the initial comment that confirms connection
+	buf := make([]byte, 256)
+	n, _ := resp.Body.Read(buf)
+	initial := string(buf[:n])
+	if !strings.Contains(initial, "connected to agent stream") {
+		t.Errorf("expected connection confirmation in initial data, got: %q", initial)
+	}
+
+	// Subscribe to events from body in background
+	events := make(chan string, 2)
+	go func() {
+		buf2 := make([]byte, 1024)
+		n2, _ := resp.Body.Read(buf2)
+		if n2 > 0 {
+			events <- string(buf2[:n2])
+		}
+	}()
+
+	// Small delay to ensure goroutine is reading
+	time.Sleep(50 * time.Millisecond)
+
+	// Send a message to the agent — should trigger an SSE event
+	postJSONWithCaller(t, base+"/spaces/test/agent/StreamAgent/message", "Boss", map[string]any{
+		"message": "hello StreamAgent",
+	})
+
+	select {
+	case event := <-events:
+		if !strings.Contains(event, "agent_message") {
+			t.Errorf("expected agent_message event type, got: %q", event)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no SSE event received for per-agent stream within 2 seconds")
 	}
 }

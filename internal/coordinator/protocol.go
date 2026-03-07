@@ -388,3 +388,57 @@ func (s *Server) GetRegistration(spaceName, agentName string) (*AgentRegistratio
 	cp := *rec
 	return &cp, true
 }
+
+// handleAgentSSE handles GET /spaces/{space}/agent/{name}/events.
+// It establishes an SSE stream that delivers only events relevant to this
+// specific agent (messages sent to it, its status changes, stale events).
+// This lets agents subscribe for push notification without polling /raw.
+func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve canonical agent name if space exists
+	canonical := agentName
+	if ks, ok := s.getSpace(spaceName); ok {
+		canonical = resolveAgentName(ks, agentName)
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
+
+	// Send an initial comment to confirm the stream is open
+	fmt.Fprintf(w, ": connected to agent stream %s/%s\n\n", spaceName, canonical)
+	flusher.Flush()
+
+	client := &sseClient{
+		ch:    make(chan []byte, 64),
+		space: spaceName,
+		agent: canonical,
+	}
+	s.sseMu.Lock()
+	s.sseClients[client] = struct{}{}
+	s.sseMu.Unlock()
+
+	defer func() {
+		s.sseMu.Lock()
+		delete(s.sseClients, client)
+		s.sseMu.Unlock()
+	}()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-client.ch:
+			w.Write(msg)
+			flusher.Flush()
+		}
+	}
+}
