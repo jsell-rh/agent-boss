@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { SpaceSummary, KnowledgeSpace, TmuxAgentStatus, AgentUpdate } from '@/types'
+import type { SpaceSummary, KnowledgeSpace, TmuxAgentStatus, AgentUpdate, HierarchyTree } from '@/types'
 import { api } from '@/api/client'
 import { useSSE } from '@/composables/useSSE'
 
@@ -37,6 +37,7 @@ const router = useRouter()
 const spaces = ref<SpaceSummary[]>([])
 const currentSpace = ref<KnowledgeSpace | null>(null)
 const tmuxStatus = ref<Record<string, TmuxAgentStatus>>({})
+const hierarchyTree = ref<HierarchyTree | null>(null)
 
 const loading = ref(true)
 const spaceLoading = ref(false)
@@ -137,6 +138,14 @@ async function loadSpace(name: string, showLoader = false) {
   }
 }
 
+async function loadHierarchy(space: string) {
+  try {
+    hierarchyTree.value = await api.fetchHierarchy(space)
+  } catch {
+    hierarchyTree.value = null
+  }
+}
+
 async function loadTmuxStatus(space: string) {
   try {
     const raw = await api.fetchTmuxStatus(space)
@@ -172,14 +181,17 @@ watch(
   (space, oldSpace) => {
     if (space && space !== oldSpace) {
       currentSpace.value = null  // clear stale data immediately
+      hierarchyTree.value = null
       loadSpace(space, true)
       loadTmuxStatus(space)
+      loadHierarchy(space)
       // Reconnect SSE to this space
       sse.disconnect()
       sse.connect(space)
     } else if (!space) {
       currentSpace.value = null
       tmuxStatus.value = {}
+      hierarchyTree.value = null
       sse.disconnect()
       sse.connect() // global SSE
     }
@@ -436,6 +448,8 @@ function setupSSE() {
         // New agent in this space — fetch immediately so it appears without delay
         loadSpace(data.space)
       }
+      // Refresh hierarchy in case parent/children changed
+      loadHierarchy(data.space)
     }
     // Update sidebar attention counts — debounced to avoid per-keystroke fetches
     scheduleSpacesReload()
@@ -870,6 +884,7 @@ onUnmounted(() => {
             :space="currentSpace"
             :tmux-status="tmuxStatus"
             :broadcasting="broadcasting"
+            :hierarchy="hierarchyTree"
             @select-agent="handleSelectAgent"
             @broadcast="handleBroadcastSpace"
             @delete-agent="handleDeleteAgent"

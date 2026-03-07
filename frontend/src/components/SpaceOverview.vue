@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KnowledgeSpace, TmuxAgentStatus } from '@/types'
+import type { KnowledgeSpace, TmuxAgentStatus, HierarchyTree } from '@/types'
 import { ref, computed, nextTick, watch } from 'vue'
 import { useTime } from '@/composables/useTime'
 import { Card, CardContent } from '@/components/ui/card'
@@ -46,11 +46,13 @@ import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import GanttTimeline from './GanttTimeline.vue'
+import HierarchyView from './HierarchyView.vue'
 
 const props = defineProps<{
   space: KnowledgeSpace
   tmuxStatus: Record<string, TmuxAgentStatus> | null
   broadcasting?: boolean
+  hierarchy?: HierarchyTree | null
 }>()
 
 const emit = defineEmits<{
@@ -352,6 +354,7 @@ const activeSections = computed(() => [
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="hierarchy">Hierarchy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="agents">
@@ -461,6 +464,32 @@ const activeSections = computed(() => [
                       <p v-if="agent.next_steps" class="text-xs font-text text-muted-foreground leading-snug line-clamp-2 italic">
                         <span class="not-italic font-medium text-foreground/70">Next:</span> {{ agent.next_steps }}
                       </p>
+
+                      <!-- Row 2c: Hierarchy badges (parent / role) -->
+                      <div v-if="agent.parent || agent.role" class="flex items-center gap-1.5 flex-wrap">
+                        <Tooltip v-if="agent.parent">
+                          <TooltipTrigger as-child>
+                            <span class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground cursor-default shrink-0">
+                              ↑ {{ agent.parent }}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Reports to {{ agent.parent }}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip v-if="agent.children?.length">
+                          <TooltipTrigger as-child>
+                            <span class="inline-flex items-center gap-1 bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground cursor-default shrink-0">
+                              ↓ {{ agent.children!.join(', ') }}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Manages: {{ agent.children!.join(', ') }}</TooltipContent>
+                        </Tooltip>
+                        <span
+                          v-if="agent.role"
+                          class="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded text-[10px] text-purple-600 dark:text-purple-400 shrink-0"
+                        >
+                          {{ agent.role }}
+                        </span>
+                      </div>
 
                       <!-- Row 3: Metadata — badges on left, timestamp on right -->
                       <div class="flex items-end justify-between gap-2 text-[11px] text-muted-foreground">
@@ -712,6 +741,18 @@ const activeSections = computed(() => [
 
         <TabsContent value="timeline">
           <GanttTimeline :space-name="space.name" />
+        </TabsContent>
+
+        <TabsContent value="hierarchy">
+          <HierarchyView
+            v-if="hierarchy"
+            :tree="hierarchy"
+            :agents="space.agents"
+            @select-agent="emit('select-agent', $event)"
+          />
+          <div v-else class="flex flex-col items-center justify-center py-16 text-center">
+            <p class="text-sm text-muted-foreground">Loading hierarchy…</p>
+          </div>
         </TabsContent>
       </Tabs>
 

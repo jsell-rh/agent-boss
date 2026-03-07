@@ -51,6 +51,25 @@ export interface AgentUpdate {
   updated_at: string
   stale?: boolean
   inferred_status?: string
+  // Hierarchy fields (optional — omitted for flat agents)
+  parent?: string
+  children?: string[]
+  role?: string
+}
+
+// GET /spaces/{space}/hierarchy response
+export interface HierarchyNode {
+  agent: string
+  parent?: string
+  children: string[]
+  depth: number
+  role?: string
+}
+
+export interface HierarchyTree {
+  space: string
+  roots: string[]
+  nodes: Record<string, HierarchyNode>
 }
 
 export interface KnowledgeSpace {

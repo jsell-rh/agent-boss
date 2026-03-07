@@ -7,6 +7,7 @@ import type {
   Interrupt,
   StatusSnapshot,
   IntrospectResponse,
+  HierarchyTree,
 } from '@/types'
 
 class ApiClient {
@@ -92,6 +93,14 @@ class ApiClient {
   fetchMetrics(space: string): Promise<InterruptMetrics> {
     return this.request<InterruptMetrics>(
       `/spaces/${encodeURIComponent(space)}/factory/metrics`,
+    )
+  }
+
+  // --------------- Hierarchy ---------------
+
+  fetchHierarchy(space: string): Promise<HierarchyTree> {
+    return this.request<HierarchyTree>(
+      `/spaces/${encodeURIComponent(space)}/hierarchy`,
     )
   }
 
