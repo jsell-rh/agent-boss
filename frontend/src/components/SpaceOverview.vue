@@ -129,6 +129,15 @@ function refreshInbox() {
 
 defineExpose({ switchToInbox, refreshInbox })
 
+function prLink(agent: { pr?: string; repo_url?: string }): string | null {
+  if (!agent.pr) return null
+  if (agent.pr.startsWith('http')) return agent.pr
+  if (!agent.repo_url) return null
+  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+  const prNum = agent.pr.replace(/^#/, '')
+  return `${repoBase}/pull/${prNum}`
+}
+
 const sortedAgents = computed(() => {
   return Object.entries(props.space.agents).sort(([, a], [, b]) => {
     // Agents needing attention first (blockers > questions), then by name
@@ -413,6 +422,7 @@ const activeSections = computed(() => [
                             :agent="agent"
                             :space-name="space.name"
                             @select-agent="emit('select-agent', $event)"
+                          @message-agent="openMessageDialog($event)"
                           >
                             <div class="flex items-center gap-2.5 min-w-0" @click.stop>
                               <div class="relative inline-block shrink-0">
@@ -534,16 +544,16 @@ const activeSections = computed(() => [
                               </TooltipContent>
                             </Tooltip>
                             <a
-                              v-if="agent.pr"
-                              :href="agent.pr"
+                              v-if="agent.pr && prLink(agent)"
+                              :href="prLink(agent)!"
                               target="_blank"
                               rel="noopener noreferrer"
                               class="inline-flex items-center gap-0.5 text-primary/70 hover:text-primary transition-colors shrink-0"
-                              :title="agent.pr"
+                              :title="prLink(agent)!"
                               @click.stop
                             >
                               <ExternalLink class="size-3" />
-                              PR
+                              {{ agent.pr }}
                             </a>
                             <!-- Items count chip: reporting depth at a glance -->
                             <Tooltip v-if="agent.items?.length">
@@ -673,6 +683,7 @@ const activeSections = computed(() => [
                     :agent="agent"
                     :space-name="space.name"
                     @select-agent="emit('select-agent', $event)"
+                    @message-agent="openMessageDialog($event)"
                   >
                     <div class="flex items-center gap-2 shrink-0" @click.stop>
                       <div class="relative inline-block">

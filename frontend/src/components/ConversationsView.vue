@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, Pencil, SendHorizontal } from 'lucide-vue-next'
 import { renderMarkdown } from '@/lib/markdown'
 import { relativeTime } from '@/composables/useTime'
+import api from '@/api/client'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -142,6 +151,50 @@ function goToAgentDetail(agentName: string) {
   slideoverAgentName.value = null
   router.push(`/${encodeURIComponent(props.space.name)}/${encodeURIComponent(agentName)}`)
 }
+
+function prLink(agent: { pr?: string; repo_url?: string }): string | null {
+  if (!agent.pr) return null
+  if (agent.pr.startsWith('http')) return agent.pr
+  if (!agent.repo_url) return null
+  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+  const prNum = agent.pr.replace(/^#/, '')
+  return `${repoBase}/pull/${prNum}`
+}
+
+// ── Compose new message ─────────────────────────────────────────────
+const composeOpen = ref(false)
+const composeAgent = ref('')
+const composeMessage = ref('')
+const composeSending = ref(false)
+const composeSelectRef = ref<HTMLSelectElement | null>(null)
+
+const allAgentNames = computed(() => Object.keys(props.space.agents).sort())
+
+function openCompose(preselect?: string) {
+  composeAgent.value = preselect ?? allAgentNames.value[0] ?? ''
+  composeMessage.value = ''
+  composeOpen.value = true
+  nextTick(() => composeSelectRef.value?.focus())
+}
+
+async function sendCompose() {
+  const text = composeMessage.value.trim()
+  if (!text || !composeAgent.value) return
+  composeSending.value = true
+  try {
+    await api.sendMessage(props.space.name, composeAgent.value, text, 'boss')
+    composeOpen.value = false
+    composeMessage.value = ''
+    // Select the new/existing conversation
+    const sorted = [composeAgent.value, 'boss'].sort()
+    selectedKey.value = sorted.join('\u2194')
+  } catch (_) {
+    // message still delivered; close anyway
+    composeOpen.value = false
+  } finally {
+    composeSending.value = false
+  }
+}
 </script>
 
 <template>
@@ -151,8 +204,8 @@ function goToAgentDetail(agentName: string) {
       class="w-72 shrink-0 border-r flex flex-col min-h-0"
       aria-label="Conversations"
     >
-      <!-- Search -->
-      <div class="p-3 border-b shrink-0">
+      <!-- Search + Compose -->
+      <div class="p-3 border-b shrink-0 space-y-2">
         <div class="relative">
           <Search
             class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none"
@@ -166,6 +219,16 @@ function goToAgentDetail(agentName: string) {
             aria-label="Filter conversations by agent name"
           />
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          class="w-full h-8 text-xs gap-1.5 justify-start"
+          aria-label="Compose new message"
+          @click="openCompose()"
+        >
+          <Pencil class="size-3.5" />
+          New Message
+        </Button>
       </div>
 
       <!-- List -->
@@ -195,6 +258,7 @@ function goToAgentDetail(agentName: string) {
                   :agent-name="conv.participants[0]"
                   :agent="space.agents[conv.participants[0]]"
                   @select-agent="goToAgentDetail($event)"
+                  @message-agent="openCompose($event)"
                 >
                   <button
                     class="absolute top-0 left-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -208,6 +272,7 @@ function goToAgentDetail(agentName: string) {
                   :agent-name="conv.participants[1]"
                   :agent="space.agents[conv.participants[1]]"
                   @select-agent="goToAgentDetail($event)"
+                  @message-agent="openCompose($event)"
                 >
                   <button
                     class="absolute bottom-0 right-0 rounded-full ring-2 ring-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -306,6 +371,7 @@ function goToAgentDetail(agentName: string) {
                   :agent-name="msg.sender"
                   :agent="space.agents[msg.sender]"
                   @select-agent="goToAgentDetail($event)"
+                  @message-agent="openCompose($event)"
                 >
                   <button
                     class="shrink-0 mt-0.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -321,6 +387,7 @@ function goToAgentDetail(agentName: string) {
                       :agent-name="msg.sender"
                       :agent="space.agents[msg.sender]"
                       @select-agent="goToAgentDetail($event)"
+                  @message-agent="openCompose($event)"
                     >
                       <button
                         class="text-xs font-semibold hover:text-primary transition-colors hover:underline cursor-pointer"
@@ -333,6 +400,7 @@ function goToAgentDetail(agentName: string) {
                         :agent-name="msg.recipient"
                         :agent="space.agents[msg.recipient]"
                         @select-agent="goToAgentDetail($event)"
+                  @message-agent="openCompose($event)"
                       >
                         <button
                           class="hover:text-foreground transition-colors hover:underline cursor-pointer"
@@ -374,6 +442,50 @@ function goToAgentDetail(agentName: string) {
         </div>
       </div>
     </div>
+
+    <!-- Compose new message dialog -->
+    <Dialog v-model:open="composeOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New Message</DialogTitle>
+          <DialogDescription>Send a message from boss to an agent.</DialogDescription>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="sendCompose">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-muted-foreground" for="compose-agent">To</label>
+            <select
+              id="compose-agent"
+              ref="composeSelectRef"
+              v-model="composeAgent"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option v-for="name in allAgentNames" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-muted-foreground" for="compose-msg">Message</label>
+            <Textarea
+              id="compose-msg"
+              v-model="composeMessage"
+              placeholder="Type your message…"
+              :rows="4"
+              @keydown.ctrl.enter.prevent="sendCompose"
+              @keydown.escape="composeOpen = false"
+            />
+            <p class="text-xs text-muted-foreground">Ctrl+Enter to send</p>
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            class="self-end gap-1.5"
+            :disabled="!composeMessage.trim() || !composeAgent || composeSending"
+          >
+            <SendHorizontal class="size-3.5" />
+            {{ composeSending ? 'Sending…' : 'Send' }}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
 
     <!-- Agent detail slideover -->
     <Transition
@@ -436,8 +548,8 @@ function goToAgentDetail(agentName: string) {
                 <GitBranch class="size-3" />{{ slideoverAgent.branch }}
               </span>
               <a
-                v-if="slideoverAgent.pr"
-                :href="slideoverAgent.pr"
+                v-if="slideoverAgent.pr && prLink(slideoverAgent)"
+                :href="prLink(slideoverAgent)!"
                 target="_blank"
                 rel="noopener"
                 class="text-primary hover:underline font-mono"

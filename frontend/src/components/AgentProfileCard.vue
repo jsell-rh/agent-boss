@@ -6,7 +6,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import StatusBadge from './StatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { GitBranch, ExternalLink, Clock, ArrowUpRight } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare } from 'lucide-vue-next'
 
 const props = defineProps<{
   agentName: string
@@ -16,7 +16,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'select-agent': [name: string]
+  'message-agent': [name: string]
 }>()
+
+function prLink(agent: { pr?: string; repo_url?: string }): string | null {
+  if (!agent.pr) return null
+  if (agent.pr.startsWith('http')) return agent.pr
+  if (!agent.repo_url) return null
+  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+  const prNum = agent.pr.replace(/^#/, '')
+  return `${repoBase}/pull/${prNum}`
+}
 
 const { relativeTime } = useTime()
 
@@ -157,15 +167,15 @@ const summaryText = computed(() => {
               {{ agent.branch }}
             </span>
             <a
-              v-if="agent.pr"
-              :href="agent.pr"
+              v-if="agent.pr && prLink(agent)"
+              :href="prLink(agent)!"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-0.5 text-[10px] text-primary/70 hover:text-primary transition-colors"
               @click.stop
             >
               <ExternalLink class="size-2.5" />
-              PR
+              {{ agent.pr }}
             </a>
           </div>
 
@@ -181,16 +191,25 @@ const summaryText = computed(() => {
           <p class="text-xs text-muted-foreground italic">No data available</p>
         </div>
 
-        <!-- Footer: View Details -->
-        <div class="border-t px-3 py-2">
+        <!-- Footer: View Details + Message -->
+        <div class="border-t px-3 py-2 flex gap-1">
           <Button
             variant="ghost"
             size="sm"
-            class="w-full h-7 text-xs justify-start gap-1.5 text-primary hover:text-primary"
+            class="flex-1 h-7 text-xs justify-start gap-1.5 text-primary hover:text-primary"
             @click.stop="goToAgent"
           >
             <ArrowUpRight class="size-3" />
             View details
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 text-xs gap-1.5"
+            @click.stop="emit('message-agent', agentName)"
+          >
+            <MessageSquare class="size-3" />
+            Message
           </Button>
         </div>
       </div>

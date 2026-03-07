@@ -33,6 +33,15 @@ import api from '@/api/client'
 
 const router = useRouter()
 
+function prLink(agent: { pr?: string; repo_url?: string }): string | null {
+  if (!agent.pr) return null
+  if (agent.pr.startsWith('http')) return agent.pr
+  if (!agent.repo_url) return null
+  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+  const prNum = agent.pr.replace(/^#/, '')
+  return `${repoBase}/pull/${prNum}`
+}
+
 const props = defineProps<{
   agent: AgentUpdate
   agentName: string
@@ -330,8 +339,8 @@ onUnmounted(() => {
             <span v-if="agent.phase" :title="`Current phase: ${agent.phase}`">Phase: {{ agent.phase }}</span>
             <span v-if="agent.branch" class="font-mono text-xs bg-muted px-1.5 py-0.5 rounded" :title="`Git branch: ${agent.branch}`">{{ agent.branch }}</span>
             <a
-              v-if="agent.pr"
-              :href="agent.pr"
+              v-if="agent.pr && prLink(agent)"
+              :href="prLink(agent)!"
               target="_blank"
               rel="noopener"
               class="text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring font-mono text-xs"
