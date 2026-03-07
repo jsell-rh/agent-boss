@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { SpaceSummary, KnowledgeSpace, TmuxAgentStatus, AgentUpdate, HierarchyTree } from '@/types'
+import type { SpaceSummary, KnowledgeSpace, TmuxAgentStatus, AgentUpdate, HierarchyTree, HierarchyNode } from '@/types'
 import { api } from '@/api/client'
 import { useSSE } from '@/composables/useSSE'
 
@@ -94,6 +94,59 @@ const selectedAgentTmux = computed<TmuxAgentStatus | null>(() => {
 const currentAgentNames = computed<string[]>(() =>
   Object.keys(currentSpace.value?.agents ?? {}),
 )
+
+// Build hierarchy from agent parent fields so done/idle agents are included.
+// Merges API hierarchy data (role) with the complete agent roster.
+const effectiveHierarchy = computed<HierarchyTree | null>(() => {
+  if (!currentSpace.value) return hierarchyTree.value
+  const agents = currentSpace.value.agents
+  const agentNames = Object.keys(agents)
+  if (!agentNames.some(n => agents[n]?.parent)) return hierarchyTree.value
+
+  // Build children map from agent.parent fields
+  const childrenOf: Record<string, string[]> = {}
+  for (const name of agentNames) {
+    childrenOf[name] = childrenOf[name] ?? []
+    const parentName = agents[name]!.parent
+    if (parentName && agentNames.includes(parentName)) {
+      childrenOf[parentName] = childrenOf[parentName] ?? []
+      childrenOf[parentName].push(name)
+    }
+  }
+
+  // Build nodes
+  const nodes: Record<string, HierarchyNode> = {}
+  for (const name of agentNames) {
+    const agent = agents[name]!
+    const apiNode = hierarchyTree.value?.nodes[name]
+    nodes[name] = {
+      agent: name,
+      parent: agent.parent ?? apiNode?.parent,
+      children: childrenOf[name] ?? [],
+      depth: 0, // computed below
+      role: agent.role ?? apiNode?.role,
+    }
+  }
+
+  // Compute depths via BFS from roots
+  const roots = agentNames.filter(n => {
+    const parent = nodes[n]?.parent
+    return !parent || !agentNames.includes(parent)
+  })
+  const queue: { name: string; depth: number }[] = roots.map(r => ({ name: r, depth: 0 }))
+  const visited = new Set<string>()
+  while (queue.length > 0) {
+    const { name, depth } = queue.shift()!
+    if (visited.has(name) || !nodes[name]) continue
+    visited.add(name)
+    nodes[name]!.depth = depth
+    for (const child of nodes[name]!.children) {
+      queue.push({ name: child, depth: depth + 1 })
+    }
+  }
+
+  return { space: currentSpace.value.name, roots, nodes }
+})
 
 // ── Error feedback ────────────────────────────────────────────────
 function showError(msg: string) {
@@ -255,6 +308,7 @@ async function handleDismissQuestion(index: number) {
   try {
     await api.dismissItem(selectedSpace.value, selectedAgent.value, index, 'question')
     await loadSpace(selectedSpace.value)
+    spaceOverviewRef.value?.refreshInbox()
     showStatus('Question dismissed')
   } catch (err) {
     console.error('Dismiss question failed:', err)
@@ -267,6 +321,7 @@ async function handleDismissBlocker(index: number) {
   try {
     await api.dismissItem(selectedSpace.value, selectedAgent.value, index, 'blocker')
     await loadSpace(selectedSpace.value)
+    spaceOverviewRef.value?.refreshInbox()
     showStatus('Blocker dismissed')
   } catch (err) {
     console.error('Dismiss blocker failed:', err)
@@ -379,6 +434,7 @@ async function handleReplyToQuestion(agentName: string, questionIndex: number, q
     await api.broadcastAgent(selectedSpace.value, agentName)
     // 4. Reload space data
     await loadSpace(selectedSpace.value)
+    spaceOverviewRef.value?.refreshInbox()
     showStatus(`Reply sent to ${agentName} — nudge triggered`)
   } catch (err) {
     console.error('Reply to question failed:', err)
@@ -397,6 +453,7 @@ async function handleReplyToBlocker(agentName: string, blockerIndex: number, blo
     await api.broadcastAgent(selectedSpace.value, agentName)
     // 4. Reload space data
     await loadSpace(selectedSpace.value)
+    spaceOverviewRef.value?.refreshInbox()
     showStatus(`Reply sent to ${agentName} — nudge triggered`)
   } catch (err) {
     console.error('Reply to blocker failed:', err)
@@ -885,7 +942,7 @@ onUnmounted(() => {
             :space="currentSpace"
             :tmux-status="tmuxStatus"
             :broadcasting="broadcasting"
-            :hierarchy="hierarchyTree"
+            :hierarchy="effectiveHierarchy"
             @select-agent="handleSelectAgent"
             @broadcast="handleBroadcastSpace"
             @delete-agent="handleDeleteAgent"

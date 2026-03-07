@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { Network, ArrowDown, Users } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentAvatar from './AgentAvatar.vue'
+import AgentProfileCard from './AgentProfileCard.vue'
 import { Badge } from '@/components/ui/badge'
 
 const props = defineProps<{
@@ -72,13 +73,19 @@ const flatTree = computed(() => {
           >└─</span>
         </template>
 
-        <!-- Avatar -->
-        <AgentAvatar :name="name" :size="24" class="shrink-0" aria-hidden="true" />
-
-        <!-- Name -->
-        <span class="text-sm font-semibold truncate group-hover:text-primary transition-colors">
-          {{ name }}
-        </span>
+        <!-- Avatar + Name with hover profile card -->
+        <AgentProfileCard
+          :agent-name="name"
+          :agent="agents[name]"
+          @select-agent="emit('select-agent', $event)"
+        >
+          <div class="flex items-center gap-2 min-w-0" @click.stop>
+            <AgentAvatar :name="name" :size="24" class="shrink-0" aria-hidden="true" />
+            <span class="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+              {{ name }}
+            </span>
+          </div>
+        </AgentProfileCard>
 
         <!-- Role badge -->
         <Badge

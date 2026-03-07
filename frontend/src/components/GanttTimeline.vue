@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import type { StatusSnapshot } from '@/types'
+import type { StatusSnapshot, AgentUpdate } from '@/types'
 import api from '@/api/client'
+import AgentProfileCard from './AgentProfileCard.vue'
 
 const props = defineProps<{
   spaceName: string
+  agents?: Record<string, AgentUpdate>
 }>()
 
 const emit = defineEmits<{
@@ -213,13 +215,19 @@ onUnmounted(() => {
         class="grid items-center gap-2"
         style="grid-template-columns: 88px 1fr"
       >
-        <button
-          class="truncate text-[11px] font-semibold text-muted-foreground text-right pr-1 hover:text-primary transition-colors cursor-pointer"
-          :title="`View ${row.agent}`"
-          @click="emit('select-agent', row.agent)"
+        <AgentProfileCard
+          :agent-name="row.agent"
+          :agent="agents?.[row.agent]"
+          @select-agent="emit('select-agent', $event)"
         >
-          {{ row.agent }}
-        </button>
+          <button
+            class="truncate text-[11px] font-semibold text-muted-foreground text-right pr-1 hover:text-primary transition-colors cursor-pointer w-full"
+            :title="`View ${row.agent}`"
+            @click="emit('select-agent', row.agent)"
+          >
+            {{ row.agent }}
+          </button>
+        </AgentProfileCard>
         <div class="relative h-4 rounded bg-muted border border-border overflow-hidden">
           <div
             v-for="(seg, si) in row.segments"
