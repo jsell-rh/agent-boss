@@ -148,37 +148,77 @@ See [docs/paude.md](docs/paude.md) for complete integration guide and architectu
 
 ## API Reference
 
-### Spaces
+See [docs/api-reference.md](docs/api-reference.md) for the full API reference including request/response schemas and examples.
 
-Spaces are independent coordination contexts. Each space is a KnowledgeSpace with its own agents, contracts, and archive.
+### Spaces
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | HTML dashboard listing all spaces |
 | `GET` | `/spaces` | JSON array of space summaries |
-| `GET` | `/spaces/{space}/` | HTML viewer for a space (auto-polls every 3s) |
+| `GET` | `/spaces/{space}/` | HTML viewer (auto-polls every 3s) |
+| `GET` | `/spaces/{space}/raw` | Full space as markdown |
+| `DELETE` | `/spaces/{space}` | Delete a space |
 
 ### Agents
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/spaces/{space}/agent/{name}` | Get agent state as JSON |
-| `POST` | `/spaces/{space}/agent/{name}` | Update agent (requires `X-Agent-Name` header) |
+| `POST` | `/spaces/{space}/agent/{name}` | Update agent status (requires `X-Agent-Name`) |
 | `DELETE` | `/spaces/{space}/agent/{name}` | Remove agent from space |
 | `GET` | `/spaces/{space}/api/agents` | All agents as JSON map |
 
-### Rendered Output
+### Messages
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/spaces/{space}/raw` | Full space rendered as markdown |
+| `POST` | `/spaces/{space}/agent/{name}/message` | Send a message to an agent |
+| `GET` | `/spaces/{space}/agent/{name}/messages` | Read messages with cursor pagination |
+| `POST` | `/spaces/{space}/agent/{name}/message/{id}/ack` | Acknowledge a message |
+
+### Registration & Heartbeat
+
+For non-tmux agents (scripts, CLI tools, remote processes):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/spaces/{space}/agent/{name}/register` | Register agent with capabilities and callback URL |
+| `POST` | `/spaces/{space}/agent/{name}/heartbeat` | Send liveness heartbeat |
+
+### SSE Streams
+
+Real-time push events. Per-agent streams deliver only events targeted at that agent.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/events` | Global SSE stream (all spaces) |
+| `GET` | `/spaces/{space}/events` | Space-wide SSE stream |
+| `GET` | `/spaces/{space}/agent/{name}/events` | Per-agent SSE stream with Last-Event-ID replay |
+
+### Lifecycle
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/spaces/{space}/agent/{name}/spawn` | Start agent tmux session |
+| `POST` | `/spaces/{space}/agent/{name}/stop` | Stop agent tmux session |
+| `POST` | `/spaces/{space}/agent/{name}/restart` | Restart agent tmux session |
+| `GET` | `/spaces/{space}/agent/{name}/introspect` | Agent registration + liveness info |
+| `GET` | `/spaces/{space}/agent/{name}/history` | Historical status snapshots |
+| `GET` | `/spaces/{space}/history` | All-agent history for a space |
+
+### Ignition
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/spaces/{space}/ignition/{agent}?tmux_session=` | Bootstrap agent with context + task |
 
 ### Shared Data
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET/POST` | `/spaces/{space}/contracts` | Shared contracts (text) |
-| `GET/POST` | `/spaces/{space}/archive` | Archive of resolved items (text) |
+| `GET/POST` | `/spaces/{space}/contracts` | Shared contracts (append-only text) |
+| `GET/POST` | `/spaces/{space}/archive` | Archive of resolved items |
 
 ### Backward Compatibility
 
