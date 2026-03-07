@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import AgentAvatar from './AgentAvatar.vue'
+import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import { MessageSquare, Search, X, GitBranch, ExternalLink } from 'lucide-vue-next'
 import { renderMarkdown } from '@/lib/markdown'
@@ -190,20 +191,32 @@ function goToAgentDetail(agentName: string) {
             >
               <!-- Stacked avatars (clickable to open agent slideover) -->
               <div class="relative shrink-0 w-9 h-9 mt-0.5" @click.stop>
-                <button
-                  class="absolute top-0 left-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  :aria-label="`View ${conv.participants[0]} details`"
-                  @click="openSlideover(conv.participants[0])"
+                <AgentProfileCard
+                  :agent-name="conv.participants[0]"
+                  :agent="space.agents[conv.participants[0]]"
+                  @select-agent="goToAgentDetail($event)"
                 >
-                  <AgentAvatar :name="conv.participants[0]" :size="26" />
-                </button>
-                <button
-                  class="absolute bottom-0 right-0 rounded-full ring-2 ring-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  :aria-label="`View ${conv.participants[1]} details`"
-                  @click="openSlideover(conv.participants[1])"
+                  <button
+                    class="absolute top-0 left-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    :aria-label="`View ${conv.participants[0]} details`"
+                    @click="openSlideover(conv.participants[0])"
+                  >
+                    <AgentAvatar :name="conv.participants[0]" :size="26" />
+                  </button>
+                </AgentProfileCard>
+                <AgentProfileCard
+                  :agent-name="conv.participants[1]"
+                  :agent="space.agents[conv.participants[1]]"
+                  @select-agent="goToAgentDetail($event)"
                 >
-                  <AgentAvatar :name="conv.participants[1]" :size="22" />
-                </button>
+                  <button
+                    class="absolute bottom-0 right-0 rounded-full ring-2 ring-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    :aria-label="`View ${conv.participants[1]} details`"
+                    @click="openSlideover(conv.participants[1])"
+                  >
+                    <AgentAvatar :name="conv.participants[1]" :size="22" />
+                  </button>
+                </AgentProfileCard>
               </div>
 
               <!-- Info -->
@@ -289,26 +302,44 @@ function goToAgentDetail(agentName: string) {
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
               >
-                <button
-                  class="shrink-0 mt-0.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  :aria-label="`View ${msg.sender} details`"
-                  @click="openSlideover(msg.sender)"
+                <AgentProfileCard
+                  :agent-name="msg.sender"
+                  :agent="space.agents[msg.sender]"
+                  @select-agent="goToAgentDetail($event)"
                 >
-                  <AgentAvatar :name="msg.sender" :size="28" />
-                </button>
+                  <button
+                    class="shrink-0 mt-0.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    :aria-label="`View ${msg.sender} details`"
+                    @click="openSlideover(msg.sender)"
+                  >
+                    <AgentAvatar :name="msg.sender" :size="28" />
+                  </button>
+                </AgentProfileCard>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-baseline gap-1.5 mb-1">
-                    <button
-                      class="text-xs font-semibold hover:text-primary transition-colors hover:underline cursor-pointer"
-                      :aria-label="`View ${msg.sender} details`"
-                      @click="openSlideover(msg.sender)"
-                    >{{ msg.sender }}</button>
-                    <span class="text-xs text-muted-foreground">→
+                    <AgentProfileCard
+                      :agent-name="msg.sender"
+                      :agent="space.agents[msg.sender]"
+                      @select-agent="goToAgentDetail($event)"
+                    >
                       <button
-                        class="hover:text-foreground transition-colors hover:underline cursor-pointer"
-                        :aria-label="`View ${msg.recipient} details`"
-                        @click="openSlideover(msg.recipient)"
-                      >{{ msg.recipient }}</button>
+                        class="text-xs font-semibold hover:text-primary transition-colors hover:underline cursor-pointer"
+                        :aria-label="`View ${msg.sender} details`"
+                        @click="openSlideover(msg.sender)"
+                      >{{ msg.sender }}</button>
+                    </AgentProfileCard>
+                    <span class="text-xs text-muted-foreground">→
+                      <AgentProfileCard
+                        :agent-name="msg.recipient"
+                        :agent="space.agents[msg.recipient]"
+                        @select-agent="goToAgentDetail($event)"
+                      >
+                        <button
+                          class="hover:text-foreground transition-colors hover:underline cursor-pointer"
+                          :aria-label="`View ${msg.recipient} details`"
+                          @click="openSlideover(msg.recipient)"
+                        >{{ msg.recipient }}</button>
+                      </AgentProfileCard>
                     </span>
                     <time
                       :datetime="msg.timestamp"

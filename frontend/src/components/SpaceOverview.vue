@@ -123,7 +123,11 @@ function switchToInbox() {
   activeTab.value = 'inbox'
 }
 
-defineExpose({ switchToInbox })
+function refreshInbox() {
+  inboxRef.value?.refresh()
+}
+
+defineExpose({ switchToInbox, refreshInbox })
 
 const sortedAgents = computed(() => {
   return Object.entries(props.space.agents).sort(([, a], [, b]) => {
@@ -663,16 +667,24 @@ const activeSections = computed(() => [
                   @click="emit('select-agent', name)"
                   @keydown="handleCardKeydown($event, name)"
                 >
-                  <!-- Avatar + freshness dot -->
-                  <div class="relative inline-block shrink-0">
-                    <AgentAvatar :name="name" :size="20" aria-hidden="true" />
-                    <span
-                      class="absolute -bottom-0.5 -right-0.5 block size-1.5 rounded-full ring-1 ring-card"
-                      :class="freshnessDotClass(agent.updated_at)"
-                    />
-                  </div>
-                  <!-- Name -->
-                  <span class="font-medium text-sm shrink-0">{{ name }}</span>
+                  <!-- Avatar + freshness dot + name with hover card -->
+                  <AgentProfileCard
+                    :agent-name="name"
+                    :agent="agent"
+                    :space-name="space.name"
+                    @select-agent="emit('select-agent', $event)"
+                  >
+                    <div class="flex items-center gap-2 shrink-0" @click.stop>
+                      <div class="relative inline-block">
+                        <AgentAvatar :name="name" :size="20" aria-hidden="true" />
+                        <span
+                          class="absolute -bottom-0.5 -right-0.5 block size-1.5 rounded-full ring-1 ring-card"
+                          :class="freshnessDotClass(agent.updated_at)"
+                        />
+                      </div>
+                      <span class="font-medium text-sm">{{ name }}</span>
+                    </div>
+                  </AgentProfileCard>
                   <!-- Status badge -->
                   <StatusBadge :status="agent.status" />
                   <!-- Summary -->
