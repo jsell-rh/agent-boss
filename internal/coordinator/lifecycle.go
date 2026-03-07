@@ -44,7 +44,7 @@ func (s *Server) checkStaleness() {
 				continue
 			}
 			wasStale := agent.Stale
-			agent.Stale = now.Sub(agent.UpdatedAt) > StalenessThreshold
+			agent.Stale = now.Sub(agent.UpdatedAt) > s.stalenessThreshold
 			if agent.Stale != wasStale {
 				changed = true
 				if agent.Stale {
@@ -116,18 +116,11 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		return
 	}
 
-	// Launch agent — send command then wait for it to initialize
+	// Launch agent command immediately
 	time.Sleep(300 * time.Millisecond)
 	if err := tmuxSendKeys(sessionName, command); err != nil {
 		http.Error(w, fmt.Sprintf("launch agent command: %v", err), http.StatusInternalServerError)
 		return
-	}
-
-	// Wait for agent to initialize (5s), then send ignite
-	time.Sleep(5 * time.Second)
-	igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentName, spaceName)
-	if err := tmuxSendKeys(sessionName, igniteCmd); err != nil {
-		s.logEvent(fmt.Sprintf("[%s/%s] spawn: ignite send failed: %v (session running, ignite manually)", spaceName, agentName, err))
 	}
 
 	// Register tmux session on the agent record
@@ -158,7 +151,17 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	s.logEvent(fmt.Sprintf("[%s/%s] spawned in tmux session %q", spaceName, agentName, sessionName))
 	s.broadcastSSE(spaceName, "agent_spawned", agentName)
 
+	// Send ignite asynchronously after agent has time to initialize
+	go func() {
+		time.Sleep(5 * time.Second)
+		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentName, spaceName)
+		if err := tmuxSendKeys(sessionName, igniteCmd); err != nil {
+			s.logEvent(fmt.Sprintf("[%s/%s] spawn: ignite send failed: %v (ignite manually)", spaceName, agentName, err))
+		}
+	}()
+
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":           true,
 		"agent":        agentName,
@@ -236,6 +239,18 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		return
 	}
 
+	var req spawnRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("decode: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+	command := req.Command
+	if command == "" {
+		command = "claude --dangerously-skip-permissions"
+	}
+
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
 		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
@@ -290,15 +305,9 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	if err := tmuxSendKeys(newSession, "claude --dangerously-skip-permissions"); err != nil {
+	if err := tmuxSendKeys(newSession, command); err != nil {
 		http.Error(w, fmt.Sprintf("launch agent: %v", err), http.StatusInternalServerError)
 		return
-	}
-
-	time.Sleep(5 * time.Second)
-	igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, canonical, spaceName)
-	if err := tmuxSendKeys(newSession, igniteCmd); err != nil {
-		s.logEvent(fmt.Sprintf("[%s/%s] restart: ignite send failed: %v", spaceName, canonical, err))
 	}
 
 	s.mu.Lock()
@@ -312,7 +321,17 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	s.logEvent(fmt.Sprintf("[%s/%s] restarted in new session %q", spaceName, canonical, newSession))
 	s.broadcastSSE(spaceName, "agent_restarted", canonical)
 
+	// Send ignite asynchronously after agent has time to initialize
+	go func() {
+		time.Sleep(5 * time.Second)
+		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, canonical, spaceName)
+		if err := tmuxSendKeys(newSession, igniteCmd); err != nil {
+			s.logEvent(fmt.Sprintf("[%s/%s] restart: ignite send failed: %v", spaceName, canonical, err))
+		}
+	}()
+
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":           true,
 		"agent":        canonical,

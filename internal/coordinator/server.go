@@ -50,9 +50,10 @@ type Server struct {
 	// when they next become idle. Set when a message arrives for an agent.
 	// The liveness loop picks it up on the next tick where the agent is idle.
 	// Keyed by "space/agent".
-	nudgePending  map[string]time.Time
-	nudgeInFlight map[string]bool // prevents duplicate concurrent nudges
-	nudgeMu       sync.Mutex
+	nudgePending       map[string]time.Time
+	nudgeInFlight      map[string]bool // prevents duplicate concurrent nudges
+	nudgeMu            sync.Mutex
+	stalenessThreshold time.Duration
 	// registrations holds registration records for agents that have called /register.
 	// Keyed by registrationKey(space, agent). Guarded by regMu.
 	registrations map[string]*AgentRegistrationRecord
@@ -63,17 +64,24 @@ func NewServer(port, dataDir string) *Server {
 	if port == "" {
 		port = DefaultPort
 	}
+	thresh := StalenessThreshold
+	if v := os.Getenv("STALENESS_THRESHOLD"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			thresh = d
+		}
+	}
 	return &Server{
-		port:            port,
-		dataDir:         dataDir,
-		spaces:          make(map[string]*KnowledgeSpace),
-		stopLiveness:    make(chan struct{}),
-		sseClients:      make(map[*sseClient]struct{}),
-		interrupts:      NewInterruptLedger(dataDir),
-		approvalTracked: make(map[string]time.Time),
-		nudgePending:    make(map[string]time.Time),
-		nudgeInFlight:   make(map[string]bool),
-		registrations:   make(map[string]*AgentRegistrationRecord),
+		port:               port,
+		dataDir:            dataDir,
+		spaces:             make(map[string]*KnowledgeSpace),
+		stopLiveness:       make(chan struct{}),
+		sseClients:         make(map[*sseClient]struct{}),
+		interrupts:         NewInterruptLedger(dataDir),
+		approvalTracked:    make(map[string]time.Time),
+		nudgePending:       make(map[string]time.Time),
+		nudgeInFlight:      make(map[string]bool),
+		stalenessThreshold: thresh,
+		registrations:      make(map[string]*AgentRegistrationRecord),
 	}
 }
 
