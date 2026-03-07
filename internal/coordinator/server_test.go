@@ -1713,3 +1713,364 @@ func TestServerEmptyMessageBody(t *testing.T) {
 	}
 }
 
+// ── Hierarchy tests ──────────────────────────────────────────────────────────
+
+func postAgentWithParent(t *testing.T, base, space, name, parent, role string) {
+	t.Helper()
+	resp := postJSON(t, base+"/spaces/"+space+"/agent/"+name, AgentUpdate{
+		Status:  StatusActive,
+		Summary: name + ": active",
+		Parent:  parent,
+		Role:    role,
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("postAgentWithParent %s: got %d: %s", name, resp.StatusCode, body)
+	}
+}
+
+func getHierarchy(t *testing.T, base, space string) *HierarchyTree {
+	t.Helper()
+	resp, err := http.Get(base + "/spaces/" + space + "/hierarchy")
+	if err != nil {
+		t.Fatalf("get hierarchy: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("get hierarchy: got %d: %s", resp.StatusCode, b)
+	}
+	var tree HierarchyTree
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		t.Fatalf("decode hierarchy: %v", err)
+	}
+	return &tree
+}
+
+func TestRebuildChildren(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-rebuild"
+
+	postAgentWithParent(t, base, space, "Manager", "", "manager")
+	postAgentWithParent(t, base, space, "Worker1", "Manager", "worker")
+	postAgentWithParent(t, base, space, "Worker2", "Manager", "worker")
+
+	tree := getHierarchy(t, base, space)
+
+	mgr, ok := tree.Nodes["Manager"]
+	if !ok {
+		t.Fatal("Manager node missing from hierarchy")
+	}
+	if len(mgr.Children) != 2 {
+		t.Errorf("Manager.Children = %v, want [Worker1, Worker2]", mgr.Children)
+	}
+	for _, w := range []string{"Worker1", "Worker2"} {
+		node, ok := tree.Nodes[w]
+		if !ok {
+			t.Fatalf("%s node missing from hierarchy", w)
+		}
+		if node.Parent != "Manager" {
+			t.Errorf("%s.Parent = %q, want Manager", w, node.Parent)
+		}
+	}
+}
+
+func TestRebuildChildrenCycleRejected(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-cycle"
+
+	postAgentWithParent(t, base, space, "A", "", "")
+	postAgentWithParent(t, base, space, "B", "A", "")
+
+	// Now try to make A a child of B — should create A→B→A cycle → 400
+	data, _ := json.Marshal(AgentUpdate{Status: StatusActive, Summary: "A: cycle attempt", Parent: "B"})
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/A", strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "A")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("cycle post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for cycle, got %d", resp.StatusCode)
+	}
+}
+
+func TestRebuildChildrenOrphanParent(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-orphan"
+
+	// Declare parent for non-existent agent — should be stored but not appear in Children
+	postAgentWithParent(t, base, space, "Orphan", "NonExistentManager", "worker")
+
+	tree := getHierarchy(t, base, space)
+	node, ok := tree.Nodes["Orphan"]
+	if !ok {
+		t.Fatal("Orphan node missing from hierarchy")
+	}
+	if node.Parent != "NonExistentManager" {
+		t.Errorf("Orphan.Parent = %q, want NonExistentManager", node.Parent)
+	}
+	// NonExistentManager should not be in nodes (not registered)
+	if _, exists := tree.Nodes["NonExistentManager"]; exists {
+		t.Error("NonExistentManager should not appear in hierarchy nodes (not registered)")
+	}
+}
+
+func TestScopeSubtreeDelivery(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-subtree"
+
+	postAgentWithParent(t, base, space, "Manager", "", "manager")
+	postAgentWithParent(t, base, space, "Worker1", "Manager", "worker")
+	postAgentWithParent(t, base, space, "Worker2", "Manager", "worker")
+
+	// Fan-out message to Manager subtree
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Manager/message?scope=subtree",
+		map[string]string{"message": "team directive"},
+		"Boss",
+	)
+	if code != http.StatusAccepted {
+		t.Fatalf("subtree message: got %d: %s", code, body)
+	}
+
+	// Verify all 3 agents received the message
+	time.Sleep(50 * time.Millisecond) // allow async goroutines to settle
+	for _, name := range []string{"Manager", "Worker1", "Worker2"} {
+		resp, err := http.Get(base + "/spaces/" + space + "/agent/" + name)
+		if err != nil {
+			t.Fatalf("get %s: %v", name, err)
+		}
+		defer resp.Body.Close()
+		var ag AgentUpdate
+		json.NewDecoder(resp.Body).Decode(&ag)
+		found := false
+		for _, m := range ag.Messages {
+			if m.Message == "team directive" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s did not receive subtree message", name)
+		}
+	}
+}
+
+func TestScopeSubtreeLeafIsNoop(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-leaf"
+
+	postAgentWithParent(t, base, space, "Leaf", "", "worker")
+
+	// Subtree to leaf agent (no children) — should succeed with 202
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Leaf/message?scope=subtree",
+		map[string]string{"message": "leaf message"},
+		"Boss",
+	)
+	if code != http.StatusAccepted {
+		t.Fatalf("leaf subtree: got %d: %s", code, body)
+	}
+
+	// Verify leaf received message
+	time.Sleep(50 * time.Millisecond)
+	resp, err := http.Get(base + "/spaces/" + space + "/agent/Leaf")
+	if err != nil {
+		t.Fatalf("get Leaf: %v", err)
+	}
+	defer resp.Body.Close()
+	var ag AgentUpdate
+	json.NewDecoder(resp.Body).Decode(&ag)
+	if len(ag.Messages) == 0 || ag.Messages[0].Message != "leaf message" {
+		t.Errorf("Leaf did not receive message: %+v", ag.Messages)
+	}
+}
+
+func TestParentEscalation(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-escalate"
+
+	postAgentWithParent(t, base, space, "Manager", "", "manager")
+	postAgentWithParent(t, base, space, "Worker", "Manager", "worker")
+
+	// Worker escalates to parent
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/parent/message",
+		map[string]string{"message": "escalation from worker"},
+		"Worker",
+	)
+	if code != http.StatusOK {
+		t.Fatalf("parent escalation: got %d: %s", code, body)
+	}
+
+	// Verify Manager received the message
+	time.Sleep(50 * time.Millisecond)
+	resp, err := http.Get(base + "/spaces/" + space + "/agent/Manager")
+	if err != nil {
+		t.Fatalf("get Manager: %v", err)
+	}
+	defer resp.Body.Close()
+	var ag AgentUpdate
+	json.NewDecoder(resp.Body).Decode(&ag)
+	found := false
+	for _, m := range ag.Messages {
+		if m.Message == "escalation from worker" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Manager did not receive escalated message from Worker")
+	}
+}
+
+func TestParentEscalationNoParent(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-noparent"
+
+	postAgentWithParent(t, base, space, "Rootless", "", "worker")
+
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/parent/message",
+		map[string]string{"message": "should fail"},
+		"Rootless",
+	)
+	if code != http.StatusBadRequest {
+		t.Errorf("expected 400 for escalation with no parent, got %d: %s", code, body)
+	}
+}
+
+func TestFlatAgentsUnaffectedByHierarchy(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-flat"
+
+	// Create agents with no parent (flat workflow)
+	resp1 := postJSON(t, base+"/spaces/"+space+"/agent/Alpha", AgentUpdate{Status: StatusActive, Summary: "Alpha: active"})
+	resp1.Body.Close()
+	resp2 := postJSON(t, base+"/spaces/"+space+"/agent/Beta", AgentUpdate{Status: StatusActive, Summary: "Beta: active"})
+	resp2.Body.Close()
+
+	// Direct message still works
+	code, body := postJSONWithSender(t,
+		base+"/spaces/"+space+"/agent/Alpha/message",
+		map[string]string{"message": "hello"},
+		"Beta",
+	)
+	if code != http.StatusOK {
+		t.Errorf("flat direct message: got %d: %s", code, body)
+	}
+
+	// Hierarchy endpoint returns both as roots
+	tree := getHierarchy(t, base, space)
+	if len(tree.Roots) != 2 {
+		t.Errorf("expected 2 roots for flat space, got %d: %v", len(tree.Roots), tree.Roots)
+	}
+	for _, r := range []string{"Alpha", "Beta"} {
+		node, ok := tree.Nodes[r]
+		if !ok {
+			t.Fatalf("%s missing from flat hierarchy", r)
+		}
+		if node.Parent != "" {
+			t.Errorf("%s.Parent = %q, want empty", r, node.Parent)
+		}
+	}
+}
+
+func TestHierarchyEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-endpoint"
+
+	// Use Title-case names (resolveAgentName canonicalizes to Title case)
+	postAgentWithParent(t, base, space, "Cto", "", "manager")
+	postAgentWithParent(t, base, space, "Dev", "Cto", "worker")
+	postAgentWithParent(t, base, space, "Sme", "Dev", "sme")
+
+	tree := getHierarchy(t, base, space)
+	if tree.Space != space {
+		t.Errorf("tree.Space = %q, want %q", tree.Space, space)
+	}
+	if len(tree.Roots) != 1 || tree.Roots[0] != "Cto" {
+		t.Errorf("tree.Roots = %v, want [Cto]", tree.Roots)
+	}
+	cto := tree.Nodes["Cto"]
+	if cto == nil {
+		t.Fatal("Cto node missing from hierarchy")
+	}
+	if cto.Depth != 0 {
+		t.Errorf("Cto depth = %d, want 0", cto.Depth)
+	}
+	dev := tree.Nodes["Dev"]
+	if dev == nil {
+		t.Fatal("Dev node missing from hierarchy")
+	}
+	if dev.Depth != 1 {
+		t.Errorf("Dev depth = %d, want 1", dev.Depth)
+	}
+	sme := tree.Nodes["Sme"]
+	if sme == nil {
+		t.Fatal("Sme node missing from hierarchy")
+	}
+	if sme.Depth != 2 {
+		t.Errorf("Sme depth = %d, want 2", sme.Depth)
+	}
+	if len(cto.Children) != 1 || cto.Children[0] != "Dev" {
+		t.Errorf("Cto.Children = %v, want [Dev]", cto.Children)
+	}
+}
+
+func TestChildrenNotClientSettable(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "hier-children-immutable"
+
+	// Agent posts with a bogus Children list
+	data, _ := json.Marshal(map[string]interface{}{
+		"status":   "active",
+		"summary":  "Agent: trying to set children",
+		"children": []string{"FakeChild1", "FakeChild2"},
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Agent", strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Agent")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	resp.Body.Close()
+
+	// Retrieve the agent and verify Children is empty (server rejected the client-supplied value)
+	getResp, err := http.Get(base + "/spaces/" + space + "/agent/Agent")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer getResp.Body.Close()
+	var ag AgentUpdate
+	json.NewDecoder(getResp.Body).Decode(&ag)
+	if len(ag.Children) != 0 {
+		t.Errorf("Children should be empty (server-managed), got %v", ag.Children)
+	}
+}
+

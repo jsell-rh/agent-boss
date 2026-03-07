@@ -1446,6 +1446,7 @@ function ensureBoardSkeleton(){
   o += '<div id="panel-interrupts"></div>';
   o += '</div>';
   o += '<div id="panel-agents"></div>';
+  o += '<div id="panel-hierarchy"></div>';
   o += '<div id="panel-gantt"></div>';
   document.getElementById('page').innerHTML = o;
   boardSkeletonReady = true;
@@ -1467,6 +1468,7 @@ function renderBoard(data, tmuxData, eventLog, interruptMetrics, interruptLog){
   if (!inboxLocked) renderPanelInbox(data, sorted);
   renderPanelInterrupts(interruptMetrics, interruptLog);
   renderPanelAgents(data, sorted, tmuxData);
+  renderPanelHierarchy(data);
   if (SPACE) loadGantt(SPACE);
 
   var dot = '<span class="header-dot" style="background:var(--green)"></span>';
@@ -1485,7 +1487,10 @@ function renderPanelOverview(data, sorted, tmuxData){
   o += '<button class="btn-delete-workspace" onclick="confirmDeleteWorkspace()" title="Delete this workspace and all its agents permanently">&#x2715; Delete Space</button>';
   o += '</div></div>';
   o += '<div class="card-body" style="padding:8px 12px">';
-  o += '<table class="overview-table"><thead><tr><th class="ov-poke"></th><th>Agent</th><th>Status</th><th>Branch</th><th>Session</th><th>PR</th><th>Jira</th></tr></thead><tbody>';
+  var hasHierarchy = sorted.some(function(n){ return agents[n] && agents[n].parent; });
+  o += '<table class="overview-table"><thead><tr><th class="ov-poke"></th><th>Agent</th><th>Status</th><th>Branch</th><th>Session</th><th>PR</th><th>Jira</th>';
+  if (hasHierarchy) o += '<th>Reports&nbsp;To</th>';
+  o += '</tr></thead><tbody>';
   sorted.forEach(function(name){
     var a = agents[name];
     var tmux = getTmuxStatus(name, tmuxData);
@@ -1524,6 +1529,10 @@ function renderPanelOverview(data, sorted, tmuxData){
     var jiraVal = a.jira || '\u2014';
     var jiraUrl = a.jira ? 'https://issues.redhat.com/browse/' + a.jira : null;
     o += '<td class="ov-jira">' + (jiraUrl ? '<a href="' + esc(jiraUrl) + '" style="color:var(--purple);text-decoration:none" target="_blank">' + esc(jiraVal) + '</a>' : esc(jiraVal)) + '</td>';
+    if (hasHierarchy) {
+      var parentVal = a.parent || '\u2014';
+      o += '<td style="font-size:11px;color:var(--text2)">' + esc(parentVal) + '</td>';
+    }
     o += '</tr>';
   });
   o += '</tbody></table>';
@@ -1641,6 +1650,46 @@ function renderPanelInterrupts(interruptMetrics, interruptLog){
   document.getElementById('panel-interrupts').innerHTML = o;
 }
 
+function renderPanelHierarchy(data){
+  var agents = data.agents || {};
+  var hasHierarchy = Object.keys(agents).some(function(n){ return agents[n] && agents[n].parent; });
+  if (!hasHierarchy) {
+    document.getElementById('panel-hierarchy').innerHTML = '';
+    return;
+  }
+  // Build tree: find roots and children
+  var roots = [];
+  Object.keys(agents).sort().forEach(function(n){
+    if (!agents[n].parent) roots.push(n);
+  });
+  function renderNode(name, depth){
+    var a = agents[name] || {};
+    var indent = depth * 20;
+    var roleLabel = a.role ? '<span style="font-size:10px;color:var(--purple);background:var(--purple-bg);border-radius:4px;padding:1px 6px;margin-left:6px">' + esc(a.role) + '</span>' : '';
+    var statusDot = '<span class="status-dot status-dot-' + esc(a.status||'idle') + '" style="margin-right:4px"></span>';
+    var line = '<div style="display:flex;align-items:center;padding:4px 0;padding-left:' + indent + 'px">';
+    if (depth > 0) line += '<span style="color:var(--border2);margin-right:6px;font-size:11px">&#x2514;</span>';
+    line += statusDot;
+    line += '<span style="font-weight:600;color:var(--text)">' + esc(name) + '</span>';
+    line += roleLabel;
+    if (a.summary) line += '<span style="color:var(--text3);font-size:11px;margin-left:8px">' + esc(a.summary.replace(/^[^:]+:\s*/, '').substring(0, 60)) + '</span>';
+    line += '</div>';
+    var children = (a.children || []).slice().sort();
+    children.forEach(function(child){ line += renderNode(child, depth + 1); });
+    return line;
+  }
+  var o = '<div class="card" style="margin-top:16px">';
+  o += '<div class="card-header"><span class="card-title">Hierarchy</span><span style="font-size:11px;color:var(--text3);margin-left:8px">' + Object.keys(agents).length + ' agents</span></div>';
+  o += '<div class="card-body" style="padding:12px 16px">';
+  if (roots.length === 0) {
+    o += '<div style="color:var(--text3);font-size:12px;font-style:italic">No root agents — possible cycle or all agents have parents</div>';
+  } else {
+    roots.forEach(function(r){ o += renderNode(r, 0); });
+  }
+  o += '</div></div>';
+  document.getElementById('panel-hierarchy').innerHTML = o;
+}
+
 function renderPanelAgents(data, sorted, tmuxData){
   var agents = data.agents || {};
   var names = Object.keys(agents).sort();
@@ -1691,6 +1740,9 @@ function renderPanelAgents(data, sorted, tmuxData){
     o += '<div class="agent-body">';
 
     o += '<div class="agent-meta">';
+    if (a.parent) o += '<span style="font-size:10px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px" title="Reports to">&#x2191; ' + esc(a.parent) + '</span>';
+    if (a.children && a.children.length > 0) o += '<span style="font-size:10px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px" title="Manages">&#x2193; ' + esc(a.children.join(', ')) + '</span>';
+    if (a.role) o += '<span style="font-size:10px;color:var(--purple);background:var(--purple-bg);border-radius:4px;padding:1px 6px">' + esc(a.role) + '</span>';
     if (a.phase) o += '<span class="agent-phase">' + esc(a.phase) + '</span>';
     if (a.branch) o += '<span class="agent-branch">' + esc(a.branch) + '</span>';
     if (a.worktree) o += '<span class="agent-branch" style="background:rgba(92,101,120,.12);color:var(--text3);border-color:rgba(92,101,120,.2)">' + esc(a.worktree) + '</span>';
