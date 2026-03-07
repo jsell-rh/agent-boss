@@ -555,7 +555,7 @@ function handleComposeKeydown(e: KeyboardEvent) {
         <div v-if="composeRecipient" class="border-t p-3 shrink-0">
           <form class="flex items-end gap-2" @submit.prevent="sendInlineCompose">
             <Textarea
-              ref="composeRef"
+              :ref="(el) => { composeRef = el as HTMLTextAreaElement | null }"
               v-model="inlineMessage"
               :placeholder="`Message ${composeRecipient}… (Enter to send, Shift+Enter for newline)`"
               class="flex-1 min-h-[38px] max-h-40 resize-none text-sm"

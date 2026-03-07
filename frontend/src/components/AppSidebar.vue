@@ -48,7 +48,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus } from 'lucide-vue-next'
+import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
@@ -324,6 +324,25 @@ function submitNewSpace() {
               <div class="px-2 py-3 text-sm text-muted-foreground font-text">
                 No spaces yet — agents will create spaces when they register
               </div>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarSeparator v-if="currentSpace" />
+
+      <!-- Space nav: Tasks board -->
+      <SidebarGroup v-if="currentSpace">
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                :data-active="false"
+                @click="router.push('/' + selectedSpace + '/kanban')"
+              >
+                <LayoutDashboard class="size-4" />
+                <span>Tasks</span>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>

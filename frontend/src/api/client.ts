@@ -8,6 +8,9 @@ import type {
   StatusSnapshot,
   IntrospectResponse,
   HierarchyTree,
+  Task,
+  TaskStatus,
+  TaskPriority,
 } from '@/types'
 
 class ApiClient {
@@ -228,6 +231,93 @@ class ApiClient {
   introspectAgent(space: string, agent: string): Promise<IntrospectResponse> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/introspect`,
+    )
+  }
+
+  // --------------- Tasks ---------------
+
+  fetchTasks(space: string, filters?: { status?: TaskStatus; assigned_to?: string; label?: string }): Promise<Task[]> {
+    const params = new URLSearchParams()
+    if (filters?.status) params.set('status', filters.status)
+    if (filters?.assigned_to) params.set('assigned_to', filters.assigned_to)
+    if (filters?.label) params.set('label', filters.label)
+    const qs = params.toString()
+    return this.request<Task[]>(
+      `/spaces/${encodeURIComponent(space)}/tasks${qs ? '?' + qs : ''}`,
+    )
+  }
+
+  createTask(space: string, task: {
+    title: string
+    description?: string
+    priority?: TaskPriority
+    assigned_to?: string
+    labels?: string[]
+  }, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify(task),
+      },
+    )
+  }
+
+  fetchTask(space: string, id: string): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
+    )
+  }
+
+  updateTask(space: string, id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'assigned_to' | 'labels' | 'linked_branch' | 'linked_pr' | 'due_at'>>, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify(patch),
+      },
+    )
+  }
+
+  deleteTask(space: string, id: string, actor = 'boss'): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
+      { method: 'DELETE', headers: { 'X-Agent-Name': actor } },
+    )
+  }
+
+  moveTask(space: string, id: string, status: TaskStatus, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/move`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify({ status }),
+      },
+    )
+  }
+
+  assignTask(space: string, id: string, assignedTo: string, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/assign`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify({ assigned_to: assignedTo }),
+      },
+    )
+  }
+
+  addTaskComment(space: string, id: string, body: string, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/comment`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify({ body }),
+      },
     )
   }
 }

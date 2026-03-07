@@ -1,0 +1,163 @@
+<script setup lang="ts">
+import type { KnowledgeSpace, TaskPriority } from '@/types'
+import { TASK_PRIORITY_LABELS } from '@/types'
+import { ref } from 'vue'
+import { api } from '@/api/client'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown } from 'lucide-vue-next'
+import AgentAvatar from './AgentAvatar.vue'
+
+const props = defineProps<{
+  open: boolean
+  space: KnowledgeSpace
+}>()
+
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  created: []
+}>()
+
+const title = ref('')
+const description = ref('')
+const priority = ref<TaskPriority>('medium')
+const assignedTo = ref('')
+const submitting = ref(false)
+
+function reset() {
+  title.value = ''
+  description.value = ''
+  priority.value = 'medium'
+  assignedTo.value = ''
+}
+
+async function submit() {
+  if (!title.value.trim()) return
+  submitting.value = true
+  try {
+    await api.createTask(props.space.name, {
+      title: title.value.trim(),
+      description: description.value.trim() || undefined,
+      priority: priority.value,
+      assigned_to: assignedTo.value || undefined,
+    })
+    reset()
+    emit('created')
+    emit('update:open', false)
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
+
+<template>
+  <Dialog :open="open" @update:open="emit('update:open', $event)">
+    <DialogContent class="sm:max-w-[480px]">
+      <DialogHeader>
+        <DialogTitle>New Task</DialogTitle>
+        <DialogDescription>Create a task in {{ space.name }}</DialogDescription>
+      </DialogHeader>
+
+      <form class="flex flex-col gap-4 py-2" @submit.prevent="submit">
+        <!-- Title -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title *</label>
+          <Input
+            v-model="title"
+            placeholder="Task title"
+            autofocus
+            class="text-sm"
+          />
+        </div>
+
+        <!-- Description -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+          <Textarea
+            v-model="description"
+            placeholder="Optional description (markdown supported)"
+            class="text-sm min-h-[80px] resize-none"
+          />
+        </div>
+
+        <!-- Priority + Assignee row -->
+        <div class="flex gap-3">
+          <!-- Priority -->
+          <div class="flex flex-col gap-1.5 flex-1">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Priority</label>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" class="w-full justify-between text-xs h-8">
+                  {{ TASK_PRIORITY_LABELS[priority] }}
+                  <ChevronDown class="size-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  v-for="(label, p) in TASK_PRIORITY_LABELS"
+                  :key="p"
+                  :class="{ 'font-semibold': p === priority }"
+                  @click="priority = p as TaskPriority"
+                >
+                  {{ label }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <!-- Assignee -->
+          <div class="flex flex-col gap-1.5 flex-1">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assign To</label>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" class="w-full justify-between text-xs h-8 gap-1">
+                  <span v-if="assignedTo" class="flex items-center gap-1.5 truncate">
+                    <AgentAvatar :name="assignedTo" :size="14" />
+                    {{ assignedTo }}
+                  </span>
+                  <span v-else class="text-muted-foreground">Unassigned</span>
+                  <ChevronDown class="size-3 ml-1 shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem @click="assignedTo = ''">
+                  <span class="text-muted-foreground">Unassigned</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  v-for="agent in Object.keys(space.agents)"
+                  :key="agent"
+                  @click="assignedTo = agent"
+                >
+                  <AgentAvatar :name="agent" :size="14" class="mr-2" />
+                  {{ agent }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>
+          <Button type="submit" :disabled="!title.trim() || submitting">
+            {{ submitting ? 'Creating…' : 'Create Task' }}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
+</template>

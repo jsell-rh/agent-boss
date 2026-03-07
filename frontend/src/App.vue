@@ -24,6 +24,7 @@ import SpaceOverview from '@/components/SpaceOverview.vue'
 import AgentDetail from '@/components/AgentDetail.vue'
 import EventLog from '@/components/EventLog.vue'
 import ConversationsView from '@/components/ConversationsView.vue'
+import KanbanView from '@/components/KanbanView.vue'
 import { Keyboard } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 
@@ -88,8 +89,10 @@ const showConversations = computed(() =>
   selectedAgent.value === 'conversations' || !!conversationAgent.value,
 )
 
+const showKanban = computed(() => route.name === 'kanban')
+
 const selectedAgentData = computed<AgentUpdate | null>(() => {
-  if (!currentSpace.value || !selectedAgent.value || showConversations.value) return null
+  if (!currentSpace.value || !selectedAgent.value || showConversations.value || showKanban.value) return null
   return currentSpace.value.agents[selectedAgent.value] ?? null
 })
 
@@ -916,6 +919,12 @@ onUnmounted(() => {
             </div>
             <p class="text-sm">Loading {{ selectedSpace }}…</p>
           </div>
+
+          <!-- Kanban board -->
+          <KanbanView
+            v-else-if="showKanban && currentSpace"
+            :space="currentSpace"
+          />
 
           <!-- Conversations view -->
           <ConversationsView

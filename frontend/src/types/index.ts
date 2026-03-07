@@ -154,6 +154,62 @@ export interface InterruptMetrics {
   avg_wait_seconds: number
 }
 
+// ── Task Management ────────────────────────────────────────────────
+
+export type TaskStatus = 'backlog' | 'in_progress' | 'review' | 'done' | 'blocked'
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+export interface TaskComment {
+  id: string
+  author: string
+  body: string
+  created_at: string
+}
+
+export interface Task {
+  id: string
+  space: string
+  title: string
+  description?: string
+  status: TaskStatus
+  priority?: TaskPriority
+  assigned_to?: string
+  created_by: string
+  labels?: string[]
+  parent_task?: string
+  subtasks?: string[]
+  linked_branch?: string
+  linked_pr?: string
+  created_at: string
+  updated_at: string
+  due_at?: string
+  comments?: TaskComment[]
+}
+
+export const TASK_STATUS_COLUMNS: TaskStatus[] = ['backlog', 'in_progress', 'review', 'blocked', 'done']
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  backlog: 'Backlog',
+  in_progress: 'In Progress',
+  review: 'Review',
+  done: 'Done',
+  blocked: 'Blocked',
+}
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  urgent: 'Urgent',
+}
+
+export const TASK_PRIORITY_COLOR: Record<TaskPriority, string> = {
+  low: 'bg-muted text-muted-foreground',
+  medium: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+  urgent: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+}
+
 // SSE event data shapes
 export interface SSEAgentUpdated {
   space: string

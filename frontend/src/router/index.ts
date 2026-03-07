@@ -19,6 +19,11 @@ const router = createRouter({
       component: Empty,
     },
     {
+      path: '/:space/kanban',
+      name: 'kanban',
+      component: Empty,
+    },
+    {
       path: '/:space/conversations/:conversationAgent',
       name: 'conversation',
       component: Empty,
