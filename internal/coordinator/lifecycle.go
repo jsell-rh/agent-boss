@@ -277,6 +277,10 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
 		return
 	}
+	if oldSession == "" {
+		http.Error(w, fmt.Sprintf("agent %q has no registered tmux session", canonical), http.StatusBadRequest)
+		return
+	}
 
 	// Stop the existing session
 	if oldSession != "" && tmuxSessionExists(oldSession) {
@@ -349,6 +353,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 // introspectResponse is returned by GET /spaces/{space}/agent/{name}/introspect.
 type introspectResponse struct {
 	Agent         string    `json:"agent"`
+	Space         string    `json:"space"`
 	TmuxSession   string    `json:"tmux_session,omitempty"`
 	SessionExists bool      `json:"session_exists"`
 	Idle          bool      `json:"idle"`
@@ -389,6 +394,7 @@ func (s *Server) handleAgentIntrospect(w http.ResponseWriter, r *http.Request, s
 
 	resp := introspectResponse{
 		Agent:       canonical,
+		Space:       spaceName,
 		TmuxSession: sessionName,
 		Lines:       []string{},
 		CapturedAt:  time.Now().UTC(),
