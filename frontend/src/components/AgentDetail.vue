@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Search } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Search, Loader2, CheckCircle2, XCircle, Radio } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -171,27 +171,36 @@ const attentionSectionClass = computed(() => {
 
 // --------------- Lifecycle ---------------
 const lifecycleLoading = ref<'spawn' | 'stop' | 'restart' | null>(null)
-const lifecycleError = ref<string | null>(null)
+const lifecycleToast = ref<{ type: 'success' | 'error'; message: string } | null>(null)
+const stopConfirmOpen = ref(false)
+
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+function showToast(type: 'success' | 'error', message: string) {
+  if (toastTimer) clearTimeout(toastTimer)
+  lifecycleToast.value = { type, message }
+  toastTimer = setTimeout(() => { lifecycleToast.value = null }, 3500)
+}
 
 async function handleSpawn() {
   lifecycleLoading.value = 'spawn'
-  lifecycleError.value = null
   try {
     await api.spawnAgent(props.spaceName, props.agentName)
+    showToast('success', `${props.agentName} spawned — ignite sent in ~5s`)
   } catch (e) {
-    lifecycleError.value = e instanceof Error ? e.message : String(e)
+    showToast('error', e instanceof Error ? e.message : String(e))
   } finally {
     lifecycleLoading.value = null
   }
 }
 
 async function handleStop() {
+  stopConfirmOpen.value = false
   lifecycleLoading.value = 'stop'
-  lifecycleError.value = null
   try {
     await api.stopAgent(props.spaceName, props.agentName)
+    showToast('success', `${props.agentName} stopped`)
   } catch (e) {
-    lifecycleError.value = e instanceof Error ? e.message : String(e)
+    showToast('error', e instanceof Error ? e.message : String(e))
   } finally {
     lifecycleLoading.value = null
   }
@@ -199,11 +208,11 @@ async function handleStop() {
 
 async function handleRestart() {
   lifecycleLoading.value = 'restart'
-  lifecycleError.value = null
   try {
     await api.restartAgent(props.spaceName, props.agentName)
+    showToast('success', `${props.agentName} restarting — ignite sent in ~5s`)
   } catch (e) {
-    lifecycleError.value = e instanceof Error ? e.message : String(e)
+    showToast('error', e instanceof Error ? e.message : String(e))
   } finally {
     lifecycleLoading.value = null
   }
@@ -212,8 +221,10 @@ async function handleRestart() {
 // --------------- Introspection ---------------
 const introspectOpen = ref(false)
 const introspectLoading = ref(false)
+const introspectLive = ref(false)
 const introspectData = ref<IntrospectResponse | null>(null)
 const introspectError = ref<string | null>(null)
+let introspectPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadIntrospect() {
   if (introspectLoading.value) return
@@ -228,10 +239,43 @@ async function loadIntrospect() {
   }
 }
 
+function startLivePoll() {
+  if (introspectPollTimer) clearInterval(introspectPollTimer)
+  introspectPollTimer = setInterval(loadIntrospect, 2500)
+}
+
+function stopLivePoll() {
+  if (introspectPollTimer) {
+    clearInterval(introspectPollTimer)
+    introspectPollTimer = null
+  }
+}
+
+function toggleLive() {
+  introspectLive.value = !introspectLive.value
+  if (introspectLive.value) {
+    startLivePoll()
+  } else {
+    stopLivePoll()
+  }
+}
+
 function toggleIntrospect() {
   introspectOpen.value = !introspectOpen.value
-  if (introspectOpen.value) loadIntrospect()
+  if (introspectOpen.value) {
+    loadIntrospect()
+  } else {
+    introspectLive.value = false
+    stopLivePoll()
+  }
 }
+
+// Clean up on unmount
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+  stopLivePoll()
+  if (toastTimer) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -327,49 +371,60 @@ function toggleIntrospect() {
           </Tooltip>
 
           <!-- Lifecycle buttons -->
+          <div class="flex items-center gap-1 border border-border rounded-md p-0.5 bg-muted/30">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
+                  :disabled="lifecycleLoading !== null"
+                  @click="handleSpawn"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'spawn'" class="size-3 animate-spin" />
+                  <Play v-else class="size-3" />
+                  Spawn
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Create tmux session and launch agent</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
+                  :disabled="lifecycleLoading !== null"
+                  @click="handleRestart"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'restart'" class="size-3 animate-spin" />
+                  <RotateCcw v-else class="size-3" />
+                  Restart
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Kill existing session and spawn a new one</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost" size="sm"
+                  class="h-7 px-2 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  :disabled="lifecycleLoading !== null"
+                  @click="stopConfirmOpen = true"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3 animate-spin" />
+                  <Square v-else class="size-3" />
+                  Stop
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Kill the agent's tmux session</TooltipContent>
+            </Tooltip>
+          </div>
           <Tooltip>
             <TooltipTrigger as-child>
               <Button
-                variant="outline" size="sm"
-                :disabled="lifecycleLoading !== null"
-                @click="handleSpawn"
+                size="sm"
+                :variant="introspectOpen ? 'secondary' : 'outline'"
+                class="gap-1 text-xs"
+                @click="toggleIntrospect"
               >
-                <Play class="size-4" />
-                {{ lifecycleLoading === 'spawn' ? '…' : 'Spawn' }}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Create tmux session and launch agent</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline" size="sm"
-                :disabled="lifecycleLoading !== null"
-                @click="handleRestart"
-              >
-                <RotateCcw class="size-4" />
-                {{ lifecycleLoading === 'restart' ? '…' : 'Restart' }}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Kill and respawn agent session</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline" size="sm"
-                :disabled="lifecycleLoading !== null"
-                @click="handleStop"
-              >
-                <Square class="size-4" />
-                {{ lifecycleLoading === 'stop' ? '…' : 'Stop' }}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Kill the agent's tmux session</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button variant="outline" size="sm" @click="toggleIntrospect">
-                <Search class="size-4" />
+                <Search class="size-3.5" />
                 Inspect
               </Button>
             </TooltipTrigger>
@@ -378,35 +433,81 @@ function toggleIntrospect() {
         </div>
       </div>
 
-      <!-- Lifecycle error -->
-      <div v-if="lifecycleError" class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-        {{ lifecycleError }}
-        <button class="ml-2 underline" @click="lifecycleError = null">dismiss</button>
-      </div>
+      <!-- Lifecycle toast notification -->
+      <Transition
+        enter-active-class="transition-all duration-200"
+        enter-from-class="opacity-0 -translate-y-1"
+        leave-active-class="transition-all duration-150"
+        leave-to-class="opacity-0 -translate-y-1"
+      >
+        <div
+          v-if="lifecycleToast"
+          class="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
+          :class="lifecycleToast.type === 'success'
+            ? 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400'
+            : 'border-destructive/30 bg-destructive/10 text-destructive'"
+        >
+          <CheckCircle2 v-if="lifecycleToast.type === 'success'" class="size-3.5 shrink-0" />
+          <XCircle v-else class="size-3.5 shrink-0" />
+          {{ lifecycleToast.message }}
+          <button class="ml-auto opacity-60 hover:opacity-100" @click="lifecycleToast = null">
+            <X class="size-3" />
+          </button>
+        </div>
+      </Transition>
 
       <!-- Introspection panel -->
       <div v-if="introspectOpen" class="rounded-lg border bg-muted/30 p-4 space-y-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pane — {{ agent.tmux_session || 'no session' }}</span>
           <div class="flex items-center gap-2">
-            <Button variant="ghost" size="sm" class="h-6 text-xs" :disabled="introspectLoading" @click="loadIntrospect">
+            <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pane — {{ agent.tmux_session || 'no session' }}</span>
+            <!-- Live indicator -->
+            <span v-if="introspectLive" class="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-500">
+              <span class="inline-block size-1.5 rounded-full bg-green-500 animate-pulse shrink-0"></span>
+              Live
+            </span>
+          </div>
+          <div class="flex items-center gap-1">
+            <!-- Live toggle -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost" size="sm"
+                  class="h-6 px-2 text-xs gap-1"
+                  :class="introspectLive ? 'text-green-500 bg-green-500/10 hover:bg-green-500/20' : ''"
+                  @click="toggleLive"
+                >
+                  <Radio class="size-3" />
+                  {{ introspectLive ? 'Live On' : 'Live Off' }}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{{ introspectLive ? 'Disable auto-refresh (polling every 2.5s)' : 'Enable auto-refresh (poll every 2.5s)' }}</TooltipContent>
+            </Tooltip>
+            <!-- Manual refresh (only when not live) -->
+            <Button
+              v-if="!introspectLive"
+              variant="ghost" size="sm" class="h-6 px-2 text-xs"
+              :disabled="introspectLoading"
+              @click="loadIntrospect"
+            >
+              <Loader2 v-if="introspectLoading" class="size-3 animate-spin" />
               {{ introspectLoading ? 'Loading…' : 'Refresh' }}
             </Button>
-            <button class="text-muted-foreground hover:text-foreground" @click="introspectOpen = false">
-              <X class="size-4" />
+            <button class="text-muted-foreground hover:text-foreground p-1" @click="introspectOpen = false">
+              <X class="size-3.5" />
             </button>
           </div>
         </div>
         <div v-if="introspectError" class="text-xs text-destructive">{{ introspectError }}</div>
         <div v-else-if="!introspectData" class="text-xs text-muted-foreground italic">Loading…</div>
         <div v-else>
-          <div class="flex gap-3 mb-2 text-[11px] text-muted-foreground">
+          <div class="flex gap-3 mb-2 text-[11px] text-muted-foreground flex-wrap">
             <span :class="introspectData.session_exists ? 'text-green-500' : 'text-red-500'">
               {{ introspectData.session_exists ? 'session online' : 'session offline' }}
             </span>
             <span v-if="introspectData.idle">idle</span>
             <span v-if="introspectData.needs_approval" class="text-primary">awaiting approval: {{ introspectData.tool_name }}</span>
-            <span class="ml-auto">captured {{ new Date(introspectData.captured_at).toLocaleTimeString() }}</span>
+            <span class="ml-auto tabular-nums">captured {{ new Date(introspectData.captured_at).toLocaleTimeString() }}</span>
           </div>
           <pre class="text-[11px] leading-snug text-foreground/80 bg-background rounded border border-border p-3 overflow-x-auto max-h-64 overflow-y-auto font-mono whitespace-pre-wrap">{{ introspectData.lines.join('\n') }}</pre>
         </div>
@@ -600,6 +701,24 @@ function toggleIntrospect() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="confirmDismiss()">
               <X class="size-4" /> Dismiss
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <!-- Stop agent confirmation AlertDialog -->
+      <AlertDialog v-model:open="stopConfirmOpen">
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will kill the tmux session for <span class="font-semibold text-foreground">{{ agentName }}</span>. Any in-progress work will be interrupted. You can respawn the agent afterwards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="handleStop">
+              <Square class="size-4" /> Stop
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -49,6 +49,8 @@ export interface AgentUpdate {
   repo_url?: string
   messages?: AgentMessage[]
   updated_at: string
+  stale?: boolean
+  inferred_status?: string
 }
 
 export interface KnowledgeSpace {
