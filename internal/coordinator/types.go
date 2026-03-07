@@ -134,9 +134,79 @@ type Table struct {
 	Rows    [][]string `json:"rows"`
 }
 
+// TaskStatus is the Kanban column a task occupies.
+type TaskStatus string
+
+const (
+	TaskStatusBacklog    TaskStatus = "backlog"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusReview     TaskStatus = "review"
+	TaskStatusDone       TaskStatus = "done"
+	TaskStatusBlocked    TaskStatus = "blocked"
+)
+
+func (ts TaskStatus) Valid() bool {
+	switch ts {
+	case TaskStatusBacklog, TaskStatusInProgress, TaskStatusReview, TaskStatusDone, TaskStatusBlocked:
+		return true
+	}
+	return false
+}
+
+// TaskPriority controls visual ordering and filtering on the board.
+type TaskPriority string
+
+const (
+	TaskPriorityLow    TaskPriority = "low"
+	TaskPriorityMedium TaskPriority = "medium"
+	TaskPriorityHigh   TaskPriority = "high"
+	TaskPriorityUrgent TaskPriority = "urgent"
+)
+
+// Task is the canonical unit of tracked work within a KnowledgeSpace.
+type Task struct {
+	ID          string       `json:"id"`
+	Space       string       `json:"space"`
+	Title       string       `json:"title"`
+	Description string       `json:"description,omitempty"`
+	Status      TaskStatus   `json:"status"`
+	Priority    TaskPriority `json:"priority,omitempty"`
+
+	// Assignment
+	AssignedTo string `json:"assigned_to,omitempty"`
+	CreatedBy  string `json:"created_by"`
+
+	// Relationships
+	Labels     []string `json:"labels,omitempty"`
+	ParentTask string   `json:"parent_task,omitempty"`
+	Subtasks   []string `json:"subtasks,omitempty"`
+
+	// Cross-system links
+	LinkedBranch string `json:"linked_branch,omitempty"`
+	LinkedPR     string `json:"linked_pr,omitempty"`
+
+	// Timestamps
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DueAt     *time.Time `json:"due_at,omitempty"`
+
+	// Activity
+	Comments []TaskComment `json:"comments,omitempty"`
+}
+
+// TaskComment is a human or agent note on a task.
+type TaskComment struct {
+	ID        string    `json:"id"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type KnowledgeSpace struct {
 	Name            string                  `json:"name"`
 	Agents          map[string]*AgentUpdate `json:"agents"`
+	Tasks           map[string]*Task        `json:"tasks,omitempty"`
+	NextTaskSeq     int                     `json:"next_task_seq,omitempty"`
 	SharedContracts string                  `json:"shared_contracts,omitempty"`
 	Archive         string                  `json:"archive,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
@@ -148,6 +218,7 @@ func NewKnowledgeSpace(name string) *KnowledgeSpace {
 	return &KnowledgeSpace{
 		Name:      name,
 		Agents:    make(map[string]*AgentUpdate),
+		Tasks:     make(map[string]*Task),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

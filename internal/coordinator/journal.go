@@ -23,6 +23,14 @@ const (
 	EventContractsUpdated  SpaceEventType = "contracts_updated"
 	EventArchiveUpdated    SpaceEventType = "archive_updated"
 	EventSnapshot          SpaceEventType = "snapshot"
+
+	// Task events
+	EventTaskCreated   SpaceEventType = "task_created"
+	EventTaskUpdated   SpaceEventType = "task_updated"
+	EventTaskDeleted   SpaceEventType = "task_deleted"
+	EventTaskCommented SpaceEventType = "task_commented"
+	EventTaskMoved     SpaceEventType = "task_moved"
+	EventTaskAssigned  SpaceEventType = "task_assigned"
 )
 
 // SpaceEvent is a single append-only entry in the event journal.
@@ -283,6 +291,80 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 			}
 			if err := json.Unmarshal(ev.Payload, &payload); err == nil {
 				ks.Archive = payload.Content
+			}
+
+		case EventTaskCreated, EventTaskUpdated:
+			var task Task
+			if err := json.Unmarshal(ev.Payload, &task); err != nil {
+				continue
+			}
+			if ks.Tasks == nil {
+				ks.Tasks = make(map[string]*Task)
+			}
+			ks.Tasks[task.ID] = &task
+			if task.ID > fmt.Sprintf("TASK-%03d", ks.NextTaskSeq) {
+				// parse and update counter
+				var seq int
+				fmt.Sscanf(task.ID, "TASK-%d", &seq)
+				if seq >= ks.NextTaskSeq {
+					ks.NextTaskSeq = seq + 1
+				}
+			}
+
+		case EventTaskDeleted:
+			var payload struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err == nil && payload.ID != "" {
+				delete(ks.Tasks, payload.ID)
+			}
+
+		case EventTaskCommented:
+			var payload struct {
+				TaskID  string      `json:"task_id"`
+				Comment TaskComment `json:"comment"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+				continue
+			}
+			if ks.Tasks == nil {
+				continue
+			}
+			if task, ok := ks.Tasks[payload.TaskID]; ok {
+				task.Comments = append(task.Comments, payload.Comment)
+				task.UpdatedAt = ev.Timestamp
+			}
+
+		case EventTaskMoved:
+			var payload struct {
+				ID     string     `json:"id"`
+				Status TaskStatus `json:"status"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+				continue
+			}
+			if ks.Tasks == nil {
+				continue
+			}
+			if task, ok := ks.Tasks[payload.ID]; ok {
+				task.Status = payload.Status
+				task.UpdatedAt = ev.Timestamp
+			}
+
+		case EventTaskAssigned:
+			var payload struct {
+				ID         string `json:"id"`
+				AssignedTo string `json:"assigned_to"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+				continue
+			}
+			if ks.Tasks == nil {
+				continue
+			}
+			if task, ok := ks.Tasks[payload.ID]; ok {
+				task.AssignedTo = payload.AssignedTo
+				task.UpdatedAt = ev.Timestamp
 			}
 		}
 	}
