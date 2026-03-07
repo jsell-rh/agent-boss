@@ -25,6 +25,9 @@ type AgentRegistration struct {
 	CallbackURL string `json:"callback_url,omitempty"`
 	// Metadata is arbitrary key/value info attached to the registration.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// Parent declares this agent's manager in the hierarchy. Optional, sticky.
+	// If set, the server links this agent as a child of Parent.
+	Parent string `json:"parent,omitempty"`
 }
 
 // AgentRegistrationRecord is stored server-side after an agent registers.
@@ -75,6 +78,12 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request, spa
 	ks := s.getOrCreateSpace(spaceName)
 	canonical := resolveAgentName(ks, agentName)
 
+	// "parent" is reserved for message escalation routing.
+	if strings.EqualFold(agentName, "parent") {
+		http.Error(w, `"parent" is a reserved agent name`, http.StatusBadRequest)
+		return
+	}
+
 	// Ensure agent exists in the space and persist registration info
 	s.mu.Lock()
 	agent, ok := ks.Agents[canonical]
@@ -87,6 +96,16 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request, spa
 		ks.Agents[canonical] = agent
 	}
 	agent.Registration = &reg
+	// Apply hierarchy from registration if provided.
+	if reg.Parent != "" {
+		if hasCycle(ks, canonical, reg.Parent) {
+			s.mu.Unlock()
+			http.Error(w, "cycle detected: parent assignment would create a loop", http.StatusBadRequest)
+			return
+		}
+		agent.Parent = reg.Parent
+		rebuildChildren(ks)
+	}
 	ks.UpdatedAt = time.Now().UTC()
 	s.saveSpace(ks)
 	s.mu.Unlock()

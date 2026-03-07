@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+// HierarchyTree is the full agent hierarchy for a space, computed on demand.
+type HierarchyTree struct {
+	Space string                     `json:"space"`
+	Roots []string                   `json:"roots"` // agents with no parent
+	Nodes map[string]*HierarchyNode  `json:"nodes"`
+}
+
+// HierarchyNode is one agent's position in the hierarchy tree.
+type HierarchyNode struct {
+	Agent    string   `json:"agent"`
+	Parent   string   `json:"parent,omitempty"`
+	Children []string `json:"children"`
+	Depth    int      `json:"depth"` // 0 = root
+	Role     string   `json:"role,omitempty"`
+}
+
 type AgentStatus string
 
 const (
@@ -60,6 +76,13 @@ type AgentUpdate struct {
 	RepoURL        string          `json:"repo_url,omitempty"`
 	Messages       []AgentMessage  `json:"messages,omitempty"`
 	UpdatedAt      time.Time       `json:"updated_at"`
+
+	// Hierarchy fields — optional. If Parent is empty, agent is a root node.
+	// Parent is sticky (mutable): set via status POST or /register; omitting does not clear it.
+	// Children is server-managed: computed by rebuildChildren(), never set by agents.
+	Parent   string   `json:"parent,omitempty"`
+	Children []string `json:"children,omitempty"`
+	Role     string   `json:"role,omitempty"` // display label: "manager", "worker", "sme", etc.
 
 	// Server-inferred fields (not set by agents themselves)
 	InferredStatus string          `json:"inferred_status,omitempty"`
@@ -294,6 +317,136 @@ func renderTable(t *Table) string {
 		b.WriteString(" |\n")
 	}
 	return b.String()
+}
+
+// BuildHierarchyTree computes the hierarchy tree for a KnowledgeSpace on demand.
+// Must be called with ks read-accessible (caller holds s.mu.RLock or s.mu.Lock).
+func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
+	tree := &HierarchyTree{
+		Space: ks.Name,
+		Roots: []string{},
+		Nodes: make(map[string]*HierarchyNode),
+	}
+
+	// Build all nodes
+	for name, ag := range ks.Agents {
+		node := &HierarchyNode{
+			Agent:    name,
+			Parent:   ag.Parent,
+			Children: make([]string, len(ag.Children)),
+			Role:     ag.Role,
+		}
+		copy(node.Children, ag.Children)
+		tree.Nodes[name] = node
+	}
+
+	// Compute depths via BFS from roots
+	for name, node := range tree.Nodes {
+		if node.Parent == "" {
+			tree.Roots = append(tree.Roots, name)
+			node.Depth = 0
+		}
+	}
+	sort.Strings(tree.Roots)
+
+	// BFS to set depth for non-root nodes
+	visited := make(map[string]bool)
+	queue := make([]string, len(tree.Roots))
+	copy(queue, tree.Roots)
+	for _, r := range tree.Roots {
+		visited[r] = true
+	}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		node := tree.Nodes[current]
+		for _, child := range node.Children {
+			if !visited[child] {
+				visited[child] = true
+				if cn, ok := tree.Nodes[child]; ok {
+					cn.Depth = node.Depth + 1
+				}
+				queue = append(queue, child)
+			}
+		}
+	}
+
+	return tree
+}
+
+// rebuildChildren recomputes all Children slices by inverting the Parent fields.
+// Must be called inside s.mu.Lock().
+func rebuildChildren(ks *KnowledgeSpace) {
+	// Reset all children slices
+	for _, ag := range ks.Agents {
+		ag.Children = nil
+	}
+	// Populate from Parent fields
+	for name, ag := range ks.Agents {
+		if ag.Parent == "" {
+			continue
+		}
+		canonicalParent := resolveAgentName(ks, ag.Parent)
+		if parent, ok := ks.Agents[canonicalParent]; ok {
+			parent.Children = append(parent.Children, name)
+		}
+	}
+	// Sort children for stable output
+	for _, ag := range ks.Agents {
+		sort.Strings(ag.Children)
+	}
+}
+
+// hasCycle returns true if assigning proposedParent as the parent of agentName
+// would create a cycle. Must be called inside s.mu.Lock().
+func hasCycle(ks *KnowledgeSpace, agentName, proposedParent string) bool {
+	if proposedParent == "" {
+		return false
+	}
+	target := strings.ToLower(agentName)
+	visited := make(map[string]bool)
+	current := strings.ToLower(proposedParent)
+	for current != "" {
+		if current == target {
+			return true
+		}
+		if visited[current] {
+			break
+		}
+		visited[current] = true
+		canonical := resolveAgentName(ks, current)
+		ag, ok := ks.Agents[canonical]
+		if !ok {
+			break // dangling reference — no cycle through here
+		}
+		current = strings.ToLower(ag.Parent)
+	}
+	return false
+}
+
+// collectSubtree returns agentName plus all its descendants (BFS order).
+// Must be called inside s.mu.Lock() or s.mu.RLock().
+func collectSubtree(ks *KnowledgeSpace, agentName string) []string {
+	var result []string
+	visited := make(map[string]bool)
+	queue := []string{agentName}
+	visited[agentName] = true
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		result = append(result, current)
+		ag, ok := ks.Agents[current]
+		if !ok {
+			continue
+		}
+		for _, child := range ag.Children {
+			if !visited[child] {
+				visited[child] = true
+				queue = append(queue, child)
+			}
+		}
+	}
+	return result
 }
 
 // StatusSnapshot is a point-in-time record of an agent's status.

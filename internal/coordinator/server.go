@@ -574,6 +574,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.NotFound(w, r)
 		}
+	case "hierarchy":
+		s.handleSpaceHierarchy(w, r, spaceName)
 	case "history":
 		s.handleSpaceHistory(w, r, spaceName)
 	case "ignition":
@@ -674,6 +676,23 @@ func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, space
 	s.broadcastSSE(spaceName, "", "space_deleted", spaceName)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "deleted space %q", spaceName)
+}
+
+func (s *Server) handleSpaceHierarchy(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+	s.mu.RLock()
+	tree := BuildHierarchyTree(ks)
+	s.mu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tree)
 }
 
 func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceName string) {
@@ -863,8 +882,28 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 
 		update.UpdatedAt = time.Now().UTC()
 
+		// "parent" is a reserved agent name used for parent escalation in message routing.
+		if strings.EqualFold(agentName, "parent") {
+			writeJSONError(w, `"parent" is a reserved agent name`, http.StatusBadRequest)
+			return
+		}
+
+		// Children is server-managed — zero any agent-supplied value before processing.
+		incomingParent := update.Parent
+		incomingRole := update.Role
+		update.Children = nil
+
 		s.mu.Lock()
 		canonical := resolveAgentName(ks, agentName)
+
+		// Cycle detection: must be atomic with the write inside this lock.
+		if incomingParent != "" && hasCycle(ks, canonical, incomingParent) {
+			s.mu.Unlock()
+			writeJSONError(w, "cycle detected: parent assignment would create a loop", http.StatusBadRequest)
+			return
+		}
+
+		parentChanged := false
 		if existing, ok := ks.Agents[canonical]; ok {
 			if update.TmuxSession == "" && existing.TmuxSession != "" {
 				update.TmuxSession = existing.TmuxSession
@@ -888,9 +927,24 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 				update.LastHeartbeat = existing.LastHeartbeat
 			}
 			update.HeartbeatStale = existing.HeartbeatStale
+			// Sticky hierarchy fields: only update if incoming POST includes them.
+			// An omitted parent/role does not clear the existing value.
+			if incomingParent == "" && existing.Parent != "" {
+				update.Parent = existing.Parent
+			}
+			if incomingRole == "" && existing.Role != "" {
+				update.Role = existing.Role
+			}
+			parentChanged = update.Parent != existing.Parent
+		} else {
+			parentChanged = incomingParent != ""
 		}
 		ks.Agents[canonical] = &update
 		ks.UpdatedAt = time.Now().UTC()
+		// Rebuild children whenever the parent relationship may have changed.
+		if parentChanged {
+			rebuildChildren(ks)
+		}
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
 			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
@@ -920,6 +974,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		s.mu.Lock()
 		canonical := resolveAgentName(ks, agentName)
 		delete(ks.Agents, canonical)
+		rebuildChildren(ks) // keep children lists consistent after removal
 		ks.UpdatedAt = time.Now().UTC()
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
@@ -952,6 +1007,25 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	if senderName == "" {
 		writeJSONError(w, "missing X-Agent-Name header: sender must identify themselves", http.StatusBadRequest)
 		return
+	}
+
+	// "parent" is a reserved target: resolve to the sender's actual parent agent.
+	// This check must precede resolveAgentName to avoid collision with an agent literally named "parent".
+	if strings.EqualFold(agentName, "parent") {
+		ks, ok := s.getSpace(spaceName)
+		if !ok {
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			return
+		}
+		s.mu.RLock()
+		senderCanonical := resolveAgentName(ks, senderName)
+		sender, senderExists := ks.Agents[senderCanonical]
+		s.mu.RUnlock()
+		if !senderExists || sender.Parent == "" {
+			writeJSONError(w, "agent has no declared parent", http.StatusBadRequest)
+			return
+		}
+		agentName = sender.Parent
 	}
 
 	var messageReq AgentMessage
@@ -996,47 +1070,64 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		s.mu.Unlock()
 	}
 
+	// Determine recipients based on scope query parameter.
+	// scope=subtree: named agent + all descendants (capped at 50, async delivery, 202 response).
+	// scope=direct (default): named agent only.
+	scope := r.URL.Query().Get("scope")
+	const subtreeCap = 50
+
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
-	if !exists {
-		// Create agent record if it doesn't exist
-		agent = &AgentUpdate{
-			Status:    StatusIdle,
-			Summary:   fmt.Sprintf("%s: pending message delivery", canonical),
-			Messages:  []AgentMessage{},
-			UpdatedAt: time.Now().UTC(),
+
+	var recipients []string
+	if scope == "subtree" {
+		recipients = collectSubtree(ks, canonical)
+		if len(recipients) > subtreeCap {
+			s.logEvent(fmt.Sprintf("[%s/%s] subtree fan-out capped at %d recipients", spaceName, canonical, subtreeCap))
+			recipients = recipients[:subtreeCap]
 		}
-		ks.Agents[canonical] = agent
+	} else {
+		recipients = []string{canonical}
 	}
 
-	// Add message to agent's inbox
-	if agent.Messages == nil {
-		agent.Messages = []AgentMessage{}
-	}
-	agent.Messages = append(agent.Messages, messageReq)
-
-	// Retain all unread messages; cap read messages at 50 to prevent
-	// unbounded growth without silently dropping directive messages.
-	const maxReadMessages = 50
-	readCount := 0
-	for _, m := range agent.Messages {
-		if m.Read {
-			readCount++
-		}
-	}
-	if readCount > maxReadMessages {
-		toSkip := readCount - maxReadMessages
-		skipped := 0
-		filtered := make([]AgentMessage, 0, len(agent.Messages))
-		for _, m := range agent.Messages {
-			if m.Read && skipped < toSkip {
-				skipped++
-				continue
+	// Deliver message to all recipients in one critical section, one save.
+	for _, r := range recipients {
+		ag, exists := ks.Agents[r]
+		if !exists {
+			ag = &AgentUpdate{
+				Status:    StatusIdle,
+				Summary:   fmt.Sprintf("%s: pending message delivery", r),
+				Messages:  []AgentMessage{},
+				UpdatedAt: time.Now().UTC(),
 			}
-			filtered = append(filtered, m)
+			ks.Agents[r] = ag
 		}
-		agent.Messages = filtered
+		if ag.Messages == nil {
+			ag.Messages = []AgentMessage{}
+		}
+		ag.Messages = append(ag.Messages, messageReq)
+
+		// Retain all unread messages; cap read messages at 50.
+		const maxReadMessages = 50
+		readCount := 0
+		for _, m := range ag.Messages {
+			if m.Read {
+				readCount++
+			}
+		}
+		if readCount > maxReadMessages {
+			toSkip := readCount - maxReadMessages
+			skipped := 0
+			filtered := make([]AgentMessage, 0, len(ag.Messages))
+			for _, m := range ag.Messages {
+				if m.Read && skipped < toSkip {
+					skipped++
+					continue
+				}
+				filtered = append(filtered, m)
+			}
+			ag.Messages = filtered
+		}
 	}
 
 	ks.UpdatedAt = time.Now().UTC()
@@ -1047,37 +1138,43 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	}
 	s.mu.Unlock()
 
-	// Log the message event
-	s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, canonical, senderName, messageReq.Message))
-	s.journal.Append(spaceName, EventMessageSent, canonical, &messageReq)
-
-	// Broadcast SSE event for real-time updates
-	sseData, _ := json.Marshal(map[string]interface{}{
-		"space":    spaceName,
-		"agent":    canonical,
-		"sender":   senderName,
-		"message":  messageReq.Message,
-		"priority": string(messageReq.Priority),
-	})
-	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
-
-	// Attempt webhook delivery if the agent has registered a callback URL.
-	// Falls back to tmux nudge below if not registered or webhook fails.
-	s.tryWebhookDelivery(spaceName, canonical, messageReq)
-
-	// Mark agent for nudge — the liveness loop will trigger a check-in
-	// when the agent is next idle, so it reads the message via /raw.
-	s.nudgeMu.Lock()
-	s.nudgePending[spaceName+"/"+canonical] = time.Now()
-	s.nudgeMu.Unlock()
+	// Log and broadcast SSE outside the lock (sseMu is distinct from s.mu — no deadlock).
+	// For subtree fan-out: fire-and-forget per recipient (async, 202 response).
+	for _, recipient := range recipients {
+		s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, recipient, senderName, messageReq.Message))
+		s.journal.Append(spaceName, EventMessageSent, recipient, &messageReq)
+		sseData, _ := json.Marshal(map[string]interface{}{
+			"space":    spaceName,
+			"agent":    recipient,
+			"sender":   senderName,
+			"message":  messageReq.Message,
+			"priority": string(messageReq.Priority),
+		})
+		go func(r string, data string) {
+			s.broadcastSSE(spaceName, r, "agent_message", data)
+			s.tryWebhookDelivery(spaceName, r, messageReq)
+			s.nudgeMu.Lock()
+			s.nudgePending[spaceName+"/"+r] = time.Now()
+			s.nudgeMu.Unlock()
+		}(recipient, string(sseData))
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "delivered",
-		"messageId": messageReq.ID,
-		"recipient": canonical,
-	})
+	if scope == "subtree" {
+		w.WriteHeader(http.StatusAccepted) // 202 — async fan-out
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "accepted",
+			"messageId":  messageReq.ID,
+			"recipients": recipients,
+		})
+	} else {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "delivered",
+			"messageId": messageReq.ID,
+			"recipient": canonical,
+		})
+	}
 }
 
 func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spaceName, agentName, documentSlug string) {
