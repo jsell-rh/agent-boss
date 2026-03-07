@@ -2,6 +2,7 @@
 import type { AgentUpdate } from '@/types'
 import { ref, computed } from 'vue'
 import { useTime } from '@/composables/useTime'
+import { useRouter } from 'vue-router'
 import AgentAvatar from './AgentAvatar.vue'
 import StatusBadge from './StatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
@@ -16,8 +17,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'select-agent': [name: string]
-  'message-agent': [name: string]
 }>()
+
+const router = useRouter()
 
 function prLink(agent: { pr?: string; repo_url?: string }): string | null {
   if (!agent.pr) return null
@@ -90,6 +92,15 @@ function onCardMouseLeave() {
 function goToAgent() {
   visible.value = false
   emit('select-agent', props.agentName)
+}
+
+function goToConversations() {
+  visible.value = false
+  if (props.spaceName) {
+    router.push(
+      `/${encodeURIComponent(props.spaceName)}/conversations?to=${encodeURIComponent(props.agentName)}`,
+    )
+  }
 }
 
 const summaryText = computed(() => {
@@ -206,7 +217,8 @@ const summaryText = computed(() => {
             variant="ghost"
             size="sm"
             class="h-7 text-xs gap-1.5"
-            @click.stop="emit('message-agent', agentName)"
+            :disabled="!spaceName"
+            @click.stop="goToConversations"
           >
             <MessageSquare class="size-3" />
             Message

@@ -422,7 +422,6 @@ const activeSections = computed(() => [
                             :agent="agent"
                             :space-name="space.name"
                             @select-agent="emit('select-agent', $event)"
-                          @message-agent="openMessageDialog($event)"
                           >
                             <div class="flex items-center gap-2.5 min-w-0" @click.stop>
                               <div class="relative inline-block shrink-0">
@@ -683,7 +682,6 @@ const activeSections = computed(() => [
                     :agent="agent"
                     :space-name="space.name"
                     @select-agent="emit('select-agent', $event)"
-                    @message-agent="openMessageDialog($event)"
                   >
                     <div class="flex items-center gap-2 shrink-0" @click.stop>
                       <div class="relative inline-block">
