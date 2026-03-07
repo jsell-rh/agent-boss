@@ -215,6 +215,20 @@ const enrichedMessages = computed((): MessageEntry[] => {
                 {{ entry.msg.sender }}
               </span>
 
+              <!-- Priority badge — directive / urgent only -->
+              <span
+                v-if="entry.msg.priority === 'urgent'"
+                class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1 bg-red-500/15 text-red-500 border border-red-500/30"
+              >
+                urgent
+              </span>
+              <span
+                v-else-if="entry.msg.priority === 'directive'"
+                class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1 bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
+              >
+                directive
+              </span>
+
               <!-- Bubble -->
               <Tooltip>
                 <TooltipTrigger as-child>

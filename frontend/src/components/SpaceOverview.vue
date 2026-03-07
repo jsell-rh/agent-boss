@@ -416,6 +416,28 @@ const activeSections = computed(() => [
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                           <StatusBadge :status="agent.status" />
+                          <Tooltip v-if="agent.stale">
+                            <TooltipTrigger as-child>
+                              <Badge
+                                variant="outline"
+                                class="border-orange-500/50 text-orange-500 text-[10px] h-5 px-1.5"
+                              >
+                                Stale
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>Agent has not posted an update recently</TooltipContent>
+                          </Tooltip>
+                          <Tooltip v-if="agent.inferred_status && agent.inferred_status !== 'working'">
+                            <TooltipTrigger as-child>
+                              <Badge
+                                variant="outline"
+                                class="border-muted-foreground/40 text-muted-foreground text-[10px] h-5 px-1.5 capitalize"
+                              >
+                                {{ agent.inferred_status.replace('_', ' ') }}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>Server-inferred status from tmux observation</TooltipContent>
+                          </Tooltip>
                           <Tooltip v-if="tmuxStatus?.[name]?.needs_approval">
                             <TooltipTrigger as-child>
                               <Badge

@@ -19,10 +19,13 @@ export interface AgentDocument {
   content: string
 }
 
+export type MessagePriority = 'info' | 'directive' | 'urgent'
+
 export interface AgentMessage {
   id: string
   message: string
   sender: string
+  priority?: MessagePriority
   timestamp: string
 }
 
@@ -83,6 +86,19 @@ export interface StatusSnapshot {
   inferred_status?: string
   stale?: boolean
   timestamp: string
+}
+
+// GET /spaces/{space}/agent/{name}/introspect response
+export interface IntrospectResponse {
+  agent: string
+  tmux_session?: string
+  session_exists: boolean
+  idle: boolean
+  needs_approval: boolean
+  tool_name?: string
+  prompt_text?: string
+  lines: string[]
+  captured_at: string
 }
 
 // GET /spaces/{space}/factory/interrupts response items
