@@ -50,9 +50,10 @@ type Server struct {
 	// when they next become idle. Set when a message arrives for an agent.
 	// The liveness loop picks it up on the next tick where the agent is idle.
 	// Keyed by "space/agent".
-	nudgePending  map[string]time.Time
-	nudgeInFlight map[string]bool // prevents duplicate concurrent nudges
-	nudgeMu       sync.Mutex
+	nudgePending       map[string]time.Time
+	nudgeInFlight      map[string]bool // prevents duplicate concurrent nudges
+	nudgeMu            sync.Mutex
+	stalenessThreshold time.Duration
 	// registrations holds registration records for agents that have called /register.
 	// Keyed by registrationKey(space, agent). Guarded by regMu.
 	registrations map[string]*AgentRegistrationRecord
@@ -63,17 +64,24 @@ func NewServer(port, dataDir string) *Server {
 	if port == "" {
 		port = DefaultPort
 	}
+	thresh := StalenessThreshold
+	if v := os.Getenv("STALENESS_THRESHOLD"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			thresh = d
+		}
+	}
 	return &Server{
-		port:            port,
-		dataDir:         dataDir,
-		spaces:          make(map[string]*KnowledgeSpace),
-		stopLiveness:    make(chan struct{}),
-		sseClients:      make(map[*sseClient]struct{}),
-		interrupts:      NewInterruptLedger(dataDir),
-		approvalTracked: make(map[string]time.Time),
-		nudgePending:    make(map[string]time.Time),
-		nudgeInFlight:   make(map[string]bool),
-		registrations:   make(map[string]*AgentRegistrationRecord),
+		port:               port,
+		dataDir:            dataDir,
+		spaces:             make(map[string]*KnowledgeSpace),
+		stopLiveness:       make(chan struct{}),
+		sseClients:         make(map[*sseClient]struct{}),
+		interrupts:         NewInterruptLedger(dataDir),
+		approvalTracked:    make(map[string]time.Time),
+		nudgePending:       make(map[string]time.Time),
+		nudgeInFlight:      make(map[string]bool),
+		stalenessThreshold: thresh,
+		registrations:      make(map[string]*AgentRegistrationRecord),
 	}
 }
 
@@ -444,6 +452,14 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleAgentMessages(w, r, spaceName, agentName)
 			case "events":
 				s.handleAgentSSE(w, r, spaceName, agentName)
+			case "spawn":
+				s.handleAgentSpawn(w, r, spaceName, agentName)
+			case "stop":
+				s.handleAgentStop(w, r, spaceName, agentName)
+			case "restart":
+				s.handleAgentRestart(w, r, spaceName, agentName)
+			case "introspect":
+				s.handleAgentIntrospect(w, r, spaceName, agentName)
 			default:
 				// Handle document path: /spaces/{space}/agent/{agent}/{slug}
 				s.handleAgentDocument(w, r, spaceName, agentName, action)
@@ -854,6 +870,17 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	messageReq.Sender = senderName
 	messageReq.Timestamp = time.Now().UTC()
 
+	// Validate and default priority
+	switch messageReq.Priority {
+	case PriorityInfo, PriorityDirective, PriorityUrgent:
+		// valid
+	case "":
+		messageReq.Priority = PriorityInfo
+	default:
+		http.Error(w, fmt.Sprintf("invalid priority %q: must be info, directive, or urgent", messageReq.Priority), http.StatusBadRequest)
+		return
+	}
+
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
 		// Create space if it doesn't exist for messages
@@ -906,10 +933,11 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 
 	// Broadcast SSE event for real-time updates
 	sseData, _ := json.Marshal(map[string]interface{}{
-		"space":   spaceName,
-		"agent":   canonical,
-		"sender":  senderName,
-		"message": messageReq.Message,
+		"space":    spaceName,
+		"agent":    canonical,
+		"sender":   senderName,
+		"message":  messageReq.Message,
+		"priority": string(messageReq.Priority),
 	})
 	s.broadcastSSE(spaceName, "agent_message", string(sseData))
 
@@ -1591,7 +1619,9 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 
 func (s *Server) livenessLoop() {
 	ticker := time.NewTicker(1 * time.Second)
+	staleTicker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
+	defer staleTicker.Stop()
 	heartbeatTicker := time.NewTicker(10 * time.Second)
 	defer heartbeatTicker.Stop()
 	for {
@@ -1600,6 +1630,8 @@ func (s *Server) livenessLoop() {
 			return
 		case <-ticker.C:
 			s.checkAllSessionLiveness()
+		case <-staleTicker.C:
+			s.checkStaleness()
 		case <-heartbeatTicker.C:
 			s.checkHeartbeatStaleness()
 		}
@@ -1685,6 +1717,16 @@ func (s *Server) checkAllSessionLiveness() {
 				m["prompt_text"] = e.prompt
 			}
 			payload[i] = m
+
+			// Update InferredStatus on the agent record
+			inferred := inferAgentStatus(e.exists, e.idle, e.needsApproval)
+			s.mu.Lock()
+			if ks, ok := s.spaces[space]; ok {
+				if agentRec, ok := ks.Agents[e.agent]; ok {
+					agentRec.InferredStatus = inferred
+				}
+			}
+			s.mu.Unlock()
 
 			// Check if this idle agent has a pending nudge
 			if e.exists && e.idle {

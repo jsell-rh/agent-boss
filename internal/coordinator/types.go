@@ -42,29 +42,33 @@ func (s AgentStatus) Emoji() string {
 }
 
 type AgentUpdate struct {
-	Status      AgentStatus     `json:"status"`
-	Summary     string          `json:"summary"`
-	Branch      string          `json:"branch,omitempty"`
-	Worktree    string          `json:"worktree,omitempty"`
-	PR          string          `json:"pr,omitempty"`
-	Phase       string          `json:"phase,omitempty"`
-	TestCount   *int            `json:"test_count,omitempty"`
-	Items       []string        `json:"items,omitempty"`
-	Sections    []Section       `json:"sections,omitempty"`
-	Questions   []string        `json:"questions,omitempty"`
-	Blockers    []string        `json:"blockers,omitempty"`
-	NextSteps   string          `json:"next_steps,omitempty"`
-	FreeText    string          `json:"free_text,omitempty"`
-	Documents   []AgentDocument `json:"documents,omitempty"`
-	TmuxSession string          `json:"tmux_session,omitempty"`
-	RepoURL     string          `json:"repo_url,omitempty"`
-	Messages    []AgentMessage  `json:"messages,omitempty"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	Status         AgentStatus     `json:"status"`
+	Summary        string          `json:"summary"`
+	Branch         string          `json:"branch,omitempty"`
+	Worktree       string          `json:"worktree,omitempty"`
+	PR             string          `json:"pr,omitempty"`
+	Phase          string          `json:"phase,omitempty"`
+	TestCount      *int            `json:"test_count,omitempty"`
+	Items          []string        `json:"items,omitempty"`
+	Sections       []Section       `json:"sections,omitempty"`
+	Questions      []string        `json:"questions,omitempty"`
+	Blockers       []string        `json:"blockers,omitempty"`
+	NextSteps      string          `json:"next_steps,omitempty"`
+	FreeText       string          `json:"free_text,omitempty"`
+	Documents      []AgentDocument `json:"documents,omitempty"`
+	TmuxSession    string          `json:"tmux_session,omitempty"`
+	RepoURL        string          `json:"repo_url,omitempty"`
+	Messages       []AgentMessage  `json:"messages,omitempty"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+
+	// Server-inferred fields (not set by agents themselves)
+	InferredStatus string          `json:"inferred_status,omitempty"`
+	Stale          bool            `json:"stale,omitempty"`
 
 	// Protocol registration fields — preserved across status updates (sticky).
-	Registration  *AgentRegistration `json:"registration,omitempty"`
-	LastHeartbeat time.Time          `json:"last_heartbeat,omitempty"`
-	HeartbeatStale bool              `json:"heartbeat_stale,omitempty"`
+	Registration   *AgentRegistration `json:"registration,omitempty"`
+	LastHeartbeat  time.Time          `json:"last_heartbeat,omitempty"`
+	HeartbeatStale bool               `json:"heartbeat_stale,omitempty"`
 }
 
 type Section struct {
@@ -79,11 +83,25 @@ type AgentDocument struct {
 	Content string `json:"content"`
 }
 
+// MessagePriority indicates the urgency of a message to an agent.
+type MessagePriority string
+
+const (
+	PriorityInfo      MessagePriority = "info"
+	PriorityDirective MessagePriority = "directive"
+	PriorityUrgent    MessagePriority = "urgent"
+)
+
+// StalenessThreshold is the duration after which an agent that has not
+// self-reported is considered stale.
+const StalenessThreshold = 15 * time.Minute
+
 type AgentMessage struct {
-	ID        string    `json:"id"`
-	Message   string    `json:"message"`
-	Sender    string    `json:"sender"`
-	Timestamp time.Time `json:"timestamp"`
+	ID        string          `json:"id"`
+	Message   string          `json:"message"`
+	Sender    string          `json:"sender"`
+	Priority  MessagePriority `json:"priority,omitempty"`
+	Timestamp time.Time       `json:"timestamp"`
 }
 
 type Table struct {
