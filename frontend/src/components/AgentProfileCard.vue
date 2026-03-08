@@ -58,7 +58,7 @@ function computePosition() {
   if (left < 8) left = 8
 
   // If card would go off the bottom, flip above
-  const estimatedCardH = 200
+  const estimatedCardH = 320
   if (top + estimatedCardH > viewportH - 8) {
     top = rect.top - estimatedCardH - 8
     if (top < 8) top = 8

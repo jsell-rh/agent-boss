@@ -300,7 +300,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ScrollArea class="h-full">
+  <ScrollArea class="flex-1 min-h-0">
     <div class="p-6 space-y-6 max-w-4xl border-t-[3px]" :class="statusAccentClass">
       <!-- Header -->
       <div class="flex items-start justify-between gap-4 flex-wrap">
