@@ -2409,6 +2409,8 @@ func (s *Server) handleSpaceTasks(w http.ResponseWriter, r *http.Request, spaceN
 		s.handleTaskAssign(w, r, spaceName, taskID)
 	case "comment":
 		s.handleTaskComment(w, r, spaceName, taskID)
+	case "subtasks":
+		s.handleTaskCreateSubtask(w, r, spaceName, taskID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -2904,4 +2906,100 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 		"priority": msg.Priority,
 	})
 	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
+}
+
+// handleTaskCreateSubtask handles POST /spaces/{space}/tasks/{id}/subtasks.
+// It creates a new task with parent_task set to {id}.
+func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request, spaceName, parentID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	caller := r.Header.Get("X-Agent-Name")
+	if caller == "" {
+		writeJSONError(w, "missing X-Agent-Name header", http.StatusBadRequest)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, "space not found", http.StatusNotFound)
+		return
+	}
+
+	s.mu.RLock()
+	_, parentExists := ks.Tasks[parentID]
+	s.mu.RUnlock()
+	if !parentExists {
+		writeJSONError(w, fmt.Sprintf("parent task %q not found", parentID), http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Title        string       `json:"title"`
+		Description  string       `json:"description"`
+		Priority     TaskPriority `json:"priority"`
+		AssignedTo   string       `json:"assigned_to"`
+		Labels       []string     `json:"labels"`
+		LinkedBranch string       `json:"linked_branch"`
+		LinkedPR     string       `json:"linked_pr"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		writeJSONError(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	ks.NextTaskSeq++
+	id := fmt.Sprintf("TASK-%03d", ks.NextTaskSeq)
+	now := time.Now().UTC()
+	task := &Task{
+		ID:           id,
+		Space:        spaceName,
+		Title:        strings.TrimSpace(req.Title),
+		Description:  req.Description,
+		Status:       TaskStatusBacklog,
+		Priority:     req.Priority,
+		AssignedTo:   req.AssignedTo,
+		CreatedBy:    caller,
+		Labels:       req.Labels,
+		ParentTask:   parentID,
+		LinkedBranch: req.LinkedBranch,
+		LinkedPR:     req.LinkedPR,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if ks.Tasks == nil {
+		ks.Tasks = make(map[string]*Task)
+	}
+	ks.Tasks[id] = task
+	if parent, ok := ks.Tasks[parentID]; ok {
+		parent.Subtasks = append(parent.Subtasks, id)
+		parent.UpdatedAt = now
+	}
+	ks.UpdatedAt = now
+	taskCopy := *task
+	s.mu.Unlock()
+
+	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
+	s.saveSpace(ks)
+
+	if sseData, err := json.Marshal(map[string]any{
+		"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
+		"title": taskCopy.Title, "assigned_to": taskCopy.AssignedTo, "parent_task": parentID,
+	}); err == nil {
+		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
+	}
+
+	if taskCopy.AssignedTo != "" {
+		s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(taskCopy)
 }
