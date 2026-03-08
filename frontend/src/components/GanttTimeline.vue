@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { StatusSnapshot, AgentUpdate } from '@/types'
 import api from '@/api/client'
 import AgentProfileCard from './AgentProfileCard.vue'
+import { RefreshCw, AlertCircle, Clock } from 'lucide-vue-next'
 
 const props = defineProps<{
   spaceName: string
@@ -103,16 +104,16 @@ const axisLabels = computed(() => {
   })
 })
 
-// Color for a segment
+// Color for a segment — use design token vars
 function segmentClass(status: string, stale: boolean): string {
-  if (stale) return 'bg-yellow-500/70'
+  if (stale) return 'bg-warning/70'
   return {
-    active: 'bg-green-500',
-    blocked: 'bg-red-500',
-    done: 'bg-teal-500',
-    idle: 'bg-slate-400',
-    error: 'bg-orange-500',
-  }[status] ?? 'bg-slate-400'
+    active: 'bg-success/70',
+    blocked: 'bg-warning/70',
+    done: 'bg-info/70',
+    idle: 'bg-muted-foreground/40',
+    error: 'bg-destructive/70',
+  }[status] ?? 'bg-muted-foreground/40'
 }
 
 // Tooltip state
@@ -173,7 +174,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="bg-card rounded-lg border border-border p-4 space-y-3">
     <!-- Header row: window selector -->
     <div class="flex items-center justify-between">
       <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -196,15 +197,35 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Loading / error -->
-    <div v-if="loading && ganttRows.length === 0" class="py-6 text-center text-xs text-muted-foreground">
-      Loading history…
+    <!-- Loading -->
+    <div v-if="loading && ganttRows.length === 0" class="flex flex-col items-center justify-center py-16 text-center gap-3">
+      <div class="rounded-full bg-muted p-3.5">
+        <RefreshCw class="size-6 text-muted-foreground/60 animate-spin" aria-hidden="true" />
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-foreground">Loading history…</p>
+        <p class="text-xs text-muted-foreground">Fetching agent status snapshots</p>
+      </div>
     </div>
-    <div v-else-if="error" class="py-4 text-center text-xs text-destructive">
-      {{ error }}
+    <!-- Error -->
+    <div v-else-if="error" class="flex flex-col items-center justify-center py-16 text-center gap-3">
+      <div class="rounded-full bg-destructive/10 p-3.5">
+        <AlertCircle class="size-6 text-destructive/70" aria-hidden="true" />
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-foreground">Failed to load history</p>
+        <p class="text-xs text-muted-foreground">{{ error }}</p>
+      </div>
     </div>
-    <div v-else-if="ganttRows.length === 0" class="py-6 text-center text-xs text-muted-foreground italic">
-      No status history in the last {{ windowHours }}h.
+    <!-- Empty -->
+    <div v-else-if="ganttRows.length === 0" class="flex flex-col items-center justify-center py-16 text-center gap-3">
+      <div class="rounded-full bg-muted p-3.5">
+        <Clock class="size-6 text-muted-foreground/60" aria-hidden="true" />
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-foreground">No history in the last {{ windowHours }}h</p>
+        <p class="text-xs text-muted-foreground">Agent status snapshots will appear here as agents post updates</p>
+      </div>
     </div>
 
     <!-- Gantt rows -->
@@ -221,7 +242,7 @@ onUnmounted(() => {
           @select-agent="emit('select-agent', $event)"
         >
           <button
-            class="truncate text-[11px] font-semibold text-muted-foreground text-right pr-1 hover:text-primary transition-colors cursor-pointer w-full"
+            class="truncate text-[11px] font-mono text-muted-foreground text-right pr-1 hover:text-primary transition-colors cursor-pointer w-full"
             :title="`View ${row.agent}`"
             @click="emit('select-agent', row.agent)"
           >
@@ -260,12 +281,12 @@ onUnmounted(() => {
     <!-- Legend -->
     <div class="flex flex-wrap gap-3 pt-1">
       <div v-for="[status, cls] in [
-        ['active', 'bg-green-500'],
-        ['blocked', 'bg-red-500'],
-        ['done', 'bg-teal-500'],
-        ['idle', 'bg-slate-400'],
-        ['error', 'bg-orange-500'],
-        ['stale', 'bg-yellow-500/70'],
+        ['active', 'bg-success/70'],
+        ['blocked', 'bg-warning/70'],
+        ['done', 'bg-info/70'],
+        ['idle', 'bg-muted-foreground/40'],
+        ['error', 'bg-destructive/70'],
+        ['stale', 'bg-warning/70'],
       ]" :key="status" class="flex items-center gap-1">
         <span class="inline-block h-2.5 w-2.5 rounded-sm" :class="cls" />
         <span class="text-[10px] text-muted-foreground capitalize">{{ status }}</span>
@@ -280,7 +301,7 @@ onUnmounted(() => {
       class="fixed z-50 pointer-events-none rounded border bg-popover px-2.5 py-2 text-[11px] shadow-lg"
       :style="`left:${tooltip.x}px;top:${tooltip.y}px`"
     >
-      <div class="font-semibold capitalize mb-0.5" :class="tooltip.stale ? 'text-yellow-500' : ''">
+      <div class="font-semibold capitalize mb-0.5" :class="tooltip.stale ? 'text-warning' : ''">
         {{ tooltip.status }}{{ tooltip.stale ? ' (stale)' : '' }}
       </div>
       <div class="text-muted-foreground">{{ tooltip.start }} – {{ tooltip.end }}</div>

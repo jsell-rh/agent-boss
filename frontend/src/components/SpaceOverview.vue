@@ -424,7 +424,7 @@ const activeSections = computed(() => [
                     <CardContent class="flex flex-col flex-1 p-4 gap-2">
                       <!-- Row 1: Header — Avatar + Name + StatusBadge -->
                       <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex items-center gap-2.5 min-w-0 overflow-hidden">
                           <AgentProfileCard
                             :agent-name="name"
                             :agent="agent"
@@ -519,7 +519,7 @@ const activeSections = computed(() => [
                         </template>
                         <span
                           v-if="agent.role"
-                          class="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded text-[10px] text-purple-600 dark:text-purple-400 shrink-0"
+                          class="inline-flex items-center gap-1 bg-role/10 border border-role/20 px-1.5 py-0.5 rounded text-[10px] text-role shrink-0"
                         >
                           {{ agent.role }}
                         </span>

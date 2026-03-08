@@ -42,12 +42,16 @@ const flatTree = computed(() => {
 <template>
   <div class="space-y-4">
     <!-- Empty state when no hierarchy declared -->
-    <div v-if="!hasHierarchy" class="flex flex-col items-center justify-center py-16 text-center">
-      <Network class="size-10 text-muted-foreground/40 mb-3" aria-hidden="true" />
-      <p class="text-sm font-medium text-muted-foreground">No hierarchy declared</p>
-      <p class="text-xs text-muted-foreground/60 mt-1">
-        Agents can declare a parent via status POST or /register to appear here.
-      </p>
+    <div v-if="!hasHierarchy" class="flex flex-col items-center justify-center py-16 text-center gap-3">
+      <div class="rounded-full bg-muted p-3.5">
+        <Network class="size-6 text-muted-foreground/60" aria-hidden="true" />
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-foreground">No hierarchy declared</p>
+        <p class="text-xs text-muted-foreground">
+          Agents can declare a parent via status POST to appear here.
+        </p>
+      </div>
     </div>
 
     <!-- Flat-tree rendering -->
@@ -91,7 +95,7 @@ const flatTree = computed(() => {
         <Badge
           v-if="node.role"
           variant="outline"
-          class="text-[10px] h-5 px-1.5 border-purple-500/40 text-purple-600 dark:text-purple-400 shrink-0"
+          class="text-[10px] h-5 px-1.5 border-role/40 text-role shrink-0"
         >
           {{ node.role }}
         </Badge>

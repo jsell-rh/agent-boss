@@ -114,7 +114,7 @@ const summaryText = computed(() => {
 <template>
   <!-- Trigger wrapper -->
   <span
-    class="inline-flex items-center cursor-default"
+    class="inline-flex items-center min-w-0 cursor-default"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
   >
@@ -163,7 +163,7 @@ const summaryText = computed(() => {
                 <StatusBadge v-if="agent" :status="agent.status" />
               </div>
               <div v-if="agent?.role" class="mt-0.5">
-                <Badge variant="outline" class="text-[10px] h-4 px-1 border-purple-500/40 text-purple-600 dark:text-purple-400">
+                <Badge variant="outline" class="text-[10px] h-4 px-1 border-role/40 text-role">
                   {{ agent.role }}
                 </Badge>
               </div>

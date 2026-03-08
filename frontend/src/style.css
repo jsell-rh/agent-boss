@@ -47,6 +47,10 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
 
+  /* Role/hierarchy badge — purple per Red Hat "tips/notes" palette */
+  --color-role: var(--role);
+  --color-role-foreground: var(--role-foreground);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -132,6 +136,10 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.908 0 0);
   --sidebar-ring: oklch(0.5908 0.2572 27.42);
+
+  /* Role badge — purple tint for agent role labels */
+  --role: oklch(0.555 0.16 285);
+  --role-foreground: oklch(1 0 0);
 }
 
 /* Dark mode - default for ops dashboard */
@@ -196,6 +204,10 @@
   --sidebar-accent-foreground: oklch(0.965 0 0);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.6308 0.2572 27.42);
+
+  /* Role badge */
+  --role: oklch(0.685 0.18 285);
+  --role-foreground: oklch(1 0 0);
 }
 
 @layer base {

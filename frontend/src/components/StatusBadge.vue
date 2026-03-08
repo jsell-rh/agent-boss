@@ -16,19 +16,19 @@ const config = computed(() => {
   switch (props.status) {
     case 'active':
       return {
-        badgeClass: 'bg-green-500/15 text-green-400 border-green-500/30',
+        badgeClass: 'bg-success/15 text-success border-success/30',
         icon: Activity,
         pulse: true,
       }
     case 'blocked':
       return {
-        badgeClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
+        badgeClass: 'bg-warning/15 text-warning-foreground border-warning/30',
         icon: StopCircle,
         pulse: false,
       }
     case 'done':
       return {
-        badgeClass: 'bg-teal-500/15 text-teal-400 border-teal-500/30',
+        badgeClass: 'bg-info/15 text-info border-info/30',
         icon: CheckCircle2,
         pulse: false,
       }
@@ -61,12 +61,12 @@ const config = computed(() => {
         variant="outline"
         :class="['gap-1 px-1.5 py-0.5 text-xs', config.badgeClass]"
         role="status"
-        :aria-label="`Task Status: ${display.label}`"
+        :aria-label="`Agent status: ${display.label}`"
       >
         <!-- Animated ping dot for active — shows agent is alive -->
         <span v-if="config.pulse" class="relative inline-flex size-2 shrink-0" aria-hidden="true">
-          <span class="absolute inline-flex size-full animate-ping rounded-full bg-green-400 opacity-60" style="animation-duration: 2s" />
-          <span class="relative inline-flex size-2 rounded-full bg-green-500" />
+          <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" style="animation-duration: 2s" />
+          <span class="relative inline-flex size-2 rounded-full bg-success" />
         </span>
         <!-- Status icon -->
         <component :is="config.icon" v-if="config.icon" class="size-3 shrink-0" aria-hidden="true" />
@@ -74,7 +74,7 @@ const config = computed(() => {
       </Badge>
     </TooltipTrigger>
     <TooltipContent>
-      Task Status: {{ display.label }} — {{ display.tooltip }}
+      Agent status: {{ display.label }} — {{ display.tooltip }}
     </TooltipContent>
   </Tooltip>
 </template>
