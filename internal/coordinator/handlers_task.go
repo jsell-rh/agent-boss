@@ -548,6 +548,20 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 		ag.Messages = []AgentMessage{}
 	}
 	ag.Messages = append(ag.Messages, msg)
+
+	// Create a typed notification so the agent immediately knows about the task assignment.
+	notif := AgentNotification{
+		ID:        fmt.Sprintf("%s-%d", canonical, time.Now().UnixNano()),
+		Type:      NotifTypeTaskAssign,
+		Title:     fmt.Sprintf("Task %s assigned by %s", taskID, assignedBy),
+		Body:      taskTitle,
+		From:      assignedBy,
+		TaskID:    taskID,
+		Timestamp: time.Now().UTC(),
+	}
+	ag.Notifications = append(ag.Notifications, notif)
+	pruneNotifications(ag)
+
 	ks.UpdatedAt = time.Now().UTC()
 	snap := ks.snapshot()
 	s.mu.Unlock()
@@ -564,6 +578,15 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 		"priority": msg.Priority,
 	})
 	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
+
+	notifSSEData, _ := json.Marshal(map[string]interface{}{
+		"space":   spaceName,
+		"agent":   canonical,
+		"type":    string(NotifTypeTaskAssign),
+		"title":   fmt.Sprintf("Task %s assigned by %s", taskID, assignedBy),
+		"task_id": taskID,
+	})
+	s.broadcastSSE(spaceName, canonical, "agent_notification", string(notifSSEData))
 }
 
 // handleTaskCreateSubtask handles POST /spaces/{space}/tasks/{id}/subtasks.

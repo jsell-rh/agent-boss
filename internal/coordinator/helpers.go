@@ -83,3 +83,33 @@ func truncateLine(s string, maxLen int) string {
 	}
 	return line
 }
+
+// pruneNotifications keeps at most 20 notifications per agent.
+// Oldest read notifications are dropped first; if still over limit, oldest unread are dropped.
+func pruneNotifications(ag *AgentUpdate) {
+	const maxNotifications = 20
+	if len(ag.Notifications) <= maxNotifications {
+		return
+	}
+	// Separate into unread and read, preserving order (oldest first).
+	unread := make([]AgentNotification, 0)
+	read := make([]AgentNotification, 0)
+	for _, n := range ag.Notifications {
+		if !n.Read {
+			unread = append(unread, n)
+		} else {
+			read = append(read, n)
+		}
+	}
+	// Fill up to maxNotifications: unread take priority, then most-recent read.
+	readSlots := maxNotifications - len(unread)
+	if readSlots < 0 {
+		// More unread than limit: keep newest unread only.
+		ag.Notifications = unread[len(unread)-maxNotifications:]
+		return
+	}
+	if len(read) > readSlots {
+		read = read[len(read)-readSlots:]
+	}
+	ag.Notifications = append(unread, read...)
+}
