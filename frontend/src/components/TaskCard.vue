@@ -4,7 +4,7 @@ import { TASK_PRIORITY_LABELS, TASK_PRIORITY_COLOR } from '@/types'
 import { computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import AgentAvatar from './AgentAvatar.vue'
-import { MessageSquare, GitBranch } from 'lucide-vue-next'
+import { MessageSquare, GitBranch, ChevronsUpDown, ListTree } from 'lucide-vue-next'
 
 const props = defineProps<{
   task: Task
@@ -42,7 +42,13 @@ function onDragStart(e: DragEvent) {
   >
     <!-- ID + Priority row -->
     <div class="flex items-center justify-between gap-2 mb-1.5">
-      <span class="text-[10px] font-mono text-muted-foreground">{{ task.id }}</span>
+      <div class="flex items-center gap-1.5">
+        <span class="text-[10px] font-mono text-muted-foreground">{{ task.id }}</span>
+        <span v-if="task.parent_task" class="flex items-center gap-0.5 text-[9px] text-muted-foreground/70" :title="`Subtask of ${task.parent_task}`">
+          <ChevronsUpDown class="size-2.5" />
+          {{ task.parent_task }}
+        </span>
+      </div>
       <Badge v-if="task.priority" :class="['text-[10px] px-1.5 py-0 h-4', priorityClass]">
         {{ priorityLabel }}
       </Badge>
@@ -75,6 +81,10 @@ function onDragStart(e: DragEvent) {
       <div v-else class="flex-1" />
 
       <div class="flex items-center gap-2 text-muted-foreground shrink-0">
+        <span v-if="task.subtasks && task.subtasks.length" class="flex items-center gap-0.5 text-[10px]" :title="`${task.subtasks.length} subtask(s)`">
+          <ListTree class="size-3" />
+          {{ task.subtasks.length }}
+        </span>
         <span v-if="task.linked_branch" class="flex items-center gap-0.5 text-[10px]">
           <GitBranch class="size-3" />
         </span>

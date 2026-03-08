@@ -2861,6 +2861,151 @@ func TestTaskAutoLinkMultipleReferences(t *testing.T) {
 	}
 }
 
+func TestTaskCreateNotifiesAssignee(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notifycreatespace"
+
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Fix the bug",
+		"assigned_to": "WorkerBot",
+	}, "Boss")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	// WorkerBot should now have a message in their agent channel.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/WorkerBot/messages")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 from messages endpoint, got %d", code)
+	}
+	if !strings.Contains(body, "TASK-001") {
+		t.Errorf("expected TASK-001 in notification message, got: %s", body)
+	}
+	if !strings.Contains(body, "Fix the bug") {
+		t.Errorf("expected task title in notification message, got: %s", body)
+	}
+}
+
+func TestTaskAssignNotifiesNewAssignee(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notifyassignspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Important work"}, "Mgr").Body.Close()
+
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/assign"), map[string]any{"assigned_to": "DevAgent"}, "Mgr")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/DevAgent/messages")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 from messages endpoint, got %d", code)
+	}
+	if !strings.Contains(body, "TASK-001") {
+		t.Errorf("expected TASK-001 in notification, got: %s", body)
+	}
+}
+
+func TestTaskUpdateNotifiesNewAssignee(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notifyupdatespace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Reassigned work"}, "Mgr").Body.Close()
+
+	newAssignee := "NewOwner"
+	resp := putTaskJSON(t, taskURL(base, space, "TASK-001"), map[string]any{"assigned_to": newAssignee}, "Mgr")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/NewOwner/messages")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 from messages endpoint, got %d", code)
+	}
+	if !strings.Contains(body, "TASK-001") {
+		t.Errorf("expected TASK-001 in notification, got: %s", body)
+	}
+}
+
+func TestTaskAssignNoNotifyWhenSameAssignee(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notifysameassignspace"
+
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title": "Already assigned", "assigned_to": "DevAgent",
+	}, "Mgr").Body.Close()
+
+	// Re-assign to the same agent — should NOT send duplicate notification.
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-001/assign"), map[string]any{"assigned_to": "DevAgent"}, "Mgr")
+	defer resp.Body.Close()
+
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/DevAgent/messages")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 from messages endpoint, got %d", code)
+	}
+
+	// Only 1 message (from initial create), not 2.
+	var result struct {
+		Messages []AgentMessage `json:"messages"`
+	}
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result.Messages) != 1 {
+		t.Errorf("expected 1 message (from create), got %d — re-assign to same agent should not duplicate", len(result.Messages))
+	}
+}
+
+func TestTaskParentChildRegistration(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "parentchildspace"
+
+	// Create parent task.
+	parentResp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Parent Epic"}, "Mgr")
+	defer parentResp.Body.Close()
+	var parent Task
+	json.NewDecoder(parentResp.Body).Decode(&parent)
+	if parent.ID != "TASK-001" {
+		t.Fatalf("expected parent TASK-001, got %s", parent.ID)
+	}
+
+	// Create subtask referencing parent.
+	childResp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Child subtask",
+		"parent_task": "TASK-001",
+	}, "Mgr")
+	defer childResp.Body.Close()
+	var child Task
+	json.NewDecoder(childResp.Body).Decode(&child)
+	if child.ParentTask != "TASK-001" {
+		t.Errorf("child.ParentTask = %q, want TASK-001", child.ParentTask)
+	}
+
+	// Fetch parent and verify subtask is registered.
+	code, body := getBody(t, base+"/spaces/"+space+"/tasks/TASK-001")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var fetched Task
+	json.NewDecoder(strings.NewReader(body)).Decode(&fetched)
+	if len(fetched.Subtasks) != 1 || fetched.Subtasks[0] != "TASK-002" {
+		t.Errorf("parent.Subtasks = %v, want [TASK-002]", fetched.Subtasks)
+	}
+}
+
 func TestIgnitionAssignedTasksMultipleStatuses(t *testing.T) {
 	srv, cleanup := mustStartServer(t)
 	defer cleanup()
@@ -2892,6 +3037,68 @@ func TestIgnitionAssignedTasksMultipleStatuses(t *testing.T) {
 	}
 	if !strings.Contains(body, "Backlog item") {
 		t.Error("ignition should show backlog task assigned to agent1")
+	}
+}
+
+func TestTaskSubtasksEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "subtasksendpointspace"
+
+	// Create parent task.
+	parentResp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Parent Epic"}, "Mgr")
+	defer parentResp.Body.Close()
+	if parentResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", parentResp.StatusCode)
+	}
+
+	// Create subtask via /tasks/TASK-001/subtasks.
+	childResp := postTaskJSON(t, taskURL(base, space, "TASK-001/subtasks"), map[string]any{
+		"title": "Child subtask",
+	}, "Mgr")
+	defer childResp.Body.Close()
+	if childResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for subtask creation, got %d", childResp.StatusCode)
+	}
+	var child Task
+	if err := json.NewDecoder(childResp.Body).Decode(&child); err != nil {
+		t.Fatalf("decode child: %v", err)
+	}
+	if child.ParentTask != "TASK-001" {
+		t.Errorf("child.ParentTask = %q, want TASK-001", child.ParentTask)
+	}
+	if child.ID != "TASK-002" {
+		t.Errorf("child.ID = %q, want TASK-002", child.ID)
+	}
+
+	// Parent should now list TASK-002 as a subtask.
+	code, body := getBody(t, base+"/spaces/"+space+"/tasks/TASK-001")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var parent Task
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&parent); err != nil {
+		t.Fatalf("decode parent: %v", err)
+	}
+	if len(parent.Subtasks) != 1 || parent.Subtasks[0] != "TASK-002" {
+		t.Errorf("parent.Subtasks = %v, want [TASK-002]", parent.Subtasks)
+	}
+}
+
+func TestTaskSubtasksEndpointNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "subtasksnotfoundspace"
+
+	// Attempt to create subtask of nonexistent parent.
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-999/subtasks"), map[string]any{
+		"title": "Orphan",
+	}, "Mgr")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 for missing parent, got %d", resp.StatusCode)
 	}
 }
 
