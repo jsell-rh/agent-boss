@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import AgentAvatar from './AgentAvatar.vue'
-import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock } from 'lucide-vue-next'
 import { relativeTime } from '@/composables/useTime'
 
 const props = defineProps<{
@@ -44,10 +44,15 @@ const submittingComment = ref(false)
 const saving = ref(false)
 const editingTitle = ref(false)
 const localTitle = ref('')
+const addingSubtask = ref(false)
+const newSubtaskTitle = ref('')
+const submittingSubtask = ref(false)
 
 watch(() => props.task, (t) => {
   if (t) localTitle.value = t.title
   editingTitle.value = false
+  addingSubtask.value = false
+  newSubtaskTitle.value = ''
 })
 
 const agentNames = computed(() => Object.keys(props.space.agents))
@@ -133,6 +138,21 @@ async function deleteTask() {
   await api.deleteTask(props.space.name, props.task.id)
   emit('task-deleted', props.task.id)
   emit('update:open', false)
+}
+
+async function submitSubtask() {
+  if (!props.task || !newSubtaskTitle.value.trim()) return
+  submittingSubtask.value = true
+  try {
+    await api.createSubtask(props.space.name, props.task.id, { title: newSubtaskTitle.value.trim() })
+    newSubtaskTitle.value = ''
+    addingSubtask.value = false
+    // Reload the parent task to get updated subtask list.
+    const updated = await api.fetchTask(props.space.name, props.task.id)
+    emit('task-updated', updated)
+  } finally {
+    submittingSubtask.value = false
+  }
 }
 </script>
 
@@ -315,12 +335,42 @@ async function deleteTask() {
           </div>
 
           <!-- Subtasks -->
-          <div v-if="task.subtasks && task.subtasks.length" class="flex flex-col gap-1.5">
-            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-              <ListTree class="size-3" />
-              Subtasks ({{ task.subtasks.length }})
-            </span>
-            <div class="flex flex-col gap-1">
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <ListTree class="size-3" />
+                Subtasks ({{ task.subtasks?.length ?? 0 }})
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-5 px-1.5 text-[10px] gap-0.5"
+                @click="addingSubtask = !addingSubtask"
+              >
+                <Plus class="size-3" />
+                Add
+              </Button>
+            </div>
+            <!-- Add subtask inline form -->
+            <div v-if="addingSubtask" class="flex gap-2 mt-0.5">
+              <input
+                v-model="newSubtaskTitle"
+                placeholder="Subtask title…"
+                class="flex-1 text-sm bg-transparent border border-border rounded px-2 py-1 outline-none focus:border-primary"
+                autofocus
+                @keydown.enter="submitSubtask"
+                @keydown.escape="addingSubtask = false; newSubtaskTitle = ''"
+              />
+              <Button
+                size="sm"
+                class="h-7 text-xs shrink-0"
+                :disabled="!newSubtaskTitle.trim() || submittingSubtask"
+                @click="submitSubtask"
+              >
+                <Send class="size-3" />
+              </Button>
+            </div>
+            <div v-if="task.subtasks && task.subtasks.length" class="flex flex-col gap-1">
               <button
                 v-for="sub in subtaskItems"
                 :key="sub.id"
@@ -342,6 +392,7 @@ async function deleteTask() {
                 <span class="text-xs italic">loading…</span>
               </div>
             </div>
+            <div v-else-if="!addingSubtask" class="text-xs text-muted-foreground">No subtasks yet</div>
           </div>
 
           <Separator />
@@ -385,6 +436,28 @@ async function deleteTask() {
               >
                 <Send class="size-3.5" />
               </Button>
+            </div>
+          </div>
+
+          <!-- Event History -->
+          <div v-if="task.events && task.events.length" class="flex flex-col gap-2">
+            <Separator />
+            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <Clock class="size-3" />
+              Activity
+            </span>
+            <div class="flex flex-col gap-1.5">
+              <div
+                v-for="event in [...(task.events ?? [])].reverse()"
+                :key="event.id"
+                class="flex items-start gap-2 text-xs"
+              >
+                <AgentAvatar :name="event.by" :size="16" class="shrink-0 mt-0.5" />
+                <div class="flex flex-col gap-0.5 min-w-0">
+                  <span class="text-foreground/80">{{ event.detail }}</span>
+                  <span class="text-[10px] text-muted-foreground">{{ relativeTime(event.created_at) }}</span>
+                </div>
+              </div>
             </div>
           </div>
 

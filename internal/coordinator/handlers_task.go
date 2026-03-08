@@ -9,6 +9,17 @@ import (
 	"time"
 )
 
+// appendTaskEvent adds a TaskEvent to a task's event log (called under s.mu.Lock).
+func appendTaskEvent(task *Task, eventType, by, detail string, now time.Time) {
+	task.Events = append(task.Events, TaskEvent{
+		ID:        fmt.Sprintf("%d", now.UnixNano()),
+		Type:      eventType,
+		By:        by,
+		Detail:    detail,
+		CreatedAt: now,
+	})
+}
+
 func (s *Server) handleSpaceTasks(w http.ResponseWriter, r *http.Request, spaceName, rest string) {
 	if rest == "" {
 		// Collection: POST (create) or GET (list)
@@ -117,6 +128,7 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+	appendTaskEvent(task, "created", caller, fmt.Sprintf("Task created by %s", caller), now)
 	if ks.Tasks == nil {
 		ks.Tasks = make(map[string]*Task)
 	}
@@ -380,7 +392,10 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	}
 	fromStatus := task.Status
 	task.Status = req.Status
-	task.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	task.UpdatedAt = now
+	appendTaskEvent(task, "moved", caller,
+		fmt.Sprintf("Moved from %s to %s by %s", fromStatus, req.Status, caller), now)
 	taskCopy := *task
 	snap := ks.snapshot()
 	s.mu.Unlock()
@@ -430,7 +445,13 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	fromAgent := task.AssignedTo
 	task.AssignedTo = req.AssignedTo
-	task.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	task.UpdatedAt = now
+	detail := fmt.Sprintf("Assigned to %s by %s", req.AssignedTo, caller)
+	if req.AssignedTo == "" {
+		detail = fmt.Sprintf("Unassigned by %s", caller)
+	}
+	appendTaskEvent(task, "assigned", caller, detail, now)
 	taskCopy := *task
 	snap := ks.snapshot()
 	s.mu.Unlock()
@@ -496,6 +517,8 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 	}
 	task.Comments = append(task.Comments, comment)
 	task.UpdatedAt = now
+	appendTaskEvent(task, "commented", caller,
+		fmt.Sprintf("Comment added by %s", caller), now)
 	taskCopy := *task
 	snap := ks.snapshot()
 	s.mu.Unlock()
@@ -654,6 +677,8 @@ func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+	appendTaskEvent(task, "created", caller,
+		fmt.Sprintf("Subtask created under %s by %s", parentID, caller), now)
 	if ks.Tasks == nil {
 		ks.Tasks = make(map[string]*Task)
 	}

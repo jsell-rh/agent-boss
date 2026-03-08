@@ -5,6 +5,7 @@ import type {
   SSEAgentMessage,
   SSETmuxLiveness,
   SSEBroadcastProgress,
+  SSETaskUpdated,
 } from '@/types'
 
 // All SSE event types emitted by the Go backend
@@ -16,6 +17,7 @@ export type SSEEventType =
   | 'tmux_liveness'
   | 'broadcast_complete'
   | 'broadcast_progress'
+  | 'task_updated'
 
 export type SSEEventMap = {
   agent_updated: SSEAgentUpdated
@@ -25,6 +27,7 @@ export type SSEEventMap = {
   tmux_liveness: SSETmuxLiveness[]
   broadcast_complete: unknown
   broadcast_progress: SSEBroadcastProgress
+  task_updated: SSETaskUpdated
 }
 
 type SSECallback<T extends SSEEventType> = (data: SSEEventMap[T]) => void
@@ -37,17 +40,17 @@ interface SSECallbackEntry {
 const INITIAL_RETRY_MS = 1000
 const MAX_RETRY_MS = 30000
 
+// Module-level singleton — all callers share one EventSource connection.
+const connected: Ref<boolean> = ref(false)
+const error: Ref<string | null> = ref(null)
+let eventSource: EventSource | null = null
+let retryMs = INITIAL_RETRY_MS
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let currentSpace: string | undefined
+let intentionalClose = false
+const callbacks: SSECallbackEntry[] = []
+
 export function useSSE() {
-  const connected: Ref<boolean> = ref(false)
-  const error: Ref<string | null> = ref(null)
-
-  let eventSource: EventSource | null = null
-  let retryMs = INITIAL_RETRY_MS
-  let retryTimer: ReturnType<typeof setTimeout> | null = null
-  let currentSpace: string | undefined
-  let intentionalClose = false
-
-  const callbacks: SSECallbackEntry[] = []
 
   function on<T extends SSEEventType>(type: T, cb: SSECallback<T>): () => void {
     const entry: SSECallbackEntry = {
@@ -98,6 +101,7 @@ export function useSSE() {
       'tmux_liveness',
       'broadcast_complete',
       'broadcast_progress',
+      'task_updated',
     ]
 
     for (const type of eventTypes) {

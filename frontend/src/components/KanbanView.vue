@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { Task, TaskStatus, KnowledgeSpace } from '@/types'
 import { TASK_STATUS_COLUMNS } from '@/types'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '@/api/client'
+import { useSSE } from '@/composables/useSSE'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -141,9 +142,54 @@ function openTaskById(id: string) {
   }
 }
 
-// ── SSE integration (listen for task_updated events) ───────────────
-// The parent App.vue manages the SSE stream; we watch for space changes
-// and refresh. Full SSE integration would be wired through a composable.
+// ── SSE integration: auto-reload on task_updated events ────────────
+const sse = useSSE()
+let sseReloadTimer: ReturnType<typeof setTimeout> | null = null
+
+// Debounce SSE-triggered reloads to batch rapid bursts.
+function scheduleSSEReload() {
+  if (sseReloadTimer !== null) return
+  sseReloadTimer = setTimeout(async () => {
+    sseReloadTimer = null
+    const fresh = await api.fetchTasks(props.space.name).catch(() => null)
+    if (fresh === null) return
+    // Merge fresh data: update status in place so TransitionGroup animates moves.
+    for (const t of fresh) {
+      const idx = tasks.value.findIndex(x => x.id === t.id)
+      if (idx >= 0) {
+        Object.assign(tasks.value[idx] as object, t)
+      } else {
+        tasks.value.push(t)
+      }
+    }
+    // Remove tasks that are no longer present.
+    const freshIds = new Set(fresh.map(t => t.id))
+    tasks.value = tasks.value.filter(t => freshIds.has(t.id))
+    // Keep selected task in sync.
+    if (selectedTask.value) {
+      const updated = tasks.value.find(t => t.id === selectedTask.value!.id)
+      if (updated) selectedTask.value = updated
+    }
+  }, 300)
+}
+
+const unsubTaskUpdated = sse.on('task_updated', (data) => {
+  if (data.space !== props.space.name) return
+  if (data.deleted) {
+    tasks.value = tasks.value.filter(t => t.id !== data.id)
+    if (selectedTask.value?.id === data.id) {
+      selectedTask.value = null
+      panelOpen.value = false
+    }
+    return
+  }
+  scheduleSSEReload()
+})
+
+onUnmounted(() => {
+  unsubTaskUpdated()
+  if (sseReloadTimer !== null) clearTimeout(sseReloadTimer)
+})
 </script>
 
 <template>

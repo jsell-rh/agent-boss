@@ -159,6 +159,19 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		if parentChanged {
 			rebuildChildren(ks)
 		}
+		// Auto-link PR: when an agent posts with a pr field, set linked_pr on all
+		// tasks assigned to that agent that don't already have a linked_pr.
+		if update.PR != "" && ks.Tasks != nil {
+			now := time.Now().UTC()
+			for _, task := range ks.Tasks {
+				if strings.EqualFold(task.AssignedTo, canonical) && task.LinkedPR == "" {
+					task.LinkedPR = update.PR
+					task.UpdatedAt = now
+					appendTaskEvent(task, "updated", canonical,
+						fmt.Sprintf("PR linked: %s", update.PR), now)
+				}
+			}
+		}
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
 			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)

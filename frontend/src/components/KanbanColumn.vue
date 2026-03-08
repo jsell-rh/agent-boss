@@ -70,14 +70,16 @@ const statusHeaderClass: Record<TaskStatus, string> = {
 
     <!-- Cards -->
     <div class="flex flex-col gap-2 p-2 flex-1 min-h-24 overflow-y-auto">
-      <TaskCard
-        v-for="task in tasks"
-        :key="task.id"
-        :task="task"
-        :dragging="draggingTaskId === task.id"
-        @click="emit('task-click', task)"
-        @dragstart="onDragStart"
-      />
+      <TransitionGroup name="kanban-card" tag="div" class="flex flex-col gap-2">
+        <TaskCard
+          v-for="task in tasks"
+          :key="task.id"
+          :task="task"
+          :dragging="draggingTaskId === task.id"
+          @click="emit('task-click', task)"
+          @dragstart="onDragStart"
+        />
+      </TransitionGroup>
       <div
         v-if="tasks.length === 0"
         class="flex-1 flex items-center justify-center text-[11px] text-muted-foreground py-6"
@@ -87,3 +89,21 @@ const statusHeaderClass: Record<TaskStatus, string> = {
     </div>
   </div>
 </template>
+
+<style scoped>
+.kanban-card-enter-active,
+.kanban-card-leave-active {
+  transition: all 0.25s ease;
+}
+.kanban-card-enter-from {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+}
+.kanban-card-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+}
+.kanban-card-move {
+  transition: transform 0.3s ease;
+}
+</style>

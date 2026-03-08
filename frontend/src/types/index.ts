@@ -166,6 +166,14 @@ export interface TaskComment {
   created_at: string
 }
 
+export interface TaskEvent {
+  id: string
+  type: string   // "created" | "moved" | "assigned" | "commented" | "updated"
+  by: string
+  detail: string
+  created_at: string
+}
+
 export interface Task {
   id: string
   space: string
@@ -184,6 +192,7 @@ export interface Task {
   updated_at: string
   due_at?: string
   comments?: TaskComment[]
+  events?: TaskEvent[]
 }
 
 export const TASK_STATUS_COLUMNS: TaskStatus[] = ['backlog', 'in_progress', 'review', 'blocked', 'done']
@@ -221,6 +230,15 @@ export interface SSEAgentUpdated {
 export interface SSEAgentRemoved {
   space: string
   agent: string
+}
+
+export interface SSETaskUpdated {
+  id: string
+  space: string
+  status?: string
+  title?: string
+  assigned_to?: string
+  deleted?: boolean
 }
 
 export interface SSEAgentMessage {

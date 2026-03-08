@@ -232,6 +232,7 @@ type Task struct {
 
 	// Activity
 	Comments []TaskComment `json:"comments,omitempty"`
+	Events   []TaskEvent   `json:"events,omitempty"`
 }
 
 // TaskComment is a human or agent note on a task.
@@ -239,6 +240,15 @@ type TaskComment struct {
 	ID        string    `json:"id"`
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// TaskEvent records a point-in-time change to a task for display in the event history.
+type TaskEvent struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`   // "created", "moved", "assigned", "commented", "updated"
+	By        string    `json:"by"`     // agent name who caused the event
+	Detail    string    `json:"detail"` // human-readable description
 	CreatedAt time.Time `json:"created_at"`
 }
 
