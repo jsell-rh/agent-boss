@@ -383,15 +383,27 @@ func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
 	}
 }
 
-func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// getOrCreateSpaceLocked returns or creates the named space.
+// Caller MUST hold s.mu (write lock).
+func (s *Server) getOrCreateSpaceLocked(name string) *KnowledgeSpace {
 	if ks, ok := s.spaces[name]; ok {
 		return ks
 	}
 	ks := NewKnowledgeSpace(name)
 	s.spaces[name] = ks
 	s.logEvent(fmt.Sprintf("created space %q", name))
+	return ks
+}
+
+// getOrCreateSpace is a convenience wrapper that acquires s.mu internally.
+// Use this only when the returned space pointer does NOT need to be used
+// while holding s.mu (e.g. for read-only access or when re-acquiring the
+// lock immediately after is not needed). For write operations, prefer
+// acquiring s.mu first then calling getOrCreateSpaceLocked.
+func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
+	s.mu.Lock()
+	ks := s.getOrCreateSpaceLocked(name)
+	s.mu.Unlock()
 	return ks
 }
 
@@ -729,8 +741,8 @@ func (s *Server) handleSpaceTextField(w http.ResponseWriter, r *http.Request, sp
 			return
 		}
 
-		ks := s.getOrCreateSpace(spaceName)
 		s.mu.Lock()
+		ks := s.getOrCreateSpaceLocked(spaceName)
 		cfg.setField(ks, sanitizeInput(string(body)))
 		ks.UpdatedAt = time.Now().UTC()
 		snap := ks.snapshot()
@@ -831,8 +843,6 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			return
 		}
 
-		ks := s.getOrCreateSpace(spaceName)
-
 		contentType := r.Header.Get("Content-Type")
 		defer r.Body.Close()
 		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
@@ -877,6 +887,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		update.Children = nil
 
 		s.mu.Lock()
+		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
 
 		// Canonicalize parent name under lock so resolveAgentName sees current agents.
@@ -1233,9 +1244,8 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		}
 
 		// Update agent's documents list in the knowledge space
-		ks := s.getOrCreateSpace(spaceName)
-
 		s.mu.Lock()
+		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
 		if ks.Agents[canonical] == nil {
 			ks.Agents[canonical] = &AgentUpdate{
@@ -1328,10 +1338,9 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 
 	tmuxSession := r.URL.Query().Get("tmux_session")
 
-	ks := s.getOrCreateSpace(spaceName)
-
 	if tmuxSession != "" {
 		s.mu.Lock()
+		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
 		if existing, ok := ks.Agents[canonical]; ok {
 			existing.TmuxSession = tmuxSession
@@ -1351,6 +1360,14 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// Get ks for the response builder. If the space doesn't exist yet
+	// (no tmuxSession, no previous posts), use an empty space so the
+	// response is well-formed.
+	ks, ok := s.spaces[spaceName]
+	if !ok {
+		ks = NewKnowledgeSpace(spaceName)
+	}
 
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# Agent Ignition: %s\n\n", agentName))
@@ -2388,9 +2405,8 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 		return
 	}
 
-	ks := s.getOrCreateSpace(spaceName)
-
 	s.mu.Lock()
+	ks := s.getOrCreateSpaceLocked(spaceName)
 	ks.NextTaskSeq++
 	id := fmt.Sprintf("TASK-%03d", ks.NextTaskSeq)
 	now := time.Now().UTC()
