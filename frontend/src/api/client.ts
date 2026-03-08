@@ -253,6 +253,7 @@ class ApiClient {
     priority?: TaskPriority
     assigned_to?: string
     labels?: string[]
+    parent_task?: string
   }, actor = 'boss'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks`,

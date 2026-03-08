@@ -20,20 +20,23 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import AgentAvatar from './AgentAvatar.vue'
-import { GitBranch, ExternalLink, ChevronDown, Trash2, Send } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree } from 'lucide-vue-next'
 import { relativeTime } from '@/composables/useTime'
 
 const props = defineProps<{
   task: Task | null
   space: KnowledgeSpace
   open: boolean
+  allTasks?: Task[]
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
   'task-updated': [task: Task]
   'task-deleted': [id: string]
+  'open-task': [id: string]
 }>()
+
 
 const commentText = ref('')
 const submittingComment = ref(false)
@@ -47,6 +50,18 @@ watch(() => props.task, (t) => {
 })
 
 const agentNames = computed(() => Object.keys(props.space.agents))
+
+const parentTask = computed(() => {
+  if (!props.task?.parent_task || !props.allTasks) return null
+  return props.allTasks.find(t => t.id === props.task!.parent_task) ?? null
+})
+
+const subtaskItems = computed(() => {
+  if (!props.task?.subtasks?.length || !props.allTasks) return []
+  return props.task.subtasks
+    .map(id => props.allTasks!.find(t => t.id === id))
+    .filter(Boolean) as Task[]
+})
 
 function buildPrUrl(pr: string): string | null {
   if (pr.startsWith('http')) return pr
@@ -270,6 +285,52 @@ async function deleteTask() {
                 <ExternalLink class="size-3.5" />
                 {{ task.linked_pr }}
               </a>
+            </div>
+          </div>
+
+          <!-- Parent Task -->
+          <div v-if="task.parent_task" class="flex flex-col gap-1.5">
+            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <ChevronsUpDown class="size-3" />
+              Parent Task
+            </span>
+            <button
+              class="flex items-center gap-2 text-sm text-primary hover:underline text-left"
+              @click="emit('open-task', task.parent_task)"
+            >
+              <span class="font-mono text-[10px] text-muted-foreground">{{ task.parent_task }}</span>
+              <span v-if="parentTask">{{ parentTask.title }}</span>
+              <span v-else class="text-muted-foreground">{{ task.parent_task }}</span>
+            </button>
+          </div>
+
+          <!-- Subtasks -->
+          <div v-if="task.subtasks && task.subtasks.length" class="flex flex-col gap-1.5">
+            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <ListTree class="size-3" />
+              Subtasks ({{ task.subtasks.length }})
+            </span>
+            <div class="flex flex-col gap-1">
+              <button
+                v-for="sub in subtaskItems"
+                :key="sub.id"
+                class="flex items-center gap-2 text-sm text-left hover:bg-muted/50 rounded px-1.5 py-0.5 transition-colors"
+                @click="emit('open-task', sub.id)"
+              >
+                <span class="font-mono text-[10px] text-muted-foreground shrink-0">{{ sub.id }}</span>
+                <span class="truncate flex-1">{{ sub.title }}</span>
+                <Badge v-if="sub.priority" :class="['text-[10px] px-1 py-0 h-3.5 shrink-0', TASK_PRIORITY_COLOR[sub.priority]]">
+                  {{ TASK_PRIORITY_LABELS[sub.priority] }}
+                </Badge>
+              </button>
+              <div
+                v-for="id in task.subtasks.filter(id => !subtaskItems.find(s => s.id === id))"
+                :key="id"
+                class="flex items-center gap-2 text-sm text-muted-foreground px-1.5 py-0.5"
+              >
+                <span class="font-mono text-[10px] shrink-0">{{ id }}</span>
+                <span class="text-xs italic">loading…</span>
+              </div>
             </div>
           </div>
 

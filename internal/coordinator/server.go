@@ -2468,6 +2468,13 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 		ks.Tasks = make(map[string]*Task)
 	}
 	ks.Tasks[id] = task
+	// Register as subtask of parent if specified.
+	if req.ParentTask != "" {
+		if parent, ok := ks.Tasks[req.ParentTask]; ok {
+			parent.Subtasks = append(parent.Subtasks, id)
+			parent.UpdatedAt = now
+		}
+	}
 	ks.UpdatedAt = now
 	taskCopy := *task
 	s.mu.Unlock()
@@ -2481,6 +2488,11 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 		"title": taskCopy.Title, "assigned_to": taskCopy.AssignedTo,
 	}); err == nil {
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
+	}
+
+	// Notify assigned agent.
+	if taskCopy.AssignedTo != "" {
+		s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2595,6 +2607,7 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 		return
 	}
 	now := time.Now().UTC()
+	prevAssignee := task.AssignedTo
 	if req.Title != nil {
 		task.Title = strings.TrimSpace(*req.Title)
 	}
@@ -2639,6 +2652,11 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 		"title": taskCopy.Title, "assigned_to": taskCopy.AssignedTo,
 	}); err == nil {
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
+	}
+
+	// Notify if assignee changed.
+	if req.AssignedTo != nil && taskCopy.AssignedTo != "" && !strings.EqualFold(taskCopy.AssignedTo, prevAssignee) {
+		s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2770,6 +2788,11 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
 	}
 
+	// Notify newly assigned agent (only when assignee actually changed).
+	if req.AssignedTo != "" && !strings.EqualFold(req.AssignedTo, fromAgent) {
+		s.notifyTaskAssigned(spaceName, taskID, taskCopy.Title, req.AssignedTo, caller)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(taskCopy)
 }
@@ -2832,4 +2855,53 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(taskCopy)
+}
+
+// notifyTaskAssigned delivers a coordinator message to the assigned agent so they are
+// immediately aware of the new task. Called after lock is released and space is saved.
+func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, assignedBy string) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		return
+	}
+
+	msg := AgentMessage{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Sender:    assignedBy,
+		Message:   fmt.Sprintf("You have been assigned task [%s](/spaces/%s/tasks/%s): %q. Check your task list and begin work.", taskID, spaceName, taskID, taskTitle),
+		Priority:  PriorityDirective,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, assignedTo)
+	ag, exists := ks.Agents[canonical]
+	if !exists {
+		ag = &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   fmt.Sprintf("%s: pending task assignment", canonical),
+			Messages:  []AgentMessage{},
+			UpdatedAt: time.Now().UTC(),
+		}
+		ks.Agents[canonical] = ag
+	}
+	if ag.Messages == nil {
+		ag.Messages = []AgentMessage{}
+	}
+	ag.Messages = append(ag.Messages, msg)
+	ks.UpdatedAt = time.Now().UTC()
+	s.mu.Unlock()
+
+	s.saveSpace(ks)
+	s.logEvent(fmt.Sprintf("[%s/%s] Task %s assigned by %s — notification delivered", spaceName, canonical, taskID, assignedBy))
+	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
+
+	sseData, _ := json.Marshal(map[string]interface{}{
+		"space":    spaceName,
+		"agent":    canonical,
+		"sender":   assignedBy,
+		"message":  msg.Message,
+		"priority": msg.Priority,
+	})
+	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KnowledgeSpace, TaskPriority } from '@/types'
+import type { KnowledgeSpace, Task, TaskPriority } from '@/types'
 import { TASK_PRIORITY_LABELS } from '@/types'
 import { ref } from 'vue'
 import { api } from '@/api/client'
@@ -26,6 +26,8 @@ import AgentAvatar from './AgentAvatar.vue'
 const props = defineProps<{
   open: boolean
   space: KnowledgeSpace
+  tasks?: Task[]
+  parentTaskId?: string
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +39,7 @@ const title = ref('')
 const description = ref('')
 const priority = ref<TaskPriority>('medium')
 const assignedTo = ref('')
+const parentTask = ref(props.parentTaskId ?? '')
 const submitting = ref(false)
 
 function reset() {
@@ -44,6 +47,7 @@ function reset() {
   description.value = ''
   priority.value = 'medium'
   assignedTo.value = ''
+  parentTask.value = props.parentTaskId ?? ''
 }
 
 async function submit() {
@@ -55,6 +59,7 @@ async function submit() {
       description: description.value.trim() || undefined,
       priority: priority.value,
       assigned_to: assignedTo.value || undefined,
+      parent_task: parentTask.value || undefined,
     })
     reset()
     emit('created')
@@ -149,6 +154,37 @@ async function submit() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
+
+        <!-- Parent Task (optional) -->
+        <div v-if="tasks && tasks.length" class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Parent Task (optional)</label>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button variant="outline" size="sm" class="w-full justify-between text-xs h-8 gap-1">
+                <span v-if="parentTask" class="flex items-center gap-1.5 truncate">
+                  <span class="font-mono text-[10px] text-muted-foreground">{{ parentTask }}</span>
+                  <span class="truncate">{{ tasks.find(t => t.id === parentTask)?.title }}</span>
+                </span>
+                <span v-else class="text-muted-foreground">None</span>
+                <ChevronDown class="size-3 ml-1 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent class="max-h-48 overflow-y-auto">
+              <DropdownMenuItem @click="parentTask = ''">
+                <span class="text-muted-foreground">None</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-for="t in tasks"
+                :key="t.id"
+                :class="{ 'font-semibold': t.id === parentTask }"
+                @click="parentTask = t.id"
+              >
+                <span class="font-mono text-[10px] text-muted-foreground mr-1.5">{{ t.id }}</span>
+                <span class="truncate">{{ t.title }}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <DialogFooter>
