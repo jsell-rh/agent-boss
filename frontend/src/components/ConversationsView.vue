@@ -13,6 +13,7 @@ import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
 import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
+import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
 import { relativeTime } from '@/composables/useTime'
 import api from '@/api/client'
@@ -182,15 +183,6 @@ const router = useRouter()
 function goToAgentDetail(agentName: string) {
   slideoverAgentName.value = null
   router.push(`/${encodeURIComponent(props.space.name)}/${encodeURIComponent(agentName)}`)
-}
-
-function prLink(agent: { pr?: string; repo_url?: string }): string | null {
-  if (!agent.pr) return null
-  if (agent.pr.startsWith('http')) return agent.pr
-  if (!agent.repo_url) return null
-  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-  const prNum = agent.pr.replace(/^#/, '')
-  return `${repoBase}/pull/${prNum}`
 }
 
 // ── New Message picker ──────────────────────────────────────────────

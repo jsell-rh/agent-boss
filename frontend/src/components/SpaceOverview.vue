@@ -49,6 +49,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
+import { prLink } from '@/lib/utils'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -136,15 +137,6 @@ function refreshInbox() {
 }
 
 defineExpose({ switchToInbox, refreshInbox })
-
-function prLink(agent: { pr?: string; repo_url?: string }): string | null {
-  if (!agent.pr) return null
-  if (agent.pr.startsWith('http')) return agent.pr
-  if (!agent.repo_url) return null
-  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-  const prNum = agent.pr.replace(/^#/, '')
-  return `${repoBase}/pull/${prNum}`
-}
 
 const sortedAgents = computed(() => {
   return Object.entries(props.space.agents).sort(([, a], [, b]) => {
@@ -787,14 +779,10 @@ const activeSections = computed(() => [
 
         <TabsContent value="hierarchy">
           <HierarchyView
-            v-if="hierarchy"
-            :tree="hierarchy"
+            :tree="hierarchy ?? { space: space.name, roots: [], nodes: {} }"
             :agents="space.agents"
             @select-agent="emit('select-agent', $event)"
           />
-          <div v-else class="flex flex-col items-center justify-center py-16 text-center">
-            <p class="text-sm text-muted-foreground">Loading hierarchy…</p>
-          </div>
         </TabsContent>
       </Tabs>
 
