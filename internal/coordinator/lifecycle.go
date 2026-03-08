@@ -148,6 +148,15 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		ks.Agents[agentName] = agent
 	}
 	agent.TmuxSession = sessionName
+
+	// Set Parent from the spawner's identity (X-Agent-Name header), if not already set.
+	// Guard: skip if spawner == agentName to prevent self-parenting.
+	spawnerName := r.Header.Get("X-Agent-Name")
+	if spawnerName != "" && !strings.EqualFold(spawnerName, agentName) && agent.Parent == "" {
+		agent.Parent = resolveAgentName(ks, spawnerName)
+		rebuildChildren(ks)
+	}
+
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s/%s] spawn: save failed: %v", spaceName, agentName, err))

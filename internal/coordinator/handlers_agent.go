@@ -571,25 +571,56 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	}
 
 	tmuxSession := r.URL.Query().Get("tmux_session")
+	parentParam := r.URL.Query().Get("parent")
+	roleParam := r.URL.Query().Get("role")
 
-	if tmuxSession != "" {
+	if tmuxSession != "" || parentParam != "" || roleParam != "" {
 		s.mu.Lock()
 		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
-		if existing, ok := ks.Agents[canonical]; ok {
-			existing.TmuxSession = tmuxSession
-		} else {
-			ks.Agents[canonical] = &AgentUpdate{
-				Status:      StatusIdle,
-				Summary:     canonical + ": awaiting ignition",
-				TmuxSession: tmuxSession,
-				UpdatedAt:   time.Now().UTC(),
+
+		// Validate parent param before making any changes.
+		if parentParam != "" {
+			if strings.EqualFold(parentParam, agentName) || strings.EqualFold(parentParam, canonical) {
+				s.mu.Unlock()
+				writeJSONError(w, "self-parent not allowed", http.StatusBadRequest)
+				return
 			}
+			if hasCycle(ks, canonical, parentParam) {
+				s.mu.Unlock()
+				writeJSONError(w, "parent would create a cycle", http.StatusBadRequest)
+				return
+			}
+		}
+
+		var agentRecord *AgentUpdate
+		if existing, ok := ks.Agents[canonical]; ok {
+			agentRecord = existing
+		} else {
+			agentRecord = &AgentUpdate{
+				Status:    StatusIdle,
+				Summary:   canonical + ": awaiting ignition",
+				UpdatedAt: time.Now().UTC(),
+			}
+			ks.Agents[canonical] = agentRecord
+		}
+		if tmuxSession != "" {
+			agentRecord.TmuxSession = tmuxSession
+		}
+		// Set Parent and Role only if not already set (sticky).
+		if parentParam != "" && agentRecord.Parent == "" {
+			agentRecord.Parent = resolveAgentName(ks, parentParam)
+			rebuildChildren(ks)
+		}
+		if roleParam != "" && agentRecord.Role == "" {
+			agentRecord.Role = roleParam
 		}
 		ks.UpdatedAt = time.Now().UTC()
 		s.saveSpace(ks)
 		s.mu.Unlock()
-		s.logEvent(fmt.Sprintf("[%s/%s] tmux session registered via ignition: %s", spaceName, agentName, tmuxSession))
+		if tmuxSession != "" {
+			s.logEvent(fmt.Sprintf("[%s/%s] tmux session registered via ignition: %s", spaceName, agentName, tmuxSession))
+		}
 	}
 
 	s.mu.RLock()
@@ -733,6 +764,12 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString("    \"status\": \"active\",\n")
 	b.WriteString(fmt.Sprintf("    \"summary\": \"%s: working on ...\",\n", agentName))
 	b.WriteString("    \"branch\": \"feat/...\",\n")
+	if hasExisting && existing.Parent != "" {
+		b.WriteString(fmt.Sprintf("    \"parent\": \"%s\",\n", existing.Parent))
+		if existing.Role != "" {
+			b.WriteString(fmt.Sprintf("    \"role\": \"%s\",\n", existing.Role))
+		}
+	}
 	b.WriteString("    \"items\": [\"...\"]\n")
 	b.WriteString("  }'\n")
 	b.WriteString("```\n")
