@@ -132,8 +132,9 @@ type AgentDocument struct {
 type NotificationType string
 
 const (
-	NotifTypeMessage    NotificationType = "message"      // new message from another agent
-	NotifTypeTaskAssign NotificationType = "task_assigned" // task assigned to this agent
+	NotifTypeMessage     NotificationType = "message"         // new message from another agent
+	NotifTypeTaskAssign  NotificationType = "task_assigned"   // task assigned to this agent
+	NotifTypeTaskComment NotificationType = "task_commented"  // someone commented on agent's task
 )
 
 // AgentNotification is a typed notification surfaced to an agent explaining
