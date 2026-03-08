@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from '@/types'
 import { TASK_STATUS_LABELS } from '@/types'
 import { ref } from 'vue'
 import TaskCard from './TaskCard.vue'
+import { LayoutList } from 'lucide-vue-next'
 
 const props = defineProps<{
   status: TaskStatus
@@ -53,7 +54,7 @@ const statusHeaderClass: Record<TaskStatus, string> = {
 <template>
   <div
     class="flex flex-col w-64 shrink-0 rounded-lg bg-muted/40 border border-border transition-colors max-h-full"
-    :class="{ 'border-primary bg-primary/5': isDragOver }"
+    :class="{ 'ring-2 ring-primary/50 border-primary/50 bg-primary/5': isDragOver }"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
@@ -80,9 +81,12 @@ const statusHeaderClass: Record<TaskStatus, string> = {
       />
       <div
         v-if="tasks.length === 0"
-        class="flex-1 flex items-center justify-center text-[11px] text-muted-foreground py-6"
+        class="flex-1 flex flex-col items-center justify-center py-8 text-center gap-2"
       >
-        No tasks
+        <div class="rounded-full bg-muted p-2.5">
+          <LayoutList class="size-4 text-muted-foreground/50" aria-hidden="true" />
+        </div>
+        <p class="text-[11px] text-muted-foreground">No tasks</p>
       </div>
     </div>
   </div>

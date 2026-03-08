@@ -519,7 +519,7 @@ const activeSections = computed(() => [
                         </template>
                         <span
                           v-if="agent.role"
-                          class="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded text-[10px] text-purple-600 dark:text-purple-400 shrink-0"
+                          class="inline-flex items-center gap-1 bg-role/10 border border-role/20 px-1.5 py-0.5 rounded text-[10px] text-role shrink-0"
                         >
                           {{ agent.role }}
                         </span>
