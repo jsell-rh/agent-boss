@@ -699,13 +699,63 @@ func (s *Server) handleSpaceHierarchy(w http.ResponseWriter, r *http.Request, sp
 	json.NewEncoder(w).Encode(tree)
 }
 
+// textFieldConfig describes a single text-field endpoint on a KnowledgeSpace.
+// Used by handleSpaceTextField to avoid duplicating the raw/contracts/archive handlers.
+type textFieldConfig struct {
+	getField    func(*KnowledgeSpace) string
+	setField    func(*KnowledgeSpace, string)
+	logLabel    string
+	journalType SpaceEventType
+}
+
+// handleSpaceTextField is a generic GET/POST handler for KnowledgeSpace text fields
+// (SharedContracts, Archive). GET returns the field as text/plain; POST replaces it.
+func (s *Server) handleSpaceTextField(w http.ResponseWriter, r *http.Request, spaceName string, cfg textFieldConfig) {
+	switch r.Method {
+	case http.MethodGet:
+		ks, ok := s.getSpace(spaceName)
+		if !ok {
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, cfg.getField(ks))
+
+	case http.MethodPost:
+		defer r.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
+		if err != nil {
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		ks := s.getOrCreateSpace(spaceName)
+		s.mu.Lock()
+		cfg.setField(ks, sanitizeInput(string(body)))
+		ks.UpdatedAt = time.Now().UTC()
+		snap := ks.snapshot()
+		s.mu.Unlock()
+
+		if err := s.saveSpace(snap); err != nil {
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.logEvent(fmt.Sprintf("[%s] %s updated (%d bytes)", spaceName, cfg.logLabel, len(body)))
+		s.journal.Append(spaceName, cfg.journalType, "", map[string]string{"content": sanitizeInput(string(body))})
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+
+	default:
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleSpaceRaw serves GET /spaces/{space}/raw (rendered markdown of full space state).
 // POST /spaces/{space}/raw is preserved as a backward-compatible alias for
 // POST /spaces/{space}/contracts — both write to SharedContracts.
 // /contracts is the canonical write endpoint; /raw POST exists for legacy callers.
 func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceName string) {
-	switch r.Method {
-	case http.MethodGet:
+	if r.Method == http.MethodGet {
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
 			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
@@ -716,114 +766,33 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 		s.mu.RUnlock()
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprint(w, md)
-
-	case http.MethodPost:
-		defer r.Body.Close()
-		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
-		if err != nil {
-			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		ks := s.getOrCreateSpace(spaceName)
-		s.mu.Lock()
-		ks.SharedContracts = sanitizeInput(string(body))
-		ks.UpdatedAt = time.Now().UTC()
-		snap := ks.snapshot()
-		s.mu.Unlock()
-
-		if err := s.saveSpace(snap); err != nil {
-			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
-			return
-		}
-		s.logEvent(fmt.Sprintf("[%s] shared contracts updated (%d bytes)", spaceName, len(body)))
-		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
-
-	default:
-		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
+	// POST: alias for /contracts (writes SharedContracts).
+	s.handleSpaceTextField(w, r, spaceName, textFieldConfig{
+		getField:    func(ks *KnowledgeSpace) string { return ks.SharedContracts },
+		setField:    func(ks *KnowledgeSpace, v string) { ks.SharedContracts = v },
+		logLabel:    "shared contracts",
+		journalType: EventContractsUpdated,
+	})
 }
 
 func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, spaceName string) {
-	switch r.Method {
-	case http.MethodGet:
-		ks, ok := s.getSpace(spaceName)
-		if !ok {
-			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, ks.SharedContracts)
-
-	case http.MethodPost:
-		defer r.Body.Close()
-		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
-		if err != nil {
-			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		ks := s.getOrCreateSpace(spaceName)
-		s.mu.Lock()
-		ks.SharedContracts = sanitizeInput(string(body))
-		ks.UpdatedAt = time.Now().UTC()
-		snap := ks.snapshot()
-		s.mu.Unlock()
-
-		if err := s.saveSpace(snap); err != nil {
-			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
-			return
-		}
-		s.logEvent(fmt.Sprintf("[%s] contracts updated (%d bytes)", spaceName, len(body)))
-		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
-
-	default:
-		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
+	s.handleSpaceTextField(w, r, spaceName, textFieldConfig{
+		getField:    func(ks *KnowledgeSpace) string { return ks.SharedContracts },
+		setField:    func(ks *KnowledgeSpace, v string) { ks.SharedContracts = v },
+		logLabel:    "contracts",
+		journalType: EventContractsUpdated,
+	})
 }
 
 func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spaceName string) {
-	switch r.Method {
-	case http.MethodGet:
-		ks, ok := s.getSpace(spaceName)
-		if !ok {
-			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, ks.Archive)
-
-	case http.MethodPost:
-		defer r.Body.Close()
-		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
-		if err != nil {
-			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		ks := s.getOrCreateSpace(spaceName)
-		s.mu.Lock()
-		ks.Archive = sanitizeInput(string(body))
-		ks.UpdatedAt = time.Now().UTC()
-		snap := ks.snapshot()
-		s.mu.Unlock()
-
-		if err := s.saveSpace(snap); err != nil {
-			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
-			return
-		}
-		s.logEvent(fmt.Sprintf("[%s] archive updated (%d bytes)", spaceName, len(body)))
-		s.journal.Append(spaceName, EventArchiveUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
-
-	default:
-		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
+	s.handleSpaceTextField(w, r, spaceName, textFieldConfig{
+		getField:    func(ks *KnowledgeSpace) string { return ks.Archive },
+		setField:    func(ks *KnowledgeSpace, v string) { ks.Archive = v },
+		logLabel:    "archive",
+		journalType: EventArchiveUpdated,
+	})
 }
 
 func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
