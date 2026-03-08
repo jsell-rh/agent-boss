@@ -61,7 +61,7 @@ const config = computed(() => {
         variant="outline"
         :class="['gap-1 px-1.5 py-0.5 text-xs', config.badgeClass]"
         role="status"
-        :aria-label="`Task Status: ${display.label}`"
+        :aria-label="`Agent status: ${display.label}`"
       >
         <!-- Animated ping dot for active — shows agent is alive -->
         <span v-if="config.pulse" class="relative inline-flex size-2 shrink-0" aria-hidden="true">
@@ -74,7 +74,7 @@ const config = computed(() => {
       </Badge>
     </TooltipTrigger>
     <TooltipContent>
-      Task Status: {{ display.label }} — {{ display.tooltip }}
+      Agent status: {{ display.label }} — {{ display.tooltip }}
     </TooltipContent>
   </Tooltip>
 </template>

@@ -424,7 +424,7 @@ const activeSections = computed(() => [
                     <CardContent class="flex flex-col flex-1 p-4 gap-2">
                       <!-- Row 1: Header — Avatar + Name + StatusBadge -->
                       <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex items-center gap-2.5 min-w-0 overflow-hidden">
                           <AgentProfileCard
                             :agent-name="name"
                             :agent="agent"

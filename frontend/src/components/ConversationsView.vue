@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
@@ -114,6 +114,7 @@ onMounted(() => {
     const sorted = [props.preselectAgent, 'boss'].sort()
     selectedKey.value = sorted.join('\u2194')
   }
+  scrollThreadToBottom()
 })
 
 // Also react to preselectAgent prop changes (e.g. navigating between conversation routes)
@@ -224,6 +225,22 @@ function selectNewMsgAgent(agentName: string) {
   const sorted = [agentName, 'boss'].sort()
   selectedKey.value = sorted.join('\u2194')
 }
+
+// ── Auto-scroll ─────────────────────────────────────────────────────
+const threadScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
+
+function scrollThreadToBottom() {
+  nextTick(() => {
+    const el = threadScrollRef.value?.$el?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+watch(selectedKey, () => scrollThreadToBottom())
+watch(
+  () => selectedConversation.value?.messages.length,
+  () => scrollThreadToBottom(),
+)
 
 // ── Inline compose ──────────────────────────────────────────────────
 const inlineMessage = ref('')
@@ -472,7 +489,7 @@ watch(composeRecipient, async (agent) => {
         </div>
 
         <!-- Messages -->
-        <ScrollArea class="flex-1 min-h-0 px-4 py-3">
+        <ScrollArea ref="threadScrollRef" class="flex-1 min-h-0 px-4 py-3">
           <div
             class="flex flex-col"
             role="log"
