@@ -166,11 +166,6 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", s.handleRoot)
-	mux.HandleFunc("/mc2", s.handleMC2)
-	// Static file server for CSS, JS, etc. (legacy dashboard)
-	mux.Handle("/css/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
-	mux.Handle("/js/", http.StripPrefix("/", http.FileServer(http.Dir("internal/coordinator/static"))))
-
 	// Serve Vue frontend assets: runtime FRONTEND_DIR overrides embedded assets.
 	if s.frontendDir != "" {
 		if info, err := os.Stat(s.frontendDir); err == nil && info.IsDir() {
@@ -442,16 +437,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		w.Write(content)
 		return
 	}
-	// Final fallback: legacy static dashboard.
-	s.serveHTMLFile(w, r, "mission-control.html")
-}
-
-func (s *Server) handleMC2(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/mc2" {
-		http.NotFound(w, r)
-		return
-	}
-	s.serveHTMLFile(w, r, "mission-control2.html")
+	http.Error(w, "frontend not available", http.StatusNotFound)
 }
 
 func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
@@ -652,7 +638,8 @@ func (s *Server) handleSpaceView(w http.ResponseWriter, r *http.Request, spaceNa
 		s.handleSpaceJSON(w, r, spaceName)
 		return
 	}
-	s.serveHTMLFile(w, r, "mission-control.html")
+	// Serve Vue SPA — the frontend router handles /spaces/{space} client-side.
+	s.handleRoot(w, r)
 }
 
 func (s *Server) handleSpaceJSON(w http.ResponseWriter, r *http.Request, spaceName string) {
@@ -2344,22 +2331,6 @@ func (s *Server) maybeCompact(spaceName string) {
 	if s.journal.EventCount(spaceName) > CompactionThreshold {
 		go s.compactSpace(spaceName)
 	}
-}
-
-// serveHTMLFile serves an HTML file from the static directory
-func (s *Server) serveHTMLFile(w http.ResponseWriter, r *http.Request, filename string) {
-	filePath := filepath.Join("internal", "coordinator", "static", filename)
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.NotFound(w, r)
-		} else {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(content)
 }
 
 // handleSpaceTasks handles all /spaces/{space}/tasks[/{id}[/{action}]] endpoints.
