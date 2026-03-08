@@ -33,6 +33,7 @@ function onDragStart(e: DragEvent) {
 
 <template>
   <div
+    :id="task.id"
     class="group bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all select-none"
     :class="{ 'opacity-50 rotate-1 shadow-lg': dragging }"
     draggable="true"

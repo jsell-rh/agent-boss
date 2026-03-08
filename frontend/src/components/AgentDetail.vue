@@ -27,7 +27,7 @@ import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { relativeTime, formatFullDate } from '@/composables/useTime'
-import { renderMarkdown, renderMarkdownInline } from '@/lib/markdown'
+import { renderMarkdown, renderMarkdownInline, linkTaskRefs } from '@/lib/markdown'
 import { useRouter } from 'vue-router'
 import api from '@/api/client'
 
@@ -713,7 +713,7 @@ onUnmounted(() => {
         <ol class="space-y-1.5 font-text text-sm">
           <li v-for="(item, i) in agent.items" :key="i" class="flex items-start gap-2.5">
             <span class="shrink-0 mt-0.5 min-w-[1.25rem] text-right text-xs font-mono font-semibold text-muted-foreground/70 select-none">{{ i + 1 }}.</span>
-            <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(item)" />
+            <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(linkTaskRefs(item, spaceName))" />
           </li>
         </ol>
       </section>
@@ -727,7 +727,7 @@ onUnmounted(() => {
           <ol v-if="section.items?.length" class="space-y-1.5 font-text text-sm mb-2">
             <li v-for="(item, ii) in section.items" :key="ii" class="flex items-start gap-2.5">
               <span class="shrink-0 mt-0.5 min-w-[1.25rem] text-right text-xs font-mono font-semibold text-muted-foreground/70 select-none">{{ ii + 1 }}.</span>
-              <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(item)" />
+              <span class="leading-relaxed md-content-inline" v-html="renderMarkdownInline(linkTaskRefs(item, spaceName))" />
             </li>
           </ol>
           <!-- Table -->

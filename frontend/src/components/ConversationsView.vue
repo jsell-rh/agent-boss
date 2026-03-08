@@ -11,7 +11,8 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus } from 'lucide-vue-next'
-import { renderMarkdown } from '@/lib/markdown'
+import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
+import type { Task } from '@/types'
 import { relativeTime } from '@/composables/useTime'
 import api from '@/api/client'
 
@@ -257,6 +258,24 @@ function handleComposeKeydown(e: KeyboardEvent) {
     sendInlineCompose()
   }
 }
+
+// ── Task widget ──────────────────────────────────────────────────────
+const agentTasks = ref<Task[]>([])
+const tasksLoading = ref(false)
+const showTaskPanel = ref(true)
+
+watch(composeRecipient, async (agent) => {
+  agentTasks.value = []
+  if (!agent) return
+  tasksLoading.value = true
+  try {
+    agentTasks.value = await api.fetchTasks(props.space.name, { assigned_to: agent })
+  } catch {
+    agentTasks.value = []
+  } finally {
+    tasksLoading.value = false
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -424,8 +443,10 @@ function handleComposeKeydown(e: KeyboardEvent) {
       </ScrollArea>
     </aside>
 
-    <!-- Right panel: thread view -->
-    <div class="flex-1 flex flex-col min-h-0 min-w-0">
+    <!-- Right panel: thread view + task widget -->
+    <div class="flex-1 flex flex-row min-h-0 min-w-0">
+      <!-- Thread column -->
+      <div class="flex-1 flex flex-col min-h-0 min-w-0">
       <template v-if="selectedConversation">
         <!-- Thread header -->
         <div class="flex items-center gap-3 px-4 py-3 border-b shrink-0">
@@ -543,7 +564,7 @@ function handleComposeKeydown(e: KeyboardEvent) {
                   </div>
                   <div
                     class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
-                    v-html="renderMarkdown(msg.message)"
+                    v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))"
                   />
                 </div>
               </div>
@@ -590,6 +611,48 @@ function handleComposeKeydown(e: KeyboardEvent) {
           <p class="text-xs mt-0.5">Choose a conversation from the list to view its thread</p>
         </div>
       </div>
+      </div><!-- end thread column -->
+
+      <!-- Task widget panel -->
+      <aside
+        v-if="composeRecipient"
+        class="w-60 shrink-0 border-l flex flex-col min-h-0"
+        aria-label="Agent tasks"
+      >
+        <div class="flex items-center justify-between px-3 py-2 border-b shrink-0">
+          <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tasks</span>
+          <button
+            class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            :aria-label="showTaskPanel ? 'Collapse tasks' : 'Expand tasks'"
+            @click="showTaskPanel = !showTaskPanel"
+          >{{ showTaskPanel ? '−' : '+' }}</button>
+        </div>
+        <ScrollArea v-if="showTaskPanel" class="flex-1 min-h-0">
+          <div v-if="tasksLoading" class="px-3 py-4 text-xs text-muted-foreground text-center">Loading…</div>
+          <div v-else-if="agentTasks.length === 0" class="px-3 py-4 text-xs text-muted-foreground text-center">No tasks assigned</div>
+          <ul v-else class="py-1">
+            <li v-for="task in agentTasks" :key="task.id">
+              <a
+                :href="`/${encodeURIComponent(space.name)}/kanban#${task.id}`"
+                class="flex items-start gap-2 px-3 py-2 hover:bg-muted/60 transition-colors text-xs"
+              >
+                <span class="font-mono text-muted-foreground shrink-0 mt-0.5">{{ task.id }}</span>
+                <span class="flex-1 min-w-0 leading-snug line-clamp-2">{{ task.title }}</span>
+                <span
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+                  :class="{
+                    'bg-blue-500/10 text-blue-600 dark:text-blue-400': task.status === 'in_progress',
+                    'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400': task.status === 'review',
+                    'bg-red-500/10 text-red-600 dark:text-red-400': task.status === 'blocked',
+                    'bg-green-500/10 text-green-600 dark:text-green-400': task.status === 'done',
+                    'bg-muted text-muted-foreground': task.status === 'backlog',
+                  }"
+                >{{ task.status }}</span>
+              </a>
+            </li>
+          </ul>
+        </ScrollArea>
+      </aside>
     </div>
 
     <!-- Agent detail slideover -->
