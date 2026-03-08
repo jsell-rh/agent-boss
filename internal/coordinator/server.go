@@ -720,8 +720,11 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
+		s.mu.RLock()
+		md := ks.RenderMarkdown()
+		s.mu.RUnlock()
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, ks.RenderMarkdown())
+		fmt.Fprint(w, md)
 
 	case http.MethodPost:
 		body, err := io.ReadAll(r.Body)
