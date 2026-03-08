@@ -8,6 +8,7 @@ import StatusBadge from './StatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare, Crown } from 'lucide-vue-next'
+import { prLink } from '@/lib/utils'
 
 const props = defineProps<{
   agentName: string
@@ -20,15 +21,6 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-
-function prLink(agent: { pr?: string; repo_url?: string }): string | null {
-  if (!agent.pr) return null
-  if (agent.pr.startsWith('http')) return agent.pr
-  if (!agent.repo_url) return null
-  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-  const prNum = agent.pr.replace(/^#/, '')
-  return `${repoBase}/pull/${prNum}`
-}
 
 const { relativeTime } = useTime()
 

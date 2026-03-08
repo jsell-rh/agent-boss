@@ -28,19 +28,11 @@ import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import { relativeTime, formatFullDate } from '@/composables/useTime'
 import { renderMarkdown, renderMarkdownInline, linkTaskRefs } from '@/lib/markdown'
+import { prLink } from '@/lib/utils'
 import { useRouter } from 'vue-router'
 import api from '@/api/client'
 
 const router = useRouter()
-
-function prLink(agent: { pr?: string; repo_url?: string }): string | null {
-  if (!agent.pr) return null
-  if (agent.pr.startsWith('http')) return agent.pr
-  if (!agent.repo_url) return null
-  const repoBase = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-  const prNum = agent.pr.replace(/^#/, '')
-  return `${repoBase}/pull/${prNum}`
-}
 
 const props = defineProps<{
   agent: AgentUpdate
@@ -243,12 +235,22 @@ async function loadIntrospect() {
   if (introspectLoading.value) return
   introspectLoading.value = true
   introspectError.value = null
+  // Capture agent name at call time to detect stale responses after navigation
+  const capturedAgent = props.agentName
   try {
-    introspectData.value = await api.introspectAgent(props.spaceName, props.agentName)
+    const data = await api.introspectAgent(props.spaceName, capturedAgent)
+    // Discard response if user navigated to a different agent while request was in-flight
+    if (props.agentName === capturedAgent) {
+      introspectData.value = data
+    }
   } catch (e) {
-    introspectError.value = e instanceof Error ? e.message : String(e)
+    if (props.agentName === capturedAgent) {
+      introspectError.value = e instanceof Error ? e.message : String(e)
+    }
   } finally {
-    introspectLoading.value = false
+    if (props.agentName === capturedAgent) {
+      introspectLoading.value = false
+    }
   }
 }
 
@@ -409,115 +411,124 @@ watch(() => props.agentName, loadAgentTasks)
             </template>
           </div>
         </div>
-        <div class="flex items-center gap-2">
+        <!-- Action buttons: two rows for clarity -->
+        <div class="flex flex-col items-end gap-2 shrink-0">
+          <!-- Row 1: Primary actions -->
           <div class="flex items-center gap-1.5">
-            <span class="text-xs text-muted-foreground">Terminal:</span>
             <Tooltip>
               <TooltipTrigger as-child>
-                <Badge variant="outline" :class="tmuxLabelClass" role="status" :aria-label="`Terminal: ${tmuxDisplay.label}`">
-                  {{ tmuxDisplay.label }}
-                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-8 px-3 text-xs gap-1.5"
+                  @click="router.push({ name: 'conversation', params: { space: spaceName, conversationAgent: agentName } })"
+                >
+                  <MessageSquare class="size-3.5" /> Conversations
+                </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                Terminal: {{ tmuxDisplay.label }} — {{ tmuxDisplay.tooltip }}
-              </TooltipContent>
+              <TooltipContent>View conversation thread with {{ agentName }}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button variant="outline" size="sm" class="h-8 px-3 text-xs gap-1.5" @click="emit('broadcast')">
+                  <Bell class="size-3.5" /> Nudge
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Nudge this agent with the latest space state</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-3 text-xs gap-1.5 text-muted-foreground/60 hover:text-destructive"
+                  @click="deleteDialogOpen = true"
+                >
+                  <Trash2 class="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Remove this agent from the space</TooltipContent>
             </Tooltip>
           </div>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline"
-                size="sm"
-                @click="router.push(`/${encodeURIComponent(spaceName)}/conversations/${encodeURIComponent(agentName)}`)"
-              >
-                <MessageSquare class="size-4" /> Conversations
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              View conversations with {{ agentName }}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button variant="outline" size="sm" @click="emit('broadcast')">
-                <Bell class="size-4" /> Nudge
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Nudge this agent with the latest space state
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button variant="outline" size="sm" class="text-destructive hover:bg-destructive hover:text-destructive-foreground" @click="deleteDialogOpen = true">
-                <Trash2 class="size-4" /> Delete
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Remove this agent from the space
-            </TooltipContent>
-          </Tooltip>
 
-          <!-- Lifecycle buttons -->
-          <div class="flex items-center gap-1 border border-border rounded-md p-0.5 bg-muted/30">
+          <!-- Row 2: Session / lifecycle controls -->
+          <div class="flex items-center gap-2">
+            <!-- Terminal status -->
             <Tooltip>
               <TooltipTrigger as-child>
-                <Button
-                  variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
-                  :disabled="lifecycleLoading !== null"
-                  @click="handleSpawn"
-                >
-                  <Loader2 v-if="lifecycleLoading === 'spawn'" class="size-3 animate-spin" />
-                  <Play v-else class="size-3" />
-                  Spawn
-                </Button>
+                <div class="flex items-center gap-1.5 cursor-default">
+                  <span class="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Session</span>
+                  <Badge variant="outline" :class="[tmuxLabelClass, 'text-[10px] h-5 px-1.5']" role="status" :aria-label="`Terminal: ${tmuxDisplay.label}`">
+                    {{ tmuxDisplay.label }}
+                  </Badge>
+                </div>
               </TooltipTrigger>
-              <TooltipContent>Create tmux session and launch agent</TooltipContent>
+              <TooltipContent>{{ tmuxDisplay.tooltip }}</TooltipContent>
             </Tooltip>
+
+            <!-- Lifecycle actions grouped -->
+            <div class="flex items-center rounded-md border border-border bg-muted/20 p-0.5 gap-0.5">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
+                    :disabled="lifecycleLoading !== null"
+                    @click="handleSpawn"
+                  >
+                    <Loader2 v-if="lifecycleLoading === 'spawn'" class="size-3 animate-spin" />
+                    <Play v-else class="size-3" />
+                    Spawn
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Create tmux session and launch agent</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
+                    :disabled="lifecycleLoading !== null"
+                    @click="handleRestart"
+                  >
+                    <Loader2 v-if="lifecycleLoading === 'restart'" class="size-3 animate-spin" />
+                    <RotateCcw v-else class="size-3" />
+                    Restart
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Kill existing session and spawn a new one</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost" size="sm"
+                    class="h-7 px-2 text-xs gap-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                    :disabled="lifecycleLoading !== null"
+                    @click="stopConfirmOpen = true"
+                  >
+                    <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3 animate-spin" />
+                    <Square v-else class="size-3" />
+                    Stop
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Kill the agent's tmux session</TooltipContent>
+              </Tooltip>
+            </div>
+
+            <!-- Inspect toggle -->
             <Tooltip>
               <TooltipTrigger as-child>
                 <Button
-                  variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
-                  :disabled="lifecycleLoading !== null"
-                  @click="handleRestart"
+                  size="sm"
+                  :variant="introspectOpen ? 'secondary' : 'outline'"
+                  class="h-7 px-2 text-xs gap-1"
+                  @click="toggleIntrospect"
                 >
-                  <Loader2 v-if="lifecycleLoading === 'restart'" class="size-3 animate-spin" />
-                  <RotateCcw v-else class="size-3" />
-                  Restart
+                  <Terminal class="size-3.5" />
+                  Inspect
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Kill existing session and spawn a new one</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <Button
-                  variant="ghost" size="sm"
-                  class="h-7 px-2 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  :disabled="lifecycleLoading !== null"
-                  @click="stopConfirmOpen = true"
-                >
-                  <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3 animate-spin" />
-                  <Square v-else class="size-3" />
-                  Stop
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Kill the agent's tmux session</TooltipContent>
+              <TooltipContent>{{ introspectOpen ? 'Close' : 'Open' }} live tmux pane capture</TooltipContent>
             </Tooltip>
           </div>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                size="sm"
-                :variant="introspectOpen ? 'secondary' : 'outline'"
-                class="gap-1 text-xs"
-                @click="toggleIntrospect"
-              >
-                <Terminal class="size-3.5" />
-                Inspect
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Capture live tmux pane output</TooltipContent>
-          </Tooltip>
         </div>
       </div>
 

@@ -53,6 +53,12 @@ curl -s "http://localhost:8899/spaces/Agent%20Boss%20Development/ignition/Protoc
 
 This registers your tmux session with the coordinator (**sticky** — no need to include in POST body) and returns your identity, peer agents, the full protocol, and a POST template.
 
+**Optional hierarchy registration:** append `?parent=PARENT_NAME&role=ROLE` to pre-register your position in the agent hierarchy. `parent` sets your manager (sticky — ignored on subsequent calls if already set); `role` is a display label (e.g. `Developer`, `Manager`, `SME`). Example:
+
+```bash
+curl -s "http://localhost:8899/spaces/SPACE_URL_ENCODED/ignition/AGENT_NAME?tmux_session=YOUR_TMUX_SESSION&parent=ManagerAgent&role=Developer"
+```
+
 ## Step 3: Read the blackboard
 
 ```bash

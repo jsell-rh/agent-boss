@@ -239,6 +239,7 @@ onUnmounted(() => {
         <AgentProfileCard
           :agent-name="row.agent"
           :agent="agents?.[row.agent]"
+          :space-name="spaceName"
           @select-agent="emit('select-agent', $event)"
         >
           <button
