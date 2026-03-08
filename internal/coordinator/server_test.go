@@ -1437,6 +1437,22 @@ func TestIgnitionShowsPendingMessages(t *testing.T) {
 	}
 }
 
+// TestIgnitionShowsTaskListEndpoint verifies that the ignition response includes
+// the task list endpoint so agents know where to fetch their task queue.
+func TestIgnitionShowsTaskListEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	code, body := getBody(t, base+"/spaces/ignite-ep-test/ignition/myagent")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if !strings.Contains(body, "/spaces/ignite-ep-test/tasks") {
+		t.Error("ignition should reference task list endpoint")
+	}
+}
+
 func TestLineIsIdleIndicator(t *testing.T) {
 	tests := []struct {
 		name string
@@ -2656,6 +2672,218 @@ func TestTaskDeleteNotFound(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+// Phase 3 tests: TASK-NNN auto-link, ignition task queue injection
+
+func TestTaskAutoLinkInMarkdown(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "autolink-test"
+
+	// Create a task so TASK-001 exists
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":  "Implement feature",
+		"status": "in_progress",
+	}, "Dev")
+	var task Task
+	json.NewDecoder(resp.Body).Decode(&task)
+	resp.Body.Close()
+	if task.ID != "TASK-001" {
+		t.Fatalf("expected TASK-001, got %q", task.ID)
+	}
+
+	// Post an agent update referencing TASK-001 in items
+	postJSON(t, base+"/spaces/"+space+"/agent/Dev", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Dev: working",
+		Items:   []string{"Implementing TASK-001: add auto-link support", "Also see TASK-001 for context"},
+	})
+
+	// Read the rendered markdown
+	_, body := getBody(t, base+"/spaces/"+space+"/raw")
+
+	// TASK-001 should be rendered as a markdown link with its title
+	if !strings.Contains(body, "[TASK-001:") {
+		t.Error("rendered markdown should contain [TASK-001: ...] link syntax")
+	}
+	// The link should point to the task URL
+	wantLink := "/spaces/" + space + "/tasks/TASK-001"
+	if !strings.Contains(body, wantLink) {
+		t.Errorf("rendered markdown should contain task link %q", wantLink)
+	}
+}
+
+func TestTaskAutoLinkOnlyForExistingTasks(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "autolink-exist-test"
+
+	// Post an agent update referencing a non-existent task
+	postJSON(t, base+"/spaces/"+space+"/agent/Dev", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Dev: working",
+		Items:   []string{"Referencing TASK-999 which does not exist"},
+	})
+
+	_, body := getBody(t, base+"/spaces/"+space+"/raw")
+
+	// TASK-999 should NOT be turned into a link (task doesn't exist)
+	if strings.Contains(body, "[TASK-999](") {
+		t.Error("rendered markdown should NOT auto-link TASK-999 when task does not exist")
+	}
+}
+
+func TestIgnitionIncludesAssignedTasks(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "ignition-tasks-test"
+
+	// Create tasks and assign one to "worker"
+	resp1 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Build the thing",
+		"status":      "in_progress",
+		"assigned_to": "worker",
+	}, "Mgr")
+	var task1 Task
+	json.NewDecoder(resp1.Body).Decode(&task1)
+	resp1.Body.Close()
+	if task1.ID != "TASK-001" {
+		t.Fatalf("expected TASK-001, got %q", task1.ID)
+	}
+
+	// Create a second task assigned to someone else
+	resp2 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Other task",
+		"status":      "backlog",
+		"assigned_to": "other-agent",
+	}, "Mgr")
+	resp2.Body.Close()
+
+	// Ignite "worker" — should see their assigned task
+	code, body := getBody(t, base+"/spaces/"+space+"/ignition/worker")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+
+	if !strings.Contains(body, "TASK-001") {
+		t.Error("ignition should include TASK-001 assigned to worker")
+	}
+	if !strings.Contains(body, "Build the thing") {
+		t.Error("ignition should include the task title")
+	}
+	// Should NOT show other agent's task
+	if strings.Contains(body, "Other task") {
+		t.Error("ignition should NOT include tasks assigned to other agents")
+	}
+}
+
+func TestIgnitionNoAssignedTasks(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "ignition-notasks-test"
+
+	// Create a task assigned to someone else
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Unrelated task",
+		"status":      "backlog",
+		"assigned_to": "other",
+	}, "Mgr")
+	resp.Body.Close()
+
+	// Ignite "worker" — no tasks assigned to them
+	code, body := getBody(t, base+"/spaces/"+space+"/ignition/worker")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+
+	// Should not crash or include wrong tasks
+	if strings.Contains(body, "Unrelated task") {
+		t.Error("ignition should NOT include tasks assigned to other agents")
+	}
+}
+
+func TestIgnitionMentionsTasksEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "ignition-tasks-endpoint-test"
+
+	_, body := getBody(t, base+"/spaces/"+space+"/ignition/myagent")
+
+	// Ignition should mention the /tasks endpoint for discoverability
+	if !strings.Contains(body, "/tasks") {
+		t.Error("ignition response should mention the /tasks endpoint")
+	}
+}
+
+func TestTaskAutoLinkMultipleReferences(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "autolink-multi-test"
+
+	// Create two tasks
+	r1 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "First task", "status": "backlog"}, "Dev")
+	r1.Body.Close()
+	r2 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Second task", "status": "in_progress"}, "Dev")
+	r2.Body.Close()
+
+	// Post update referencing both tasks
+	postJSON(t, base+"/spaces/"+space+"/agent/Dev", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Dev: working",
+		Items:   []string{"Completed TASK-001, now working on TASK-002"},
+	})
+
+	_, body := getBody(t, base+"/spaces/"+space+"/raw")
+
+	link1 := "/spaces/" + space + "/tasks/TASK-001"
+	link2 := "/spaces/" + space + "/tasks/TASK-002"
+	if !strings.Contains(body, link1) {
+		t.Errorf("markdown should auto-link TASK-001: missing %q", link1)
+	}
+	if !strings.Contains(body, link2) {
+		t.Errorf("markdown should auto-link TASK-002: missing %q", link2)
+	}
+}
+
+func TestIgnitionAssignedTasksMultipleStatuses(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "ignition-inprogress-test"
+
+	// Assign tasks with different statuses to "agent1"
+	r1 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "In-progress work",
+		"status":      "in_progress",
+		"assigned_to": "agent1",
+		"priority":    "high",
+	}, "Mgr")
+	r1.Body.Close()
+	r2 := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Backlog item",
+		"status":      "backlog",
+		"assigned_to": "agent1",
+	}, "Mgr")
+	r2.Body.Close()
+
+	code, body := getBody(t, base+"/spaces/"+space+"/ignition/agent1")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+
+	if !strings.Contains(body, "In-progress work") {
+		t.Error("ignition should show in_progress task assigned to agent1")
+	}
+	if !strings.Contains(body, "Backlog item") {
+		t.Error("ignition should show backlog task assigned to agent1")
 	}
 }
 

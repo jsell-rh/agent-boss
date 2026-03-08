@@ -1406,6 +1406,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString(fmt.Sprintf("- Your channel: `POST /spaces/%s/agent/%s`\n", spaceName, agentName))
 	b.WriteString(fmt.Sprintf("- Read blackboard: `GET /spaces/%s/raw`\n", spaceName))
 	b.WriteString(fmt.Sprintf("- Dashboard: `http://localhost%s/spaces/%s/`\n", s.port, spaceName))
+	b.WriteString(fmt.Sprintf("- Task list: `GET /spaces/%s/tasks` (filter: `?assigned_to=%s&status=in_progress`)\n", spaceName, agentName))
 	if tmuxSession != "" {
 		b.WriteString(fmt.Sprintf("- Tmux session: `%s` (pre-registered)\n", tmuxSession))
 	}
@@ -1466,6 +1467,29 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 			}
 			b.WriteString("\n")
 		}
+	}
+
+	// Inject assigned tasks from the space task queue.
+	var assignedTasks []*Task
+	for _, task := range ks.Tasks {
+		if strings.EqualFold(task.AssignedTo, canonical) && task.Status != TaskStatusDone {
+			assignedTasks = append(assignedTasks, task)
+		}
+	}
+	if len(assignedTasks) > 0 {
+		sort.Slice(assignedTasks, func(i, j int) bool {
+			return assignedTasks[i].ID < assignedTasks[j].ID
+		})
+		b.WriteString("## Assigned Tasks\n\n")
+		b.WriteString("The following tasks from the space task board are assigned to you. Act on them as directed.\n\n")
+		b.WriteString("| ID | Title | Status | Priority |\n")
+		b.WriteString("| -- | ----- | ------ | -------- |\n")
+		for _, task := range assignedTasks {
+			b.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
+				task.ID, task.Title, task.Status, task.Priority))
+		}
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("Full task details: `GET /spaces/%s/tasks?assigned_to=%s`\n\n", spaceName, canonical))
 	}
 
 	b.WriteString("## JSON Post Template\n\n")

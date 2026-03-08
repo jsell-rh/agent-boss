@@ -2,10 +2,30 @@ package coordinator
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 )
+
+// taskRefRe matches TASK-NNN references in agent text (e.g. TASK-001, TASK-42).
+var taskRefRe = regexp.MustCompile(`\bTASK-\d+\b`)
+
+// linkifyTaskRefs replaces TASK-NNN tokens in text with markdown links to the
+// task detail endpoint. Only known task IDs are linked; unrecognized IDs are
+// left unchanged.
+func linkifyTaskRefs(text, spaceName string, tasks map[string]*Task) string {
+	if len(tasks) == 0 || !taskRefRe.MatchString(text) {
+		return text
+	}
+	return taskRefRe.ReplaceAllStringFunc(text, func(ref string) string {
+		task, ok := tasks[ref]
+		if !ok {
+			return ref
+		}
+		return fmt.Sprintf("[%s: %s](/spaces/%s/tasks/%s)", ref, task.Title, spaceName, ref)
+	})
+}
 
 // HierarchyTree is the full agent hierarchy for a space, computed on demand.
 type HierarchyTree struct {
@@ -268,7 +288,7 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 		b.WriteString("### ")
 		b.WriteString(name)
 		b.WriteString("\n\n")
-		b.WriteString(renderAgentSection(name, agent))
+		b.WriteString(renderAgentSection(name, agent, ks.Name, ks.Tasks))
 		b.WriteString("\n")
 	}
 
@@ -281,11 +301,12 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 	return b.String()
 }
 
-func renderAgentSection(name string, agent *AgentUpdate) string {
+func renderAgentSection(name string, agent *AgentUpdate, spaceName string, tasks map[string]*Task) string {
 	var b strings.Builder
 
+	summary := linkifyTaskRefs(agent.Summary, spaceName, tasks)
 	b.WriteString(fmt.Sprintf("[%s] %s — **%s**",
-		name, agent.UpdatedAt.Format("2006-01-02 15:04"), agent.Summary))
+		name, agent.UpdatedAt.Format("2006-01-02 15:04"), summary))
 	if agent.TestCount != nil {
 		b.WriteString(fmt.Sprintf(" %d tests.", *agent.TestCount))
 	}
@@ -293,7 +314,7 @@ func renderAgentSection(name string, agent *AgentUpdate) string {
 
 	for _, item := range agent.Items {
 		b.WriteString("- ")
-		b.WriteString(item)
+		b.WriteString(linkifyTaskRefs(item, spaceName, tasks))
 		b.WriteString("\n")
 	}
 	if len(agent.Items) > 0 {
@@ -336,7 +357,7 @@ func renderAgentSection(name string, agent *AgentUpdate) string {
 	}
 
 	if agent.NextSteps != "" {
-		b.WriteString(agent.NextSteps)
+		b.WriteString(linkifyTaskRefs(agent.NextSteps, spaceName, tasks))
 		b.WriteString("\n\n")
 	}
 
