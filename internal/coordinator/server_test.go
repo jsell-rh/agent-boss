@@ -3102,3 +3102,270 @@ func TestTaskSubtasksEndpointNotFound(t *testing.T) {
 	}
 }
 
+// TestNotificationOnMessage verifies that sending a message creates a notification.
+func TestNotificationOnMessage(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-msg-test"
+
+	// Register recipient agent.
+	postJSON(t, base+"/spaces/"+space+"/agent/Bot", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Bot: ready",
+	})
+
+	// Send a message from Sender to Bot.
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Bot/message",
+		strings.NewReader(`{"message":"hello from sender"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Sender")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	// Fetch Bot's agent state and verify notification was created.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/Bot")
+	if code != http.StatusOK {
+		t.Fatalf("GET agent: expected 200, got %d", code)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(ag.Notifications) == 0 {
+		t.Fatal("expected at least one notification, got none")
+	}
+	n := ag.Notifications[len(ag.Notifications)-1]
+	if n.Type != NotifTypeMessage {
+		t.Errorf("notification type = %q, want %q", n.Type, NotifTypeMessage)
+	}
+	if n.From != "Sender" {
+		t.Errorf("notification from = %q, want %q", n.From, "Sender")
+	}
+	if n.Read {
+		t.Error("notification should be unread after message send")
+	}
+}
+
+// TestNotificationMarkedReadOnStatusPost verifies that notifications are marked read
+// when the agent posts a status update.
+func TestNotificationMarkedReadOnStatusPost(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-read-test"
+
+	// Register recipient.
+	postJSON(t, base+"/spaces/"+space+"/agent/Worker", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Worker: ready",
+	})
+
+	// Send message to create notification.
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Worker/message",
+		strings.NewReader(`{"message":"do the thing"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Boss")
+	resp, _ := http.DefaultClient.Do(req)
+	resp.Body.Close()
+
+	// Worker posts a status update (simulates check-in after nudge).
+	postJSON(t, base+"/spaces/"+space+"/agent/Worker", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Worker: working on the thing",
+	})
+
+	// Verify notification is now marked read.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/Worker")
+	if code != http.StatusOK {
+		t.Fatalf("GET agent: expected 200, got %d", code)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(ag.Notifications) == 0 {
+		t.Fatal("expected notifications to be preserved after status post")
+	}
+	for _, n := range ag.Notifications {
+		if !n.Read {
+			t.Errorf("notification %q should be marked read after agent status post", n.ID)
+		}
+	}
+}
+
+// TestNotificationInRaw verifies that unread notifications appear at the top of the /raw section.
+func TestNotificationInRaw(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-raw-test"
+
+	// Register agent.
+	postJSON(t, base+"/spaces/"+space+"/agent/Alpha", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Alpha: ready",
+	})
+
+	// Send message to trigger notification.
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Alpha/message",
+		strings.NewReader(`{"message":"urgent task for you"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Mgr")
+	resp, _ := http.DefaultClient.Do(req)
+	resp.Body.Close()
+
+	// Read /raw and verify notifications section appears before messages section within the agent's subsection.
+	code, body := getBody(t, base+"/spaces/"+space+"/raw")
+	if code != http.StatusOK {
+		t.Fatalf("GET /raw: expected 200, got %d", code)
+	}
+	// Find the agent's subsection by looking after "### Alpha"
+	agentSectionIdx := strings.Index(body, "### Alpha")
+	if agentSectionIdx < 0 {
+		t.Fatal("expected '### Alpha' section in /raw output")
+	}
+	agentSection := body[agentSectionIdx:]
+	notifIdx := strings.Index(agentSection, "#### Notifications")
+	msgIdx := strings.Index(agentSection, "#### Messages")
+	if notifIdx < 0 {
+		t.Error("expected '#### Notifications' section in agent's /raw section")
+	}
+	if msgIdx < 0 {
+		t.Error("expected '#### Messages' section in agent's /raw section")
+	}
+	if notifIdx >= 0 && msgIdx >= 0 && notifIdx > msgIdx {
+		t.Error("Notifications section should appear before Messages section in /raw agent section")
+	}
+}
+
+// TestNotificationInIgnition verifies unread notifications are surfaced in the ignition response.
+func TestNotificationInIgnition(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-ignition-test"
+
+	// Register agent and create a notification via message.
+	postJSON(t, base+"/spaces/"+space+"/agent/Gamma", AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "Gamma: waiting",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Gamma/message",
+		strings.NewReader(`{"message":"wake up and do TASK-042"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Boss")
+	resp, _ := http.DefaultClient.Do(req)
+	resp.Body.Close()
+
+	// Fetch ignition — should include pending notifications.
+	code, body := getBody(t, base+"/spaces/"+space+"/ignition/Gamma")
+	if code != http.StatusOK {
+		t.Fatalf("GET ignition: expected 200, got %d", code)
+	}
+	if !strings.Contains(body, "Pending Notifications") {
+		t.Error("ignition response should contain 'Pending Notifications' section")
+	}
+	if !strings.Contains(body, "New message from Boss") {
+		t.Error("ignition response should contain notification title 'New message from Boss'")
+	}
+}
+
+// TestNotificationTaskAssign verifies that task assignment creates a typed notification.
+func TestNotificationTaskAssign(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-task-assign-test"
+
+	// Register the assignee agent.
+	postJSON(t, base+"/spaces/"+space+"/agent/DevAgent", AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "DevAgent: ready",
+	})
+
+	// Create a task assigned to DevAgent.
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title":       "Implement feature X",
+		"assigned_to": "DevAgent",
+		"status":      "in_progress",
+	}, "Boss")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create task: expected 201, got %d: %s", resp.StatusCode, body)
+	}
+
+	// Small delay for async notification delivery.
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify DevAgent received a task_assigned notification.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/DevAgent")
+	if code != http.StatusOK {
+		t.Fatalf("GET agent: expected 200, got %d", code)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var found bool
+	for _, n := range ag.Notifications {
+		if n.Type == NotifTypeTaskAssign {
+			found = true
+			if n.TaskID == "" {
+				t.Error("task_assigned notification should have task_id set")
+			}
+			if n.From == "" {
+				t.Error("task_assigned notification should have from set")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected task_assigned notification in %+v", ag.Notifications)
+	}
+}
+
+// TestNotificationPruning verifies that notifications are pruned to 20 max.
+func TestNotificationPruning(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "notif-prune-test"
+
+	// Register agent.
+	postJSON(t, base+"/spaces/"+space+"/agent/Pruned", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Pruned: ready",
+	})
+
+	// Send 25 messages to create 25 notifications (exceeds 20 limit).
+	for i := 0; i < 25; i++ {
+		req, _ := http.NewRequest(http.MethodPost, base+"/spaces/"+space+"/agent/Pruned/message",
+			strings.NewReader(`{"message":"msg"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Agent-Name", "Spammer")
+		resp, _ := http.DefaultClient.Do(req)
+		resp.Body.Close()
+	}
+
+	// Fetch agent and verify notification count is at most 20.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/Pruned")
+	if code != http.StatusOK {
+		t.Fatalf("GET agent: expected 200, got %d", code)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(ag.Notifications) > 20 {
+		t.Errorf("expected at most 20 notifications after pruning, got %d", len(ag.Notifications))
+	}
+}
+

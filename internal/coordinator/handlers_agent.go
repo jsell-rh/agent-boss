@@ -121,6 +121,14 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			if len(update.Messages) == 0 && len(existing.Messages) > 0 {
 				update.Messages = existing.Messages
 			}
+			// Preserve and mark-read notifications — agent posting means it has checked in.
+			if len(existing.Notifications) > 0 {
+				for i := range existing.Notifications {
+					existing.Notifications[i].Read = true
+				}
+				update.Notifications = existing.Notifications
+				pruneNotifications(&update)
+			}
 			// Preserve documents — managed via the /agent/{name}/{slug} endpoint
 			if len(update.Documents) == 0 && len(existing.Documents) > 0 {
 				update.Documents = existing.Documents
@@ -313,6 +321,18 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		}
 		ag.Messages = append(ag.Messages, messageReq)
 
+		// Create a typed notification so the agent immediately sees why it was woken up.
+		notif := AgentNotification{
+			ID:        fmt.Sprintf("%s-%d", r, time.Now().UnixNano()),
+			Type:      NotifTypeMessage,
+			Title:     fmt.Sprintf("New message from %s", senderName),
+			Body:      truncateLine(messageReq.Message, 120),
+			From:      senderName,
+			Timestamp: time.Now().UTC(),
+		}
+		ag.Notifications = append(ag.Notifications, notif)
+		pruneNotifications(ag)
+
 		// Retain all unread messages; cap read messages at 50.
 		const maxReadMessages = 50
 		readCount := 0
@@ -356,13 +376,21 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 			"message":  messageReq.Message,
 			"priority": string(messageReq.Priority),
 		})
-		go func(r string, data string) {
+		notifSSEData, _ := json.Marshal(map[string]any{
+			"space":  spaceName,
+			"agent":  recipient,
+			"type":   string(NotifTypeMessage),
+			"title":  fmt.Sprintf("New message from %s", senderName),
+			"sender": senderName,
+		})
+		go func(r string, data string, notifData string) {
 			s.broadcastSSE(spaceName, r, "agent_message", data)
+			s.broadcastSSE(spaceName, r, "agent_notification", notifData)
 			s.tryWebhookDelivery(spaceName, r, messageReq)
 			s.nudgeMu.Lock()
 			s.nudgePending[spaceName+"/"+r] = time.Now()
 			s.nudgeMu.Unlock()
-		}(recipient, string(sseData))
+		}(recipient, string(sseData), string(notifSSEData))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -646,6 +674,21 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 			b.WriteString(fmt.Sprintf("- Next steps: %s\n", existing.NextSteps))
 		}
 		b.WriteString("\n")
+
+		// Surface unread notifications first — agents can immediately see why they were woken up.
+		unreadNotifs := make([]AgentNotification, 0)
+		for _, n := range existing.Notifications {
+			if !n.Read {
+				unreadNotifs = append(unreadNotifs, n)
+			}
+		}
+		if len(unreadNotifs) > 0 {
+			b.WriteString(fmt.Sprintf("## Pending Notifications (%d unread)\n\n", len(unreadNotifs)))
+			for _, n := range unreadNotifs {
+				b.WriteString(fmt.Sprintf("- [%s] %s: %s\n", string(n.Type), n.Title, n.Body))
+			}
+			b.WriteString("\n")
+		}
 
 		if len(existing.Messages) > 0 {
 			b.WriteString("## Pending Messages\n\n")

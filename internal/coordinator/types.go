@@ -95,8 +95,9 @@ type AgentUpdate struct {
 	Documents      []AgentDocument `json:"documents,omitempty"`
 	TmuxSession    string          `json:"tmux_session,omitempty"`
 	RepoURL        string          `json:"repo_url,omitempty"`
-	Messages       []AgentMessage  `json:"messages,omitempty"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	Messages       []AgentMessage      `json:"messages,omitempty"`
+	Notifications  []AgentNotification `json:"notifications,omitempty"`
+	UpdatedAt      time.Time           `json:"updated_at"`
 
 	// Hierarchy fields — optional. If Parent is empty, agent is a root node.
 	// Parent is sticky (mutable): set via status POST or /register; omitting does not clear it.
@@ -125,6 +126,28 @@ type AgentDocument struct {
 	Slug    string `json:"slug"`
 	Title   string `json:"title"`
 	Content string `json:"content"`
+}
+
+// NotificationType identifies why an agent is being notified.
+type NotificationType string
+
+const (
+	NotifTypeMessage    NotificationType = "message"      // new message from another agent
+	NotifTypeTaskAssign NotificationType = "task_assigned" // task assigned to this agent
+)
+
+// AgentNotification is a typed notification surfaced to an agent explaining
+// why it was woken up. Notifications render at the top of the agent's /raw
+// section so agents see them immediately on check-in.
+type AgentNotification struct {
+	ID        string           `json:"id"`
+	Type      NotificationType `json:"type"`
+	Title     string           `json:"title"`        // e.g. "New message from Cto"
+	Body      string           `json:"body"`         // truncated preview or task title
+	From      string           `json:"from,omitempty"`
+	TaskID    string           `json:"task_id,omitempty"`
+	Timestamp time.Time        `json:"timestamp"`
+	Read      bool             `json:"read,omitempty"`
 }
 
 // MessagePriority indicates the urgency of a message to an agent.
@@ -370,6 +393,22 @@ func renderAgentSection(name string, agent *AgentUpdate, spaceName string, tasks
 	if agent.FreeText != "" {
 		b.WriteString(agent.FreeText)
 		b.WriteString("\n\n")
+	}
+
+	// Render unread notifications before Messages so agents immediately see why they were woken up.
+	unreadNotifs := make([]AgentNotification, 0)
+	for _, n := range agent.Notifications {
+		if !n.Read {
+			unreadNotifs = append(unreadNotifs, n)
+		}
+	}
+	if len(unreadNotifs) > 0 {
+		b.WriteString("#### Notifications\n\n")
+		for _, n := range unreadNotifs {
+			b.WriteString(fmt.Sprintf("- [!] [%s] %s (%s): %s\n",
+				string(n.Type), n.Title, n.Timestamp.Format("15:04"), n.Body))
+		}
+		b.WriteString("\n")
 	}
 
 	if len(agent.Messages) > 0 {
