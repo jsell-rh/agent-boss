@@ -712,6 +712,10 @@ func (s *Server) handleSpaceHierarchy(w http.ResponseWriter, r *http.Request, sp
 	json.NewEncoder(w).Encode(tree)
 }
 
+// handleSpaceRaw serves GET /spaces/{space}/raw (rendered markdown of full space state).
+// POST /spaces/{space}/raw is preserved as a backward-compatible alias for
+// POST /spaces/{space}/contracts — both write to SharedContracts.
+// /contracts is the canonical write endpoint; /raw POST exists for legacy callers.
 func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceName string) {
 	switch r.Method {
 	case http.MethodGet:
@@ -727,23 +731,24 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 		fmt.Fprint(w, md)
 
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		defer r.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 		if err != nil {
-			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 
 		ks := s.getOrCreateSpace(spaceName)
 		s.mu.Lock()
 		ks.SharedContracts = sanitizeInput(string(body))
 		ks.UpdatedAt = time.Now().UTC()
-		if err := s.saveSpace(ks); err != nil {
-			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		snap := ks.snapshot()
+		s.mu.Unlock()
+
+		if err := s.saveSpace(snap); err != nil {
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 			return
 		}
-		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] shared contracts updated (%d bytes)", spaceName, len(body)))
 		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
@@ -766,23 +771,24 @@ func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, sp
 		fmt.Fprint(w, ks.SharedContracts)
 
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		defer r.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 		if err != nil {
-			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 
 		ks := s.getOrCreateSpace(spaceName)
 		s.mu.Lock()
 		ks.SharedContracts = sanitizeInput(string(body))
 		ks.UpdatedAt = time.Now().UTC()
-		if err := s.saveSpace(ks); err != nil {
-			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		snap := ks.snapshot()
+		s.mu.Unlock()
+
+		if err := s.saveSpace(snap); err != nil {
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 			return
 		}
-		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] contracts updated (%d bytes)", spaceName, len(body)))
 		s.journal.Append(spaceName, EventContractsUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
@@ -805,23 +811,24 @@ func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spac
 		fmt.Fprint(w, ks.Archive)
 
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		defer r.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 		if err != nil {
-			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 
 		ks := s.getOrCreateSpace(spaceName)
 		s.mu.Lock()
 		ks.Archive = sanitizeInput(string(body))
 		ks.UpdatedAt = time.Now().UTC()
-		if err := s.saveSpace(ks); err != nil {
-			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		snap := ks.snapshot()
+		s.mu.Unlock()
+
+		if err := s.saveSpace(snap); err != nil {
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 			return
 		}
-		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s] archive updated (%d bytes)", spaceName, len(body)))
 		s.journal.Append(spaceName, EventArchiveUpdated, "", map[string]string{"content": sanitizeInput(string(body))})
 		w.WriteHeader(http.StatusOK)
@@ -871,12 +878,12 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		ks := s.getOrCreateSpace(spaceName)
 
 		contentType := r.Header.Get("Content-Type")
-		body, err := io.ReadAll(r.Body)
+		defer r.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 		if err != nil {
 			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 
 		var update AgentUpdate
 
@@ -1250,12 +1257,12 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 			return
 		}
 
-		content, err := io.ReadAll(r.Body)
+		defer r.Body.Close()
+		content, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 		if err != nil {
-			http.Error(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
+			writeJSONError(w, fmt.Sprintf("read body: %v", err), http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
 
 		// Create agent directory if it doesn't exist
 		if err := os.MkdirAll(agentDir, 0755); err != nil {
@@ -1757,7 +1764,7 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 		http.Error(w, canonical+": tmux session not found", http.StatusBadRequest)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 32*1024))
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxReplyBodySize))
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
@@ -1792,7 +1799,7 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxDismissBodySize))
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
@@ -2470,10 +2477,11 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 	ks.Tasks[id] = task
 	ks.UpdatedAt = now
 	taskCopy := *task
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	// Broadcast SSE
 	if sseData, err := json.Marshal(map[string]any{
@@ -2629,10 +2637,11 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	task.UpdatedAt = now
 	taskCopy := *task
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -2660,10 +2669,11 @@ func (s *Server) handleTaskDelete(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	delete(ks.Tasks, taskID)
 	ks.UpdatedAt = time.Now().UTC()
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskDeleted, "", map[string]string{"id": taskID})
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{"id": taskID, "space": spaceName, "deleted": true}); err == nil {
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
@@ -2708,12 +2718,13 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	task.Status = req.Status
 	task.UpdatedAt = time.Now().UTC()
 	taskCopy := *task
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 		"id": taskID, "from_status": string(fromStatus), "status": string(req.Status), "by": caller,
 	})
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -2757,12 +2768,13 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 	task.AssignedTo = req.AssignedTo
 	task.UpdatedAt = time.Now().UTC()
 	taskCopy := *task
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskAssigned, "", map[string]string{
 		"id": taskID, "from_agent": fromAgent, "assigned_to": req.AssignedTo, "by": caller,
 	})
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -2816,12 +2828,13 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 	task.Comments = append(task.Comments, comment)
 	task.UpdatedAt = now
 	taskCopy := *task
+	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCommented, "", map[string]any{
 		"task_id": taskID, "comment": comment,
 	})
-	s.saveSpace(ks)
+	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status,
