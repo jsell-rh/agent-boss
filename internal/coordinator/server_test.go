@@ -3040,3 +3040,65 @@ func TestIgnitionAssignedTasksMultipleStatuses(t *testing.T) {
 	}
 }
 
+func TestTaskSubtasksEndpoint(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "subtasksendpointspace"
+
+	// Create parent task.
+	parentResp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Parent Epic"}, "Mgr")
+	defer parentResp.Body.Close()
+	if parentResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", parentResp.StatusCode)
+	}
+
+	// Create subtask via /tasks/TASK-001/subtasks.
+	childResp := postTaskJSON(t, taskURL(base, space, "TASK-001/subtasks"), map[string]any{
+		"title": "Child subtask",
+	}, "Mgr")
+	defer childResp.Body.Close()
+	if childResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for subtask creation, got %d", childResp.StatusCode)
+	}
+	var child Task
+	if err := json.NewDecoder(childResp.Body).Decode(&child); err != nil {
+		t.Fatalf("decode child: %v", err)
+	}
+	if child.ParentTask != "TASK-001" {
+		t.Errorf("child.ParentTask = %q, want TASK-001", child.ParentTask)
+	}
+	if child.ID != "TASK-002" {
+		t.Errorf("child.ID = %q, want TASK-002", child.ID)
+	}
+
+	// Parent should now list TASK-002 as a subtask.
+	code, body := getBody(t, base+"/spaces/"+space+"/tasks/TASK-001")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	var parent Task
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&parent); err != nil {
+		t.Fatalf("decode parent: %v", err)
+	}
+	if len(parent.Subtasks) != 1 || parent.Subtasks[0] != "TASK-002" {
+		t.Errorf("parent.Subtasks = %v, want [TASK-002]", parent.Subtasks)
+	}
+}
+
+func TestTaskSubtasksEndpointNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "subtasksnotfoundspace"
+
+	// Attempt to create subtask of nonexistent parent.
+	resp := postTaskJSON(t, taskURL(base, space, "TASK-999/subtasks"), map[string]any{
+		"title": "Orphan",
+	}, "Mgr")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 for missing parent, got %d", resp.StatusCode)
+	}
+}
+
