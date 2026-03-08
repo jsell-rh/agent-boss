@@ -423,7 +423,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(indexPath); err == nil {
 			content, err := os.ReadFile(indexPath)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				writeJSONError(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -437,12 +437,12 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		w.Write(content)
 		return
 	}
-	http.Error(w, "frontend not available", http.StatusNotFound)
+	writeJSONError(w, "frontend not available", http.StatusNotFound)
 }
 
 func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -512,7 +512,7 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		s.handleSpaceArchive(w, r, spaceName)
 	case "agent":
 		if len(parts) < 3 {
-			http.Error(w, "missing agent name", http.StatusBadRequest)
+			writeJSONError(w, "missing agent name", http.StatusBadRequest)
 			return
 		}
 		agentName := parts[2]
@@ -592,7 +592,7 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			agentName := strings.TrimRight(parts[2], "/")
 			s.handleApproveAgent(w, r, spaceName, agentName)
 		} else {
-			http.Error(w, "agent name required", http.StatusBadRequest)
+			writeJSONError(w, "agent name required", http.StatusBadRequest)
 		}
 	case "broadcast":
 		if len(parts) == 3 {
@@ -606,14 +606,14 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			agentName := strings.TrimRight(parts[2], "/")
 			s.handleReplyAgent(w, r, spaceName, agentName)
 		} else {
-			http.Error(w, "agent name required", http.StatusBadRequest)
+			writeJSONError(w, "agent name required", http.StatusBadRequest)
 		}
 	case "dismiss":
 		if len(parts) == 3 {
 			agentName := strings.TrimRight(parts[2], "/")
 			s.handleDismissQuestion(w, r, spaceName, agentName)
 		} else {
-			http.Error(w, "agent name required", http.StatusBadRequest)
+			writeJSONError(w, "agent name required", http.StatusBadRequest)
 		}
 	case "factory":
 		factorySub := ""
@@ -648,12 +648,12 @@ func (s *Server) handleSpaceJSON(w http.ResponseWriter, r *http.Request, spaceNa
 		return
 	}
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	s.mu.RLock()
@@ -667,7 +667,7 @@ func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, space
 	_, ok := s.spaces[spaceName]
 	if !ok {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	delete(s.spaces, spaceName)
@@ -684,12 +684,12 @@ func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, space
 
 func (s *Server) handleSpaceHierarchy(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	s.mu.RLock()
@@ -708,7 +708,7 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 	case http.MethodGet:
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
-			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
 		s.mu.RLock()
@@ -742,7 +742,7 @@ func (s *Server) handleSpaceRaw(w http.ResponseWriter, r *http.Request, spaceNam
 		fmt.Fprint(w, "ok")
 
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -751,7 +751,7 @@ func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, sp
 	case http.MethodGet:
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
-			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -782,7 +782,7 @@ func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, sp
 		fmt.Fprint(w, "ok")
 
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -791,7 +791,7 @@ func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spac
 	case http.MethodGet:
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
-			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -822,13 +822,13 @@ func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spac
 		fmt.Fprint(w, "ok")
 
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if agentName == "" {
-		http.Error(w, "missing agent name", http.StatusBadRequest)
+		writeJSONError(w, "missing agent name", http.StatusBadRequest)
 		return
 	}
 
@@ -836,7 +836,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 	case http.MethodGet:
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
-			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
 		s.mu.RLock()
@@ -988,7 +988,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 	case http.MethodDelete:
 		ks, ok := s.getSpace(spaceName)
 		if !ok {
-			http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+			writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 			return
 		}
 		s.mu.Lock()
@@ -998,7 +998,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		ks.UpdatedAt = time.Now().UTC()
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 			return
 		}
 		s.mu.Unlock()
@@ -1010,13 +1010,13 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		fmt.Fprintf(w, "removed [%s] from space %q", canonical, spaceName)
 
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -1073,7 +1073,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	case "":
 		messageReq.Priority = PriorityInfo
 	default:
-		http.Error(w, fmt.Sprintf("invalid priority %q: must be info, directive, or urgent", messageReq.Priority), http.StatusBadRequest)
+		writeJSONError(w, fmt.Sprintf("invalid priority %q: must be info, directive, or urgent", messageReq.Priority), http.StatusBadRequest)
 		return
 	}
 
@@ -1153,7 +1153,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	ks.UpdatedAt = time.Now().UTC()
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 		return
 	}
 	s.mu.Unlock()
@@ -1204,18 +1204,18 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 	if r.Method == http.MethodPost || r.Method == http.MethodPut {
 		callerName := r.Header.Get("X-Agent-Name")
 		if callerName == "" {
-			http.Error(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
+			writeJSONError(w, "missing X-Agent-Name header: agents must identify themselves", http.StatusBadRequest)
 			return
 		}
 		if !strings.EqualFold(callerName, agentName) {
-			http.Error(w, fmt.Sprintf("agent %q cannot post to %q's documents", callerName, agentName), http.StatusForbidden)
+			writeJSONError(w, fmt.Sprintf("agent %q cannot post to %q's documents", callerName, agentName), http.StatusForbidden)
 			return
 		}
 	}
 
 	// Sanitize document slug
 	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(documentSlug) {
-		http.Error(w, "invalid document slug: must be alphanumeric with underscores and dashes only", http.StatusBadRequest)
+		writeJSONError(w, "invalid document slug: must be alphanumeric with underscores and dashes only", http.StatusBadRequest)
 		return
 	}
 
@@ -1228,10 +1228,10 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		content, err := os.ReadFile(docPath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				http.Error(w, "document not found", http.StatusNotFound)
+				writeJSONError(w, "document not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, fmt.Sprintf("read document: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("read document: %v", err), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown")
@@ -1240,7 +1240,7 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 	case http.MethodPost, http.MethodPut:
 		contentType := r.Header.Get("Content-Type")
 		if !strings.Contains(contentType, "text/markdown") && !strings.Contains(contentType, "text/plain") {
-			http.Error(w, "Content-Type must be text/markdown or text/plain", http.StatusBadRequest)
+			writeJSONError(w, "Content-Type must be text/markdown or text/plain", http.StatusBadRequest)
 			return
 		}
 
@@ -1253,13 +1253,13 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 
 		// Create agent directory if it doesn't exist
 		if err := os.MkdirAll(agentDir, 0755); err != nil {
-			http.Error(w, fmt.Sprintf("create directory: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("create directory: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Write document
 		if err := os.WriteFile(docPath, content, 0644); err != nil {
-			http.Error(w, fmt.Sprintf("write document: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("write document: %v", err), http.StatusInternalServerError)
 			return
 		}
 
@@ -1300,7 +1300,7 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf("save space: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("save space: %v", err), http.StatusInternalServerError)
 			return
 		}
 		s.mu.Unlock()
@@ -1312,10 +1312,10 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 	case http.MethodDelete:
 		if err := os.Remove(docPath); err != nil {
 			if os.IsNotExist(err) {
-				http.Error(w, "document not found", http.StatusNotFound)
+				writeJSONError(w, "document not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, fmt.Sprintf("delete document: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("delete document: %v", err), http.StatusInternalServerError)
 			return
 		}
 
@@ -1343,17 +1343,17 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		fmt.Fprintf(w, "document %q deleted", documentSlug)
 
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if agentName == "" {
-		http.Error(w, "missing agent name: GET /spaces/{space}/ignition/{agent}", http.StatusBadRequest)
+		writeJSONError(w, "missing agent name: GET /spaces/{space}/ignition/{agent}", http.StatusBadRequest)
 		return
 	}
 
@@ -1508,7 +1508,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 
 func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -1529,7 +1529,7 @@ func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceNa
 
 func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -1550,12 +1550,12 @@ func (s *Server) handleSingleBroadcast(w http.ResponseWriter, r *http.Request, s
 
 func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	s.mu.RLock()
@@ -1566,7 +1566,7 @@ func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, s
 
 func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -1585,7 +1585,7 @@ func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
 			// Try without nanoseconds
 			since, err = time.Parse(time.RFC3339, sinceStr)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("invalid since parameter: %v", err), http.StatusBadRequest)
+				writeJSONError(w, fmt.Sprintf("invalid since parameter: %v", err), http.StatusBadRequest)
 				return
 			}
 		}
@@ -1593,7 +1593,7 @@ func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
 
 	events, err := s.journal.LoadSince(spaceName, since)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("load events: %v", err), http.StatusInternalServerError)
+		writeJSONError(w, fmt.Sprintf("load events: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if events == nil {
@@ -1618,12 +1618,12 @@ type tmuxAgentStatus struct {
 
 func (s *Server) handleSpaceTmuxStatus(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 
@@ -1671,12 +1671,12 @@ func (s *Server) handleSpaceTmuxStatus(w http.ResponseWriter, r *http.Request, s
 
 func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	s.mu.RLock()
@@ -1688,24 +1688,24 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 	}
 	s.mu.RUnlock()
 	if !exists {
-		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
 		return
 	}
 	if tmuxSession == "" {
-		http.Error(w, canonical+": no tmux session registered", http.StatusBadRequest)
+		writeJSONError(w, canonical+": no tmux session registered", http.StatusBadRequest)
 		return
 	}
 	if !tmuxSessionExists(tmuxSession) {
-		http.Error(w, canonical+": tmux session not found", http.StatusBadRequest)
+		writeJSONError(w, canonical+": tmux session not found", http.StatusBadRequest)
 		return
 	}
 	approval := tmuxCheckApproval(tmuxSession)
 	if !approval.NeedsApproval {
-		http.Error(w, canonical+": not waiting for approval", http.StatusConflict)
+		writeJSONError(w, canonical+": not waiting for approval", http.StatusConflict)
 		return
 	}
 	if err := tmuxApprove(tmuxSession); err != nil {
-		http.Error(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
+		writeJSONError(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.logEvent(fmt.Sprintf("[%s/%s] approval granted via dashboard (tool: %s)", spaceName, canonical, approval.ToolName))
@@ -1723,12 +1723,12 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 
 func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	s.mu.RLock()
@@ -1740,35 +1740,35 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	s.mu.RUnlock()
 	if !exists {
-		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
 		return
 	}
 	if tmuxSession == "" {
-		http.Error(w, canonical+": no tmux session registered", http.StatusBadRequest)
+		writeJSONError(w, canonical+": no tmux session registered", http.StatusBadRequest)
 		return
 	}
 	if !tmuxSessionExists(tmuxSession) {
-		http.Error(w, canonical+": tmux session not found", http.StatusBadRequest)
+		writeJSONError(w, canonical+": tmux session not found", http.StatusBadRequest)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxReplyBodySize))
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		writeJSONError(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	var payload struct {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(payload.Message) == "" {
-		http.Error(w, "message is required", http.StatusBadRequest)
+		writeJSONError(w, "message is required", http.StatusBadRequest)
 		return
 	}
 	if err := tmuxSendKeys(tmuxSession, payload.Message); err != nil {
-		http.Error(w, canonical+": send failed: "+err.Error(), http.StatusInternalServerError)
+		writeJSONError(w, canonical+": send failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.logEvent(fmt.Sprintf("[%s/%s] boss reply sent via dashboard", spaceName, canonical))
@@ -1778,17 +1778,17 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 
 func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxDismissBodySize))
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		writeJSONError(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	var payload struct {
@@ -1796,7 +1796,7 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 		Index int    `json:"index"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1805,33 +1805,33 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 	agent, exists := ks.Agents[canonical]
 	if !exists {
 		s.mu.Unlock()
-		http.Error(w, "agent not found: "+agentName, http.StatusNotFound)
+		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
 		return
 	}
 	switch payload.Type {
 	case "question":
 		if payload.Index < 0 || payload.Index >= len(agent.Questions) {
 			s.mu.Unlock()
-			http.Error(w, "index out of range", http.StatusBadRequest)
+			writeJSONError(w, "index out of range", http.StatusBadRequest)
 			return
 		}
 		agent.Questions = append(agent.Questions[:payload.Index], agent.Questions[payload.Index+1:]...)
 	case "blocker":
 		if payload.Index < 0 || payload.Index >= len(agent.Blockers) {
 			s.mu.Unlock()
-			http.Error(w, "index out of range", http.StatusBadRequest)
+			writeJSONError(w, "index out of range", http.StatusBadRequest)
 			return
 		}
 		agent.Blockers = append(agent.Blockers[:payload.Index], agent.Blockers[payload.Index+1:]...)
 	default:
 		s.mu.Unlock()
-		http.Error(w, "type must be 'question' or 'blocker'", http.StatusBadRequest)
+		writeJSONError(w, "type must be 'question' or 'blocker'", http.StatusBadRequest)
 		return
 	}
 	ks.UpdatedAt = time.Now().UTC()
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
-		http.Error(w, "save: "+err.Error(), http.StatusInternalServerError)
+		writeJSONError(w, "save: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.mu.Unlock()
@@ -1892,7 +1892,7 @@ func (s *Server) handleSpaceSSE(w http.ResponseWriter, r *http.Request, spaceNam
 func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		writeJSONError(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
@@ -2122,7 +2122,7 @@ func (s *Server) handleInterrupts(w http.ResponseWriter, r *http.Request, spaceN
 			ResolvedBy string `json:"resolved_by"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ID == "" {
-			http.Error(w, "body must contain {id, answer}", http.StatusBadRequest)
+			writeJSONError(w, "body must contain {id, answer}", http.StatusBadRequest)
 			return
 		}
 		by := payload.ResolvedBy
@@ -2130,20 +2130,20 @@ func (s *Server) handleInterrupts(w http.ResponseWriter, r *http.Request, spaceN
 			by = "human"
 		}
 		if err := s.interrupts.Resolve(spaceName, payload.ID, by, payload.Answer); err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeJSONError(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		s.logEvent(fmt.Sprintf("[%s] interrupt %s resolved by %s", spaceName, payload.ID, by))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "resolved", "id": payload.ID})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleInterruptMetrics(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	metrics := s.interrupts.Metrics(spaceName)
@@ -2202,23 +2202,23 @@ func truncateLine(s string, maxLen int) string {
 // Requires X-Agent-Name header matching the recipient agent.
 func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceName, agentName, msgID string) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	callerName := r.Header.Get("X-Agent-Name")
 	if callerName == "" {
-		http.Error(w, "missing X-Agent-Name header", http.StatusBadRequest)
+		writeJSONError(w, "missing X-Agent-Name header", http.StatusBadRequest)
 		return
 	}
 	if !strings.EqualFold(callerName, agentName) {
-		http.Error(w, fmt.Sprintf("agent %q cannot ack messages for %q", callerName, agentName), http.StatusForbidden)
+		writeJSONError(w, fmt.Sprintf("agent %q cannot ack messages for %q", callerName, agentName), http.StatusForbidden)
 		return
 	}
 
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
 
@@ -2230,7 +2230,7 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	agent, exists := ks.Agents[canonical]
 	if !exists {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
 		return
 	}
 
@@ -2245,7 +2245,7 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	if !found {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("message %q not found", msgID), http.StatusNotFound)
+		writeJSONError(w, fmt.Sprintf("message %q not found", msgID), http.StatusNotFound)
 		return
 	}
 
@@ -2258,7 +2258,7 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	})
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
 		return
 	}
 	s.mu.Unlock()
@@ -2344,7 +2344,7 @@ func (s *Server) handleSpaceTasks(w http.ResponseWriter, r *http.Request, spaceN
 		case http.MethodGet:
 			s.handleTaskList(w, r, spaceName)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 		return
 	}
@@ -2370,13 +2370,13 @@ func (s *Server) handleSpaceTasks(w http.ResponseWriter, r *http.Request, spaceN
 		case http.MethodDelete:
 			s.handleTaskDelete(w, r, spaceName, taskID)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 		return
 	}
 
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
