@@ -2722,7 +2722,11 @@ func TestTaskAutoLinkOnlyForExistingTasks(t *testing.T) {
 	base := serverBaseURL(srv)
 	space := "autolink-exist-test"
 
-	// Post an agent update referencing a non-existent task
+	// Create TASK-001 so the space has tasks, but reference TASK-999 which doesn't exist
+	r := postTaskJSON(t, taskURL(base, space, ""), map[string]any{"title": "Real task", "status": "backlog"}, "Dev")
+	r.Body.Close()
+
+	// Post an agent update referencing a non-existent task ID
 	postJSON(t, base+"/spaces/"+space+"/agent/Dev", AgentUpdate{
 		Status:  StatusActive,
 		Summary: "Dev: working",
@@ -2731,9 +2735,13 @@ func TestTaskAutoLinkOnlyForExistingTasks(t *testing.T) {
 
 	_, body := getBody(t, base+"/spaces/"+space+"/raw")
 
-	// TASK-999 should NOT be turned into a link (task doesn't exist)
+	// TASK-999 should NOT be turned into a link (task doesn't exist in this space)
 	if strings.Contains(body, "[TASK-999](") {
-		t.Error("rendered markdown should NOT auto-link TASK-999 when task does not exist")
+		t.Error("rendered markdown should NOT auto-link TASK-999 when task does not exist in space")
+	}
+	// TASK-001 auto-link should not appear (was not referenced)
+	if strings.Contains(body, "[TASK-001:") {
+		t.Error("TASK-001 should not appear as an auto-link since it was not referenced in items")
 	}
 }
 
