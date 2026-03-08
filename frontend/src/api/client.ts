@@ -253,6 +253,7 @@ class ApiClient {
     priority?: TaskPriority
     assigned_to?: string
     labels?: string[]
+    parent_task?: string
   }, actor = 'boss'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks`,
@@ -317,6 +318,23 @@ class ApiClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
         body: JSON.stringify({ body }),
+      },
+    )
+  }
+
+  createSubtask(space: string, parentId: string, task: {
+    title: string
+    description?: string
+    priority?: TaskPriority
+    assigned_to?: string
+    labels?: string[]
+  }, actor = 'boss'): Promise<Task> {
+    return this.request<Task>(
+      `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(parentId)}/subtasks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
+        body: JSON.stringify(task),
       },
     )
   }

@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
+import NewTaskDialog from './NewTaskDialog.vue'
 import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import type { Task } from '@/types'
@@ -263,6 +264,7 @@ function handleComposeKeydown(e: KeyboardEvent) {
 const agentTasks = ref<Task[]>([])
 const tasksLoading = ref(false)
 const showTaskPanel = ref(true)
+const newTaskDialogOpen = ref(false)
 
 watch(composeRecipient, async (agent) => {
   agentTasks.value = []
@@ -572,6 +574,11 @@ watch(composeRecipient, async (agent) => {
           </div>
         </ScrollArea>
 
+        <!-- Note shown when boss is not a participant (agent-to-agent thread) -->
+        <div v-if="selectedConversation && !composeRecipient" class="border-t p-3 shrink-0">
+          <p class="text-xs text-muted-foreground text-center italic">Compose is only available in boss ↔ agent threads</p>
+        </div>
+
         <!-- Inline compose box — only when boss is a participant -->
         <div v-if="composeRecipient" class="border-t p-3 shrink-0">
           <form class="flex items-end gap-2" @submit.prevent="sendInlineCompose">
@@ -621,11 +628,25 @@ watch(composeRecipient, async (agent) => {
       >
         <div class="flex items-center justify-between px-3 py-2 border-b shrink-0">
           <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tasks</span>
-          <button
-            class="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            :aria-label="showTaskPanel ? 'Collapse tasks' : 'Expand tasks'"
-            @click="showTaskPanel = !showTaskPanel"
-          >{{ showTaskPanel ? '−' : '+' }}</button>
+          <div class="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  class="text-xs text-muted-foreground hover:text-primary transition-colors p-0.5"
+                  aria-label="Add task"
+                  @click="newTaskDialogOpen = true"
+                >
+                  <Plus class="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Add task for {{ composeRecipient }}</TooltipContent>
+            </Tooltip>
+            <button
+              class="text-xs text-muted-foreground hover:text-foreground transition-colors ml-1"
+              :aria-label="showTaskPanel ? 'Collapse tasks' : 'Expand tasks'"
+              @click="showTaskPanel = !showTaskPanel"
+            >{{ showTaskPanel ? '−' : '▸' }}</button>
+          </div>
         </div>
         <ScrollArea v-if="showTaskPanel" class="flex-1 min-h-0">
           <div v-if="tasksLoading" class="px-3 py-4 text-xs text-muted-foreground text-center">Loading…</div>
@@ -654,6 +675,15 @@ watch(composeRecipient, async (agent) => {
         </ScrollArea>
       </aside>
     </div>
+
+    <!-- New Task dialog (pre-filled with conversation partner) -->
+    <NewTaskDialog
+      v-if="composeRecipient"
+      v-model:open="newTaskDialogOpen"
+      :space="space"
+      :initial-assignee="composeRecipient"
+      @created="agentTasks = []"
+    />
 
     <!-- Agent detail slideover -->
     <Transition

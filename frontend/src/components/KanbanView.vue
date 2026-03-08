@@ -133,6 +133,14 @@ function onTaskCreated() {
   loadTasks()
 }
 
+function openTaskById(id: string) {
+  const task = tasks.value.find(t => t.id === id)
+  if (task) {
+    selectedTask.value = task
+    panelOpen.value = true
+  }
+}
+
 // ── SSE integration (listen for task_updated events) ───────────────
 // The parent App.vue manages the SSE stream; we watch for space changes
 // and refresh. Full SSE integration would be wired through a composable.
@@ -236,9 +244,11 @@ function onTaskCreated() {
       :task="selectedTask"
       :space="space"
       :open="panelOpen"
+      :all-tasks="tasks"
       @update:open="panelOpen = $event"
       @task-updated="onTaskUpdated"
       @task-deleted="onTaskDeleted"
+      @open-task="openTaskById"
     />
 
     <!-- New task dialog -->
