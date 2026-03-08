@@ -26,6 +26,7 @@ import AgentAvatar from './AgentAvatar.vue'
 const props = defineProps<{
   open: boolean
   space: KnowledgeSpace
+  initialAssignee?: string
 }>()
 
 const emit = defineEmits<{
@@ -36,14 +37,14 @@ const emit = defineEmits<{
 const title = ref('')
 const description = ref('')
 const priority = ref<TaskPriority>('medium')
-const assignedTo = ref('')
+const assignedTo = ref(props.initialAssignee ?? '')
 const submitting = ref(false)
 
 function reset() {
   title.value = ''
   description.value = ''
   priority.value = 'medium'
-  assignedTo.value = ''
+  assignedTo.value = props.initialAssignee ?? ''
 }
 
 async function submit() {
