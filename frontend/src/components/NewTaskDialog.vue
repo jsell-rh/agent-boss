@@ -28,6 +28,7 @@ const props = defineProps<{
   space: KnowledgeSpace
   tasks?: Task[]
   parentTaskId?: string
+  initialAssignee?: string
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +39,7 @@ const emit = defineEmits<{
 const title = ref('')
 const description = ref('')
 const priority = ref<TaskPriority>('medium')
-const assignedTo = ref('')
+const assignedTo = ref(props.initialAssignee ?? '')
 const parentTask = ref(props.parentTaskId ?? '')
 const submitting = ref(false)
 
@@ -46,7 +47,7 @@ function reset() {
   title.value = ''
   description.value = ''
   priority.value = 'medium'
-  assignedTo.value = ''
+  assignedTo.value = props.initialAssignee ?? ''
   parentTask.value = props.parentTaskId ?? ''
 }
 

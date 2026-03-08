@@ -7,6 +7,7 @@ import {
   TASK_STATUS_COLUMNS,
 } from '@/types'
 import { ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -37,7 +38,7 @@ const emit = defineEmits<{
   'open-task': [id: string]
 }>()
 
-
+const router = useRouter()
 const commentText = ref('')
 const submittingComment = ref(false)
 const saving = ref(false)
@@ -222,12 +223,20 @@ async function deleteTask() {
             <!-- Assignee -->
             <div class="flex flex-col gap-1">
               <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Assignee</span>
+              <div class="flex items-center gap-1">
+                <button
+                  v-if="task.assigned_to"
+                  class="flex items-center gap-1 text-xs text-primary hover:underline"
+                  :title="`View ${task.assigned_to} details`"
+                  @click="router.push(`/${encodeURIComponent(space.name)}/${encodeURIComponent(task.assigned_to)}`)"
+                >
+                  <AgentAvatar :name="task.assigned_to" :size="14" />
+                  {{ task.assigned_to }}
+                </button>
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
                   <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" :disabled="saving">
-                    <AgentAvatar v-if="task.assigned_to" :name="task.assigned_to" :size="14" />
-                    <span v-if="task.assigned_to">{{ task.assigned_to }}</span>
-                    <span v-else class="text-muted-foreground">Unassigned</span>
+                    <span v-if="!task.assigned_to" class="text-muted-foreground">Unassigned</span>
                     <ChevronDown class="size-3" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -246,6 +255,7 @@ async function deleteTask() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </div>
             </div>
           </div>
 

@@ -48,7 +48,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard } from 'lucide-vue-next'
+import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
@@ -242,6 +242,10 @@ function submitNewSpace() {
         <div class="h-6 w-1 rounded-full bg-primary" aria-hidden="true" />
         <h2 class="text-lg font-semibold tracking-tight">Agent Boss</h2>
       </div>
+      <div class="flex items-center gap-1.5 mt-1 text-xs text-amber-600 dark:text-amber-400">
+        <Crown class="size-3 shrink-0" aria-hidden="true" />
+        <span class="font-medium">You (Boss)</span>
+      </div>
     </SidebarHeader>
 
     <!-- overflow-y-auto enables independent scrolling within the fixed-height sidebar -->
@@ -331,7 +335,7 @@ function submitNewSpace() {
 
       <SidebarSeparator v-if="currentSpace" />
 
-      <!-- Space nav: Tasks board -->
+      <!-- Space nav: Tasks board + Conversations -->
       <SidebarGroup v-if="currentSpace">
         <SidebarGroupContent>
           <SidebarMenu>
@@ -342,6 +346,15 @@ function submitNewSpace() {
               >
                 <LayoutDashboard class="size-4" />
                 <span>Tasks</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                :data-active="false"
+                @click="router.push('/' + selectedSpace + '/conversations')"
+              >
+                <MessageSquare class="size-4" />
+                <span>Conversations</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState, IntrospectResponse } from '@/types'
+import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState, IntrospectResponse, Task } from '@/types'
 import { TMUX_STATUS_DISPLAY, getTmuxDisplayState } from '@/types'
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -297,6 +297,25 @@ onUnmounted(() => {
   stopLivePoll()
   if (toastTimer) clearTimeout(toastTimer)
 })
+
+// --------------- Task widget ---------------
+const agentTasks = ref<Task[]>([])
+const agentTasksLoading = ref(false)
+const taskWidgetOpen = ref(true)
+
+async function loadAgentTasks() {
+  agentTasksLoading.value = true
+  try {
+    agentTasks.value = await api.fetchTasks(props.spaceName, { assigned_to: props.agentName })
+  } catch {
+    agentTasks.value = []
+  } finally {
+    agentTasksLoading.value = false
+  }
+}
+
+onMounted(loadAgentTasks)
+watch(() => props.agentName, loadAgentTasks)
 </script>
 
 <template>
@@ -409,13 +428,13 @@ onUnmounted(() => {
               <Button
                 variant="outline"
                 size="sm"
-                @click="router.push(`/${encodeURIComponent(spaceName)}/conversations`)"
+                @click="router.push(`/${encodeURIComponent(spaceName)}/conversations/${encodeURIComponent(agentName)}`)"
               >
                 <MessageSquare class="size-4" /> Conversations
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              View all conversations in this space
+              View conversations with {{ agentName }}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -718,7 +737,48 @@ onUnmounted(() => {
         </ol>
       </section>
 
-      <Separator v-if="hasItems && (hasSections || agent.next_steps)" class="opacity-50" />
+      <Separator v-if="hasItems" class="opacity-50" />
+
+      <!-- Task widget -->
+      <section aria-label="Assigned tasks">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5">
+            <ListTodo class="size-3.5 text-muted-foreground" />
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tasks</h2>
+            <span v-if="agentTasks.length > 0" class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{{ agentTasks.length }}</span>
+          </div>
+          <button class="text-xs text-muted-foreground hover:text-foreground transition-colors" @click="taskWidgetOpen = !taskWidgetOpen">
+            {{ taskWidgetOpen ? '−' : '+' }}
+          </button>
+        </div>
+        <div v-if="taskWidgetOpen">
+          <div v-if="agentTasksLoading" class="text-xs text-muted-foreground">Loading…</div>
+          <div v-else-if="agentTasks.length === 0" class="text-xs text-muted-foreground italic">No tasks assigned to {{ agentName }}</div>
+          <ul v-else class="space-y-1">
+            <li v-for="task in agentTasks" :key="task.id">
+              <a
+                :href="`/${encodeURIComponent(spaceName)}/kanban#${task.id}`"
+                class="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/60 transition-colors text-xs"
+              >
+                <span class="font-mono text-muted-foreground shrink-0 mt-0.5">{{ task.id }}</span>
+                <span class="flex-1 min-w-0 leading-snug">{{ task.title }}</span>
+                <span
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+                  :class="{
+                    'bg-blue-500/10 text-blue-600 dark:text-blue-400': task.status === 'in_progress',
+                    'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400': task.status === 'review',
+                    'bg-red-500/10 text-red-600 dark:text-red-400': task.status === 'blocked',
+                    'bg-green-500/10 text-green-600 dark:text-green-400': task.status === 'done',
+                    'bg-muted text-muted-foreground': task.status === 'backlog',
+                  }"
+                >{{ task.status }}</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <Separator v-if="hasSections || agent.next_steps" class="opacity-50" />
 
       <!-- Sections -->
       <div v-if="hasSections" class="space-y-4">
@@ -812,6 +872,7 @@ onUnmounted(() => {
       </AlertDialog>
 
       <Separator v-if="hasSections && agent.next_steps" class="opacity-50" />
+
 
       <!-- Next Steps -->
       <section v-if="agent.next_steps" aria-label="Next steps">
@@ -928,7 +989,14 @@ onUnmounted(() => {
       <section class="mt-6" aria-label="Agent messages">
         <Separator class="mb-4" />
         <div class="flex items-center gap-2 mb-3">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Messages</h2>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-default">
+                Boss ↔ {{ agentName }} Messages
+              </h2>
+            </TooltipTrigger>
+            <TooltipContent>Direct channel between you (boss) and {{ agentName }}. Messages sent here go directly to the agent's inbox.</TooltipContent>
+          </Tooltip>
           <Badge v-if="agent.messages?.length" variant="secondary" class="h-4 min-w-4 px-1 text-[10px] font-semibold tabular-nums">
             {{ agent.messages.length }}
           </Badge>
