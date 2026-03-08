@@ -367,6 +367,7 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 
 	var req struct {
 		Status TaskStatus `json:"status"`
+		Reason string     `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
@@ -394,8 +395,11 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	task.Status = req.Status
 	now := time.Now().UTC()
 	task.UpdatedAt = now
-	appendTaskEvent(task, "moved", caller,
-		fmt.Sprintf("Moved from %s to %s by %s", fromStatus, req.Status, caller), now)
+	moveDetail := fmt.Sprintf("Moved from %s to %s by %s", fromStatus, req.Status, caller)
+	if req.Reason != "" {
+		moveDetail += ": " + req.Reason
+	}
+	appendTaskEvent(task, "moved", caller, moveDetail, now)
 	taskCopy := *task
 	snap := ks.snapshot()
 	s.mu.Unlock()
@@ -424,6 +428,7 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 
 	var req struct {
 		AssignedTo string `json:"assigned_to"`
+		Reason     string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
@@ -450,6 +455,9 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 	detail := fmt.Sprintf("Assigned to %s by %s", req.AssignedTo, caller)
 	if req.AssignedTo == "" {
 		detail = fmt.Sprintf("Unassigned by %s", caller)
+	}
+	if req.Reason != "" {
+		detail += ": " + req.Reason
 	}
 	appendTaskEvent(task, "assigned", caller, detail, now)
 	taskCopy := *task

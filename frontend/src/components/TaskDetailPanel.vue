@@ -47,12 +47,16 @@ const localTitle = ref('')
 const addingSubtask = ref(false)
 const newSubtaskTitle = ref('')
 const submittingSubtask = ref(false)
+const pendingStatus = ref<TaskStatus | null>(null)
+const pendingReason = ref('')
 
 watch(() => props.task, (t) => {
   if (t) localTitle.value = t.title
   editingTitle.value = false
   addingSubtask.value = false
   newSubtaskTitle.value = ''
+  pendingStatus.value = null
+  pendingReason.value = ''
 })
 
 const agentNames = computed(() => Object.keys(props.space.agents))
@@ -74,15 +78,30 @@ function buildPrUrl(pr: string): string | null {
   return null
 }
 
-async function moveTask(status: TaskStatus) {
-  if (!props.task) return
+function requestMoveTask(status: TaskStatus) {
+  if (!props.task || status === props.task.status) return
+  pendingStatus.value = status
+  pendingReason.value = ''
+}
+
+async function confirmMoveTask() {
+  if (!props.task || !pendingStatus.value) return
   saving.value = true
+  const status = pendingStatus.value
+  const reason = pendingReason.value.trim()
+  pendingStatus.value = null
+  pendingReason.value = ''
   try {
-    const updated = await api.moveTask(props.space.name, props.task.id, status)
+    const updated = await api.moveTask(props.space.name, props.task.id, status, 'boss', reason || undefined)
     emit('task-updated', updated)
   } finally {
     saving.value = false
   }
+}
+
+function cancelMoveTask() {
+  pendingStatus.value = null
+  pendingReason.value = ''
 }
 
 async function setPriority(priority: TaskPriority) {
@@ -198,8 +217,8 @@ async function submitSubtask() {
               <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Status</span>
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
-                  <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" :disabled="saving">
-                    {{ TASK_STATUS_LABELS[task.status] }}
+                  <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" :disabled="saving || !!pendingStatus">
+                    {{ pendingStatus ? TASK_STATUS_LABELS[pendingStatus] : TASK_STATUS_LABELS[task.status] }}
                     <ChevronDown class="size-3" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -208,12 +227,30 @@ async function submitSubtask() {
                     v-for="s in TASK_STATUS_COLUMNS"
                     :key="s"
                     :class="{ 'font-semibold': s === task.status }"
-                    @click="moveTask(s)"
+                    @click="requestMoveTask(s)"
                   >
                     {{ TASK_STATUS_LABELS[s] }}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <!-- Inline reason input shown after selecting a new status -->
+              <div v-if="pendingStatus" class="flex flex-col gap-1.5 mt-1 p-2 bg-muted/40 rounded border border-border">
+                <span class="text-[10px] text-muted-foreground">
+                  Moving to <strong>{{ TASK_STATUS_LABELS[pendingStatus] }}</strong> — reason (optional):
+                </span>
+                <input
+                  v-model="pendingReason"
+                  placeholder="Why is this moving?"
+                  class="text-xs bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary w-full"
+                  autofocus
+                  @keydown.enter="confirmMoveTask"
+                  @keydown.escape="cancelMoveTask"
+                />
+                <div class="flex gap-1.5">
+                  <Button size="sm" class="h-6 text-[10px] px-2" @click="confirmMoveTask">Confirm</Button>
+                  <Button size="sm" variant="ghost" class="h-6 text-[10px] px-2" @click="cancelMoveTask">Cancel</Button>
+                </div>
+              </div>
             </div>
 
             <!-- Priority -->

@@ -289,24 +289,24 @@ class ApiClient {
     )
   }
 
-  moveTask(space: string, id: string, status: TaskStatus, actor = 'boss'): Promise<Task> {
+  moveTask(space: string, id: string, status: TaskStatus, actor = 'boss', reason?: string): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/move`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(reason ? { status, reason } : { status }),
       },
     )
   }
 
-  assignTask(space: string, id: string, assignedTo: string, actor = 'boss'): Promise<Task> {
+  assignTask(space: string, id: string, assignedTo: string, actor = 'boss', reason?: string): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/assign`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Name': actor },
-        body: JSON.stringify({ assigned_to: assignedTo }),
+        body: JSON.stringify(reason ? { assigned_to: assignedTo, reason } : { assigned_to: assignedTo }),
       },
     )
   }
