@@ -88,7 +88,11 @@ onMounted(async () => {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 })
-watch(() => props.space.name, loadTasks)
+watch(() => props.space.name, () => {
+  filterAssignee.value = ''
+  filterLabel.value = ''
+  loadTasks()
+})
 
 // ── Drag and drop ──────────────────────────────────────────────────
 async function onTaskDrop(taskId: string, newStatus: TaskStatus) {
@@ -212,7 +216,7 @@ function onTaskCreated() {
     <!-- Board -->
     <div
       v-else
-      class="flex gap-3 p-4 overflow-x-auto flex-1"
+      class="flex gap-3 p-4 overflow-x-auto overflow-y-hidden flex-1"
       @dragend="draggingTaskId = null"
     >
       <KanbanColumn

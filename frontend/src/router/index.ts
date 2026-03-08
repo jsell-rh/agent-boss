@@ -24,6 +24,11 @@ const router = createRouter({
       component: Empty,
     },
     {
+      path: '/:space/conversations',
+      name: 'conversations',
+      component: Empty,
+    },
+    {
       path: '/:space/conversations/:conversationAgent',
       name: 'conversation',
       component: Empty,

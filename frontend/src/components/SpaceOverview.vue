@@ -278,7 +278,7 @@ const activeSections = computed(() => [
 </script>
 
 <template>
-  <ScrollArea class="h-full">
+  <ScrollArea class="flex-1 min-h-0">
     <div class="p-6 space-y-6 max-w-7xl">
       <!-- Header -->
       <div class="flex items-center justify-between">

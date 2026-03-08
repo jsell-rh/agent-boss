@@ -52,7 +52,7 @@ const statusHeaderClass: Record<TaskStatus, string> = {
 
 <template>
   <div
-    class="flex flex-col w-64 shrink-0 rounded-lg bg-muted/40 border border-border transition-colors"
+    class="flex flex-col w-64 shrink-0 rounded-lg bg-muted/40 border border-border transition-colors max-h-full"
     :class="{ 'border-primary bg-primary/5': isDragOver }"
     @dragover="onDragOver"
     @dragleave="onDragLeave"

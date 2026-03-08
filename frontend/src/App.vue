@@ -86,7 +86,7 @@ const conversationAgent = computed(() => {
 })
 
 const showConversations = computed(() =>
-  selectedAgent.value === 'conversations' || !!conversationAgent.value,
+  route.name === 'conversations' || route.name === 'conversation' || selectedAgent.value === 'conversations',
 )
 
 const showKanban = computed(() => route.name === 'kanban')
@@ -803,7 +803,15 @@ onUnmounted(() => {
               >
                 {{ selectedSpace }}
               </button>
-              <template v-if="selectedAgent && !showConversations">
+              <template v-if="showKanban">
+                <span class="text-muted-foreground">/</span>
+                <span class="text-foreground font-medium" aria-current="page">Kanban</span>
+              </template>
+              <template v-else-if="showConversations">
+                <span class="text-muted-foreground">/</span>
+                <span class="text-foreground font-medium" aria-current="page">Conversations</span>
+              </template>
+              <template v-else-if="selectedAgent">
                 <span class="text-muted-foreground">/</span>
                 <span class="text-foreground font-medium" aria-current="page">{{ selectedAgent }}</span>
               </template>
@@ -909,7 +917,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Main content -->
-        <main class="flex-1 min-h-0 overflow-hidden" aria-label="Dashboard content">
+        <main class="flex-1 min-h-0 overflow-hidden flex flex-col" aria-label="Dashboard content">
           <!-- Initial load state -->
           <div v-if="loading" class="flex flex-col items-center justify-center h-full text-muted-foreground font-text gap-3">
             <div class="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-primary" role="status">
