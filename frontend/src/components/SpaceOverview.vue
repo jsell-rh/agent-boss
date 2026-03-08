@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { KnowledgeSpace, TmuxAgentStatus, HierarchyTree } from '@/types'
 import { ref, computed, nextTick, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTime } from '@/composables/useTime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -102,13 +103,20 @@ function openMessageDialog(name: string) {
 function sendQuickMessage() {
   const text = messageText.value.trim()
   if (!text || !messageDialogAgent.value) return
-  emit('send-message-to-agent', messageDialogAgent.value, text)
+  const targetAgent = messageDialogAgent.value
+  emit('send-message-to-agent', targetAgent, text)
   messageDialogOpen.value = false
   messageDialogAgent.value = null
   messageText.value = ''
+  // Navigate to the conversation thread after sending
+  router.push({
+    name: 'conversation',
+    params: { space: props.space.name, conversationAgent: targetAgent },
+  })
 }
 
 const { relativeTime, formatFullDate, freshness } = useTime()
+const router = useRouter()
 
 function handleCardKeydown(e: KeyboardEvent, name: string) {
   const tag = (e.target as HTMLElement)?.tagName
