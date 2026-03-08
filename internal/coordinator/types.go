@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -135,10 +136,6 @@ const (
 	PriorityUrgent    MessagePriority = "urgent"
 )
 
-// StalenessThreshold is the duration after which an agent that has not
-// self-reported is considered stale.
-const StalenessThreshold = 15 * time.Minute
-
 type AgentMessage struct {
 	ID        string          `json:"id"`
 	Message   string          `json:"message"`
@@ -231,6 +228,15 @@ type KnowledgeSpace struct {
 	Archive         string                  `json:"archive,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
 	UpdatedAt       time.Time               `json:"updated_at"`
+}
+
+// snapshot returns a deep copy of ks via JSON round-trip.
+// Use to safely pass ks data to saveSpace outside of s.mu.
+func (ks *KnowledgeSpace) snapshot() *KnowledgeSpace {
+	b, _ := json.Marshal(ks)
+	var snap KnowledgeSpace
+	_ = json.Unmarshal(b, &snap)
+	return &snap
 }
 
 func NewKnowledgeSpace(name string) *KnowledgeSpace {
