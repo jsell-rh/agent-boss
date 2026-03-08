@@ -231,7 +231,7 @@ async function loadTmuxStatus(space: string) {
 
 // ── Selection handlers (via router) ────────────────────────────────
 function handleSelectSpace(name: string) {
-  router.push('/' + name)
+  router.push('/' + name + '/kanban')
 }
 
 function handleSelectAgent(name: string) {
@@ -746,7 +746,7 @@ onMounted(async () => {
     sse.connect(selectedSpace.value)
   } else if (spaces.value.length > 0) {
     // No space in URL — redirect to first space
-    router.replace('/' + spaces.value[0]!.name)
+    router.replace('/' + spaces.value[0]!.name + '/kanban')
   } else {
     // No spaces at all — connect to global SSE to catch new spaces
     sse.connect()
@@ -815,8 +815,14 @@ onUnmounted(() => {
             <nav class="flex items-center gap-1" aria-label="Space views">
               <button
                 class="px-2.5 py-1 rounded text-xs font-medium transition-colors"
-                :class="showConversations ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'bg-muted text-foreground'"
-                :aria-current="!showConversations ? 'page' : undefined"
+                :class="showKanban ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+                :aria-current="showKanban ? 'page' : undefined"
+                @click="router.push('/' + selectedSpace + '/kanban')"
+              >Kanban</button>
+              <button
+                class="px-2.5 py-1 rounded text-xs font-medium transition-colors"
+                :class="!showConversations && !showKanban ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+                :aria-current="!showConversations && !showKanban ? 'page' : undefined"
                 @click="router.push('/' + selectedSpace)"
               >Overview</button>
               <button

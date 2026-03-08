@@ -11,6 +11,14 @@ const BLOCK_ALLOWED_TAGS = [
 const INLINE_ALLOWED_TAGS = ['strong', 'em', 'code', 'a', 'del', 's', 'br']
 const ALLOWED_ATTR = ['href', 'target', 'rel', 'class']
 
+export function linkTaskRefs(text: string, space: string): string {
+  if (!text) return text
+  return text.replace(/\bTASK-\d+\b/g, (match) => {
+    const encoded = encodeURIComponent(space)
+    return `[${match}](/${encoded}/kanban#${match})`
+  })
+}
+
 export function renderMarkdown(text: string): string {
   if (!text) return ''
   const html = marked.parse(text) as string

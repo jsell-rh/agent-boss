@@ -79,7 +79,15 @@ async function loadTasks() {
   }
 }
 
-onMounted(loadTasks)
+onMounted(async () => {
+  await loadTasks()
+  // Scroll to task anchor if URL hash is present (e.g. /kanban#TASK-001)
+  if (window.location.hash) {
+    const id = window.location.hash.slice(1)
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+})
 watch(() => props.space.name, loadTasks)
 
 // ── Drag and drop ──────────────────────────────────────────────────
