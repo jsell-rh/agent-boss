@@ -557,9 +557,70 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
 	}
 
+	// Notify the assigned agent about the new comment (if someone else commented).
+	if taskCopy.AssignedTo != "" && taskCopy.AssignedTo != caller {
+		go s.notifyTaskComment(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller, req.Body)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(taskCopy)
+}
+
+// notifyTaskComment delivers a coordinator message to the assigned agent when someone
+// comments on their task. Called in a goroutine after the lock is released.
+func (s *Server) notifyTaskComment(spaceName, taskID, taskTitle, assignedTo, commentBy, body string) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		return
+	}
+
+	preview := body
+	if len(preview) > 120 {
+		preview = preview[:117] + "..."
+	}
+
+	msg := AgentMessage{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Sender:    commentBy,
+		Message:   fmt.Sprintf("[%s](/spaces/%s/tasks/%s) %q — new comment from %s: %s", taskID, spaceName, taskID, taskTitle, commentBy, preview),
+		Priority:  PriorityInfo,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, assignedTo)
+	ag, exists := ks.Agents[canonical]
+	if !exists {
+		s.mu.Unlock()
+		return
+	}
+	ag.Messages = append(ag.Messages, msg)
+	notif := AgentNotification{
+		ID:        fmt.Sprintf("%s-%d", canonical, time.Now().UnixNano()),
+		Type:      NotifTypeTaskComment,
+		Title:     fmt.Sprintf("%s commented on %s", commentBy, taskID),
+		Body:      preview,
+		From:      commentBy,
+		TaskID:    taskID,
+		Timestamp: time.Now().UTC(),
+	}
+	ag.Notifications = append(ag.Notifications, notif)
+	pruneNotifications(ag)
+	ks.UpdatedAt = time.Now().UTC()
+	snap := ks.snapshot()
+	s.mu.Unlock()
+
+	s.saveSpace(snap)
+	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
+
+	sseData, _ := json.Marshal(map[string]interface{}{
+		"space":  spaceName,
+		"agent":  canonical,
+		"sender": commentBy,
+		"type":   string(NotifTypeTaskComment),
+	})
+	s.broadcastSSE(spaceName, canonical, "agent_notification", string(sseData))
 }
 
 // notifyTaskAssigned delivers a coordinator message to the assigned agent so they are
