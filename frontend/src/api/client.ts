@@ -236,11 +236,12 @@ class ApiClient {
 
   // --------------- Tasks ---------------
 
-  fetchTasks(space: string, filters?: { status?: TaskStatus; assigned_to?: string; label?: string }): Promise<Task[]> {
+  fetchTasks(space: string, filters?: { status?: TaskStatus; assigned_to?: string; label?: string; search?: string }): Promise<Task[]> {
     const params = new URLSearchParams()
     if (filters?.status) params.set('status', filters.status)
     if (filters?.assigned_to) params.set('assigned_to', filters.assigned_to)
     if (filters?.label) params.set('label', filters.label)
+    if (filters?.search) params.set('search', filters.search)
     const qs = params.toString()
     return this.request<{ tasks: Task[]; total: number }>(
       `/spaces/${encodeURIComponent(space)}/tasks${qs ? '?' + qs : ''}`,
@@ -254,6 +255,7 @@ class ApiClient {
     assigned_to?: string
     labels?: string[]
     parent_task?: string
+    due_at?: string
   }, actor = 'boss'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks`,
@@ -271,7 +273,7 @@ class ApiClient {
     )
   }
 
-  updateTask(space: string, id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'assigned_to' | 'labels' | 'linked_branch' | 'linked_pr' | 'due_at'>>, actor = 'boss'): Promise<Task> {
+  updateTask(space: string, id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'assigned_to' | 'labels' | 'linked_branch' | 'linked_pr'>> & { due_at?: string | null }, actor = 'boss'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
       {

@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import AgentAvatar from './AgentAvatar.vue'
-import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock, X } from 'lucide-vue-next'
 import { relativeTime } from '@/composables/useTime'
 
 const props = defineProps<{
@@ -173,6 +173,18 @@ async function submitSubtask() {
     submittingSubtask.value = false
   }
 }
+
+async function setDueDate(value: string) {
+  if (!props.task) return
+  saving.value = true
+  try {
+    const due_at = value ? new Date(value + 'T00:00:00Z').toISOString() : null
+    const updated = await api.updateTask(props.space.name, props.task.id, { due_at })
+    emit('task-updated', updated)
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -312,6 +324,31 @@ async function submitSubtask() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </div>
+            </div>
+
+            <!-- Due Date -->
+            <div class="flex flex-col gap-1">
+              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Due Date</span>
+              <div class="flex items-center gap-1">
+                <input
+                  type="date"
+                  :value="task.due_at ? task.due_at.substring(0, 10) : ''"
+                  :disabled="saving"
+                  class="text-xs h-7 px-2 border border-border rounded bg-background outline-none focus:border-primary disabled:opacity-50"
+                  @change="setDueDate(($event.target as HTMLInputElement).value)"
+                />
+                <Button
+                  v-if="task.due_at"
+                  variant="ghost"
+                  size="sm"
+                  class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                  :disabled="saving"
+                  title="Clear due date"
+                  @click="setDueDate('')"
+                >
+                  <X class="size-3" />
+                </Button>
               </div>
             </div>
           </div>

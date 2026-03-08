@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, Plus, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, Plus, RefreshCw, Search, AlertCircle } from 'lucide-vue-next'
 import KanbanColumn from './KanbanColumn.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
@@ -29,6 +29,8 @@ const draggingTaskId = ref<string | null>(null)
 // ── Filters ────────────────────────────────────────────────────────
 const filterAssignee = ref('')
 const filterLabel = ref('')
+const filterSearch = ref('')
+const filterOverdueOnly = ref(false)
 
 // ── Panel / Dialog ─────────────────────────────────────────────────
 const selectedTask = ref<Task | null>(null)
@@ -44,10 +46,29 @@ const allLabels = computed(() => {
   return [...s].sort()
 })
 
+const now = new Date()
+
+function isTaskOverdue(task: Task): boolean {
+  if (!task.due_at || task.status === 'done') return false
+  return new Date(task.due_at) < now
+}
+
+function dueSortKey(task: Task): number {
+  if (!task.due_at) return Infinity
+  return new Date(task.due_at).getTime()
+}
+
 const filteredTasks = computed(() => {
+  const search = filterSearch.value.trim().toLowerCase()
   return tasks.value.filter(t => {
     if (filterAssignee.value && t.assigned_to !== filterAssignee.value) return false
     if (filterLabel.value && !t.labels?.includes(filterLabel.value)) return false
+    if (filterOverdueOnly.value && !isTaskOverdue(t)) return false
+    if (search) {
+      const titleMatch = t.title.toLowerCase().includes(search)
+      const idMatch = t.id.toLowerCase() === search
+      if (!titleMatch && !idMatch) return false
+    }
     return true
   })
 })
@@ -58,6 +79,10 @@ const tasksByStatus = computed(() => {
   }
   for (const t of filteredTasks.value) {
     groups[t.status]?.push(t)
+  }
+  // Sort each column: overdue tasks first (by due_at asc), then tasks with due dates, then no due date
+  for (const col of Object.values(groups)) {
+    col.sort((a, b) => dueSortKey(a) - dueSortKey(b))
   }
   return groups
 })
@@ -92,6 +117,8 @@ onMounted(async () => {
 watch(() => props.space.name, () => {
   filterAssignee.value = ''
   filterLabel.value = ''
+  filterSearch.value = ''
+  filterOverdueOnly.value = false
   loadTasks()
 })
 
@@ -199,7 +226,29 @@ onUnmounted(() => {
       <h2 class="text-sm font-semibold">Kanban Board</h2>
       <span class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
 
+      <!-- Search input -->
+      <div class="relative flex items-center">
+        <Search class="absolute left-2 size-3 text-muted-foreground pointer-events-none" />
+        <input
+          v-model="filterSearch"
+          type="search"
+          placeholder="Search tasks…"
+          class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-40"
+        />
+      </div>
+
       <div class="flex items-center gap-2 ml-auto">
+        <!-- Overdue filter -->
+        <Button
+          variant="outline"
+          size="sm"
+          :class="['h-7 text-xs gap-1', filterOverdueOnly ? 'border-destructive text-destructive' : '']"
+          @click="filterOverdueOnly = !filterOverdueOnly"
+        >
+          <AlertCircle class="size-3" />
+          Overdue
+        </Button>
+
         <!-- Filter by assignee -->
         <DropdownMenu>
           <DropdownMenuTrigger as-child>

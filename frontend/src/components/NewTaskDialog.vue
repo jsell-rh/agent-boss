@@ -41,6 +41,7 @@ const description = ref('')
 const priority = ref<TaskPriority>('medium')
 const assignedTo = ref(props.initialAssignee ?? '')
 const parentTask = ref(props.parentTaskId ?? '')
+const dueDate = ref('')
 const submitting = ref(false)
 
 function reset() {
@@ -49,6 +50,7 @@ function reset() {
   priority.value = 'medium'
   assignedTo.value = props.initialAssignee ?? ''
   parentTask.value = props.parentTaskId ?? ''
+  dueDate.value = ''
 }
 
 async function submit() {
@@ -61,6 +63,7 @@ async function submit() {
       priority: priority.value,
       assigned_to: assignedTo.value || undefined,
       parent_task: parentTask.value || undefined,
+      due_at: dueDate.value ? new Date(dueDate.value + 'T00:00:00Z').toISOString() : undefined,
     })
     reset()
     emit('created')
@@ -155,6 +158,16 @@ async function submit() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
+
+        <!-- Due Date (optional) -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Due Date (optional)</label>
+          <input
+            v-model="dueDate"
+            type="date"
+            class="text-sm h-8 px-2 border border-border rounded bg-background outline-none focus:border-primary w-full"
+          />
         </div>
 
         <!-- Parent Task (optional) -->

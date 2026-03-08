@@ -4,7 +4,7 @@ import { TASK_PRIORITY_LABELS, TASK_PRIORITY_COLOR } from '@/types'
 import { computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import AgentAvatar from './AgentAvatar.vue'
-import { MessageSquare, GitBranch, ChevronsUpDown, ListTree } from 'lucide-vue-next'
+import { MessageSquare, GitBranch, ChevronsUpDown, ListTree, Calendar } from 'lucide-vue-next'
 
 const props = defineProps<{
   task: Task
@@ -25,6 +25,23 @@ const priorityLabel = computed(() =>
 )
 
 const commentCount = computed(() => props.task.comments?.length ?? 0)
+
+const dueDate = computed(() => props.task.due_at ? new Date(props.task.due_at) : null)
+
+const isOverdue = computed(() => {
+  if (!dueDate.value || props.task.status === 'done') return false
+  return dueDate.value < new Date()
+})
+
+const isDueSoon = computed(() => {
+  if (!dueDate.value || isOverdue.value || props.task.status === 'done') return false
+  return (dueDate.value.getTime() - Date.now()) < 48 * 60 * 60 * 1000
+})
+
+const dueDateLabel = computed(() => {
+  if (!dueDate.value) return null
+  return dueDate.value.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+})
 
 function onDragStart(e: DragEvent) {
   emit('dragstart', e, props.task)
@@ -80,15 +97,26 @@ function onDragStart(e: DragEvent) {
       </span>
       <div v-else class="flex-1" />
 
-      <div class="flex items-center gap-2 text-muted-foreground shrink-0">
-        <span v-if="task.subtasks && task.subtasks.length" class="flex items-center gap-0.5 text-[10px]" :title="`${task.subtasks.length} subtask(s)`">
+      <div class="flex items-center gap-2 shrink-0">
+        <span
+          v-if="dueDateLabel"
+          :class="[
+            'flex items-center gap-0.5 text-[10px] font-medium',
+            isOverdue ? 'text-destructive' : isDueSoon ? 'text-orange-500 dark:text-orange-400' : 'text-muted-foreground',
+          ]"
+          :title="isOverdue ? 'Overdue' : isDueSoon ? 'Due soon' : `Due ${dueDateLabel}`"
+        >
+          <Calendar class="size-3" />
+          {{ dueDateLabel }}
+        </span>
+        <span v-if="task.subtasks && task.subtasks.length" class="flex items-center gap-0.5 text-[10px] text-muted-foreground" :title="`${task.subtasks.length} subtask(s)`">
           <ListTree class="size-3" />
           {{ task.subtasks.length }}
         </span>
-        <span v-if="task.linked_branch" class="flex items-center gap-0.5 text-[10px]">
+        <span v-if="task.linked_branch" class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
           <GitBranch class="size-3" />
         </span>
-        <span v-if="commentCount > 0" class="flex items-center gap-0.5 text-[10px]">
+        <span v-if="commentCount > 0" class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
           <MessageSquare class="size-3" />
           {{ commentCount }}
         </span>

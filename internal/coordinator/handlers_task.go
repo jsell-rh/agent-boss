@@ -178,6 +178,7 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request, spaceNam
 	filterAssigned := r.URL.Query().Get("assigned_to")
 	filterLabel := r.URL.Query().Get("label")
 	filterPriority := r.URL.Query().Get("priority")
+	filterSearch := strings.ToLower(r.URL.Query().Get("search"))
 
 	s.mu.RLock()
 	tasks := make([]*Task, 0, len(ks.Tasks))
@@ -200,6 +201,13 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request, spaceNam
 				}
 			}
 			if !found {
+				continue
+			}
+		}
+		if filterSearch != "" {
+			titleMatch := strings.Contains(strings.ToLower(t.Title), filterSearch)
+			idMatch := strings.EqualFold(t.ID, filterSearch)
+			if !titleMatch && !idMatch {
 				continue
 			}
 		}
@@ -250,15 +258,15 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 	}
 
 	var req struct {
-		Title        *string       `json:"title"`
-		Description  *string       `json:"description"`
-		Status       *TaskStatus   `json:"status"`
-		Priority     *TaskPriority `json:"priority"`
-		AssignedTo   *string       `json:"assigned_to"`
-		Labels       []string      `json:"labels"`
-		LinkedBranch *string       `json:"linked_branch"`
-		LinkedPR     *string       `json:"linked_pr"`
-		DueAt        *time.Time    `json:"due_at"`
+		Title        *string          `json:"title"`
+		Description  *string          `json:"description"`
+		Status       *TaskStatus      `json:"status"`
+		Priority     *TaskPriority    `json:"priority"`
+		AssignedTo   *string          `json:"assigned_to"`
+		Labels       []string         `json:"labels"`
+		LinkedBranch *string          `json:"linked_branch"`
+		LinkedPR     *string          `json:"linked_pr"`
+		DueAt        json.RawMessage  `json:"due_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
@@ -303,8 +311,15 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 	if req.LinkedPR != nil {
 		task.LinkedPR = *req.LinkedPR
 	}
-	if req.DueAt != nil {
-		task.DueAt = req.DueAt
+	if len(req.DueAt) > 0 {
+		if string(req.DueAt) == "null" || string(req.DueAt) == `""` {
+			task.DueAt = nil
+		} else {
+			var t time.Time
+			if err := json.Unmarshal(req.DueAt, &t); err == nil {
+				task.DueAt = &t
+			}
+		}
 	}
 	task.UpdatedAt = now
 	taskCopy := *task
