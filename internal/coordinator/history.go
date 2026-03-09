@@ -16,9 +16,13 @@ func (s *Server) spaceHistoryPath(spaceName string) string {
 	return filepath.Join(s.dataDir, spaceName+"-history.json")
 }
 
-// appendSnapshot appends a StatusSnapshot to the space history file.
-// The file is NDJSON — one JSON object per line — so appends are O(1).
+// appendSnapshot appends a StatusSnapshot to the space history.
+// When a repository is available it is written to SQLite; the NDJSON file
+// is also written for backwards compatibility.
 func (s *Server) appendSnapshot(snapshot StatusSnapshot) error {
+	// Persist to SQLite.
+	s.saveSnapshotToDB(&snapshot)
+
 	if s.dataDir == "" {
 		return nil
 	}
@@ -37,10 +41,20 @@ func (s *Server) appendSnapshot(snapshot StatusSnapshot) error {
 	return err
 }
 
-// loadHistory reads all snapshots from the history file.
+// loadHistory reads snapshots for a space, preferring SQLite when available.
 // If agent is non-empty, only snapshots for that agent are returned.
 // If since is non-zero, only snapshots after that time are returned.
 func (s *Server) loadHistory(spaceName, agent string, since time.Time) ([]StatusSnapshot, error) {
+	// Prefer SQLite.
+	if s.repo != nil {
+		var sincePtr *time.Time
+		if !since.IsZero() {
+			sincePtr = &since
+		}
+		return s.loadSnapshotsFromRepo(spaceName, agent, sincePtr)
+	}
+
+	// Fallback: read NDJSON file.
 	path := s.spaceHistoryPath(spaceName)
 	f, err := os.Open(path)
 	if err != nil {

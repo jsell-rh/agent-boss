@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	bossdb "github.com/ambient/platform/components/boss/internal/coordinator/db"
 )
 
 const (
@@ -65,6 +67,7 @@ type Server struct {
 	registrations map[string]*AgentRegistrationRecord
 	regMu         sync.RWMutex
 	journal       *EventJournal
+	repo          *bossdb.Repository // nil until Start() initialises the DB
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -123,7 +126,12 @@ func (s *Server) Start() error {
 		return fmt.Errorf("create data dir: %w", err)
 	}
 
-	// Protocol template is now embedded at compile time
+	// Initialise database repository.
+	gdb, err := bossdb.Open(s.dataDir)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	s.repo = bossdb.New(gdb)
 
 	if err := s.loadAllSpaces(); err != nil {
 		return fmt.Errorf("load spaces: %w", err)

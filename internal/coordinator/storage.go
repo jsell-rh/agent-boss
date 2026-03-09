@@ -18,6 +18,32 @@ func (s *Server) spaceMarkdownPath(name string) string {
 }
 
 func (s *Server) loadAllSpaces() error {
+	// --- Primary path: load from SQLite ---
+	if s.repo != nil {
+		empty, err := s.repo.IsEmpty()
+		if err != nil {
+			return fmt.Errorf("check db empty: %w", err)
+		}
+		if !empty {
+			return s.loadAllSpacesFromRepo()
+		}
+		// DB is empty: import from legacy JSON/journal files, then persist to DB.
+		s.logEvent("DB empty — importing legacy JSON/journal data")
+		if err := s.loadAllSpacesFromFiles(); err != nil {
+			return err
+		}
+		for _, ks := range s.spaces {
+			s.persistSpaceToDB(ks)
+		}
+		return nil
+	}
+
+	// --- Fallback: no DB, use file storage ---
+	return s.loadAllSpacesFromFiles()
+}
+
+// loadAllSpacesFromFiles loads spaces from legacy JSON/JSONL files (fallback path).
+func (s *Server) loadAllSpacesFromFiles() error {
 	entries, err := os.ReadDir(s.dataDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -138,6 +164,9 @@ func (s *Server) rotateBackups(spaceName string) {
 }
 
 func (s *Server) saveSpace(ks *KnowledgeSpace) error {
+	// Persist to SQLite (primary store).
+	s.persistSpaceToDB(ks)
+
 	s.refreshProtocol(ks)
 	data, err := json.MarshalIndent(ks, "", "  ")
 	if err != nil {
@@ -266,3 +295,4 @@ func (s *Server) maybeCompact(spaceName string) {
 		go s.compactSpace(spaceName)
 	}
 }
+
