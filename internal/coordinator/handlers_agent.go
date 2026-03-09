@@ -209,6 +209,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			return
 		}
 		s.mu.Unlock()
+		s.deleteAgentFromDB(spaceName, canonical)
 		s.logEvent(fmt.Sprintf("[%s/%s] agent removed", spaceName, canonical))
 		s.journal.Append(spaceName, EventAgentRemoved, canonical, nil)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
