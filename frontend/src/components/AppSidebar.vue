@@ -223,6 +223,24 @@ function statusLabel(status: string): string {
   return display ? display.label : status
 }
 
+// Count unread messages directed at the boss across all boss↔agent conversations.
+// Messages in any agent's inbox where sender is an agent (not boss) and recipient is boss,
+// plus any messages in the 'boss' agent's own inbox that are unread.
+const bossUnreadCount = computed(() => {
+  if (!props.currentSpace) return 0
+  let count = 0
+  // Messages in the 'boss' pseudo-agent inbox (agents sending TO boss)
+  const bossAgent = props.currentSpace.agents['boss']
+  if (bossAgent?.messages) {
+    for (const msg of bossAgent.messages) {
+      if (!msg.read) count++
+    }
+  }
+  // Also count messages in agent inboxes from boss that are unread (boss sent these, agent hasn't read)
+  // — intentionally excluded here: we want notifications for messages TO boss, not FROM boss
+  return count
+})
+
 // New space dialog
 const newSpaceDialogOpen = ref(false)
 const newSpaceName = ref('')
@@ -362,9 +380,23 @@ function submitNewSpace() {
                 :data-active="false"
                 @click="router.push('/' + selectedSpace + '/conversations')"
               >
-                <MessageSquare class="size-4" />
+                <div class="relative shrink-0">
+                  <MessageSquare class="size-4" />
+                  <!-- Unread boss-message dot -->
+                  <span
+                    v-if="bossUnreadCount > 0"
+                    class="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none min-w-[14px] h-3.5 px-0.5"
+                    :title="`${bossUnreadCount} unread message${bossUnreadCount !== 1 ? 's' : ''} for boss`"
+                  >{{ bossUnreadCount }}</span>
+                </div>
                 <span>Conversations</span>
               </SidebarMenuButton>
+              <SidebarMenuBadge
+                v-if="bossUnreadCount > 0"
+                class="text-red-500 font-bold text-[10px]"
+              >
+                {{ bossUnreadCount }}
+              </SidebarMenuBadge>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
