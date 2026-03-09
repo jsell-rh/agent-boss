@@ -217,12 +217,15 @@
   }
   html {
     height: 100%;
-    overflow: hidden;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     height: 100%;
-    overflow: hidden;
+    /* overflow is intentionally NOT set here. Page scroll is prevented by the
+       app layout (SidebarInset h-dvh + main overflow-hidden), not by body
+       overflow. Setting overflow: hidden on body breaks Radix UI portals
+       (Sheet/Dialog) that append to <body> — their internal scrollbars stop
+       working because the body's scroll context is locked. */
   }
   code, pre, .font-mono {
     font-family: 'Red Hat Mono', ui-monospace, monospace;
