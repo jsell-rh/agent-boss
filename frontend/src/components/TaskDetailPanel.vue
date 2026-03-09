@@ -206,7 +206,7 @@ async function setDueDate(value: string) {
 
 <template>
   <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="w-[480px] sm:w-[540px] overflow-y-auto flex flex-col gap-0 p-0">
+    <SheetContent class="w-full sm:w-[480px] md:w-[540px] overflow-y-auto flex flex-col gap-0 p-0">
       <div v-if="task" class="flex flex-col h-full">
         <!-- Header -->
         <SheetHeader class="px-6 pt-6 pb-4 border-b border-border">

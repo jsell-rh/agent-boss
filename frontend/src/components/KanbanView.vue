@@ -222,7 +222,7 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full overflow-hidden">
     <!-- Toolbar -->
-    <div class="flex items-center gap-3 px-6 py-3 border-b border-border shrink-0">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-border shrink-0">
       <h2 class="text-sm font-semibold">Kanban Board</h2>
       <span class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
 
@@ -233,11 +233,11 @@ onUnmounted(() => {
           v-model="filterSearch"
           type="search"
           placeholder="Search tasks…"
-          class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-40"
+          class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-32 sm:w-40"
         />
       </div>
 
-      <div class="flex items-center gap-2 ml-auto">
+      <div class="flex items-center gap-2 ml-auto flex-wrap">
         <!-- Overdue filter -->
         <Button
           variant="outline"
@@ -319,7 +319,7 @@ onUnmounted(() => {
     <!-- Board -->
     <div
       v-else
-      class="flex gap-3 p-4 overflow-x-auto overflow-y-hidden flex-1"
+      class="flex gap-3 p-3 sm:p-4 overflow-x-auto overflow-y-hidden flex-1 scroll-smooth"
       @dragend="draggingTaskId = null"
     >
       <KanbanColumn
