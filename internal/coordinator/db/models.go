@@ -126,9 +126,11 @@ type AgentNotification struct {
 func (AgentNotification) TableName() string { return "agent_notifications" }
 
 // Task represents a tracked work item.
+// ID is unique per space (e.g. TASK-001), not globally unique — the composite
+// primary key (space_name, id) prevents cross-space collisions in the DB.
 type Task struct {
-	ID           string    `gorm:"primarykey"`
-	SpaceName    string    `gorm:"index;not null"`
+	ID        string `gorm:"primaryKey;not null"`
+	SpaceName string `gorm:"primaryKey;not null;index"`
 	Title        string    `gorm:"not null"`
 	Description  string    `gorm:"type:text"`
 	Status       string    `gorm:"not null;default:'backlog'"`

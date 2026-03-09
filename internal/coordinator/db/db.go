@@ -71,6 +71,11 @@ func Open(dataDir string) (*gorm.DB, error) {
 // migrate runs GORM AutoMigrate for all models. Safe to call on every startup —
 // it only adds missing tables/columns; it never drops or alters existing data.
 func migrate(db *gorm.DB) error {
+	// Run manual migration before AutoMigrate so schema is correct before GORM
+	// inspects it.
+	if err := migrateTasksCompositeKey(db); err != nil {
+		return fmt.Errorf("migrate tasks composite key: %w", err)
+	}
 	return db.AutoMigrate(
 		&Space{},
 		&Agent{},
@@ -81,4 +86,94 @@ func migrate(db *gorm.DB) error {
 		&TaskEvent{},
 		&StatusSnapshot{},
 	)
+}
+
+// migrateTasksCompositeKey recreates the tasks table with a composite primary
+// key (space_name, id) if it currently has a single-column PK on id only.
+// This fixes cross-space task ID collisions: tasks with the same sequence
+// number (e.g. TASK-001) in different spaces were overwriting each other.
+//
+// SQLite does not support ALTER TABLE … DROP PRIMARY KEY, so we use the
+// standard SQLite table-recreation pattern: create new → copy → drop → rename.
+// The migration is idempotent: if the table already has the correct schema
+// (detected by checking the primary key pragma), it is a no-op.
+func migrateTasksCompositeKey(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+
+	// Check whether the tasks table exists at all. If not, AutoMigrate will
+	// create it fresh with the correct composite PK — nothing to do here.
+	var tableCount int
+	row := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='tasks'`)
+	if err := row.Scan(&tableCount); err != nil || tableCount == 0 {
+		return nil
+	}
+
+	// Inspect current primary key columns via the table_info pragma.
+	// SQLite returns pk>0 for primary-key columns; composite PKs have pk=1,2,...
+	rows, err := sqlDB.Query(`PRAGMA table_info(tasks)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type colInfo struct {
+		cid     int
+		name    string
+		typ     string
+		notnull int
+		dflt    interface{}
+		pk      int
+	}
+	var pkCols []string
+	for rows.Next() {
+		var c colInfo
+		if err := rows.Scan(&c.cid, &c.name, &c.typ, &c.notnull, &c.dflt, &c.pk); err != nil {
+			return err
+		}
+		if c.pk > 0 {
+			pkCols = append(pkCols, c.name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Already has composite PK — nothing to do.
+	if len(pkCols) == 2 {
+		return nil
+	}
+
+	// Single-column PK (old schema): recreate with composite (space_name, id).
+	_, err = sqlDB.Exec(`
+		CREATE TABLE IF NOT EXISTS tasks_new (
+			id            TEXT NOT NULL,
+			space_name    TEXT NOT NULL,
+			title         TEXT NOT NULL,
+			description   TEXT,
+			status        TEXT NOT NULL DEFAULT 'backlog',
+			priority      TEXT DEFAULT 'medium',
+			assigned_to   TEXT,
+			created_by    TEXT NOT NULL,
+			labels        TEXT,
+			parent_task   TEXT,
+			subtasks      TEXT,
+			linked_branch TEXT,
+			linked_pr     TEXT,
+			created_at    DATETIME,
+			updated_at    DATETIME,
+			due_at        DATETIME,
+			PRIMARY KEY (space_name, id)
+		);
+		INSERT OR IGNORE INTO tasks_new
+			SELECT id, space_name, title, description, status, priority,
+			       assigned_to, created_by, labels, parent_task, subtasks,
+			       linked_branch, linked_pr, created_at, updated_at, due_at
+			FROM tasks;
+		DROP TABLE tasks;
+		ALTER TABLE tasks_new RENAME TO tasks;
+	`)
+	return err
 }

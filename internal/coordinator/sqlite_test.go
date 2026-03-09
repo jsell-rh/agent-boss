@@ -98,6 +98,102 @@ func TestSQLiteJSONMigration(t *testing.T) {
 	}
 }
 
+// TestSQLiteDeleteSpacePersists verifies that deleting a space removes it from
+// the SQLite DB so it does not reappear after a server restart.
+func TestSQLiteDeleteSpacePersists(t *testing.T) {
+	t.Setenv("DB_TYPE", "sqlite")
+	dir := t.TempDir()
+
+	s := NewServer(":0", dir)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	base := "http://localhost" + s.Port()
+
+	// Create a space with an agent.
+	postJSON(t, base+"/spaces/ghost-space/agent/Phantom", map[string]any{
+		"status": "active", "summary": "Phantom: will be deleted",
+	})
+
+	// Delete the space.
+	req, _ := http.NewRequest(http.MethodDelete, base+"/spaces/ghost-space/", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete status %d", resp.StatusCode)
+	}
+
+	s.Stop()
+
+	// Restart and verify the space is gone.
+	s2 := NewServer(":0", dir)
+	t.Setenv("DB_TYPE", "sqlite")
+	if err := s2.Start(); err != nil {
+		t.Fatalf("restart Start: %v", err)
+	}
+	defer s2.Stop()
+
+	base2 := "http://localhost" + s2.Port()
+	status, body := getBody(t, base2+"/spaces/ghost-space/agent/Phantom")
+	if status != http.StatusNotFound {
+		t.Errorf("expected 404 for deleted space after restart, got %d: %s", status, body)
+	}
+}
+
+// TestSQLiteTaskCrossSpaceIsolation verifies that two spaces can each have a
+// TASK-001 without overwriting each other's data in the DB.
+func TestSQLiteTaskCrossSpaceIsolation(t *testing.T) {
+	t.Setenv("DB_TYPE", "sqlite")
+	dir := t.TempDir()
+
+	s := NewServer(":0", dir)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	base := "http://localhost" + s.Port()
+
+	// SpaceA creates its first task.
+	postTaskJSON(t, base+"/spaces/space-a/tasks", map[string]any{
+		"title": "SpaceA first task",
+	}, "BotA")
+
+	// SpaceB creates its first task — same sequence number, different space.
+	postTaskJSON(t, base+"/spaces/space-b/tasks", map[string]any{
+		"title": "SpaceB first task",
+	}, "BotB")
+
+	s.Stop()
+
+	// Restart and verify both tasks are intact in their respective spaces.
+	s2 := NewServer(":0", dir)
+	t.Setenv("DB_TYPE", "sqlite")
+	if err := s2.Start(); err != nil {
+		t.Fatalf("restart Start: %v", err)
+	}
+	defer s2.Stop()
+
+	base2 := "http://localhost" + s2.Port()
+
+	_, bodyA := getBody(t, base2+"/spaces/space-a/tasks")
+	if !strings.Contains(bodyA, "SpaceA first task") {
+		t.Errorf("SpaceA task missing after restart, got: %s", bodyA)
+	}
+	if strings.Contains(bodyA, "SpaceB first task") {
+		t.Errorf("SpaceB task leaked into SpaceA after restart, got: %s", bodyA)
+	}
+
+	_, bodyB := getBody(t, base2+"/spaces/space-b/tasks")
+	if !strings.Contains(bodyB, "SpaceB first task") {
+		t.Errorf("SpaceB task missing after restart, got: %s", bodyB)
+	}
+	if strings.Contains(bodyB, "SpaceA first task") {
+		t.Errorf("SpaceA task leaked into SpaceB after restart, got: %s", bodyB)
+	}
+}
+
 func TestSQLiteInvalidDBType(t *testing.T) {
 	t.Setenv("DB_TYPE", "mysql")
 	dir := t.TempDir()

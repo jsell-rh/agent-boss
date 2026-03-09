@@ -159,9 +159,11 @@ func (r *Repository) MarkNotificationsRead(spaceName, agentName string) error {
 // ---- Task operations ----
 
 // UpsertTask creates or updates a task.
+// Conflict is on the composite key (space_name, id) so tasks with the same
+// ID in different spaces are stored as distinct rows.
 func (r *Repository) UpsertTask(t *Task) error {
 	return r.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "id"}},
+		Columns: []clause.Column{{Name: "space_name"}, {Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"title", "description", "status", "priority", "assigned_to",
 			"labels", "parent_task", "subtasks", "linked_branch", "linked_pr",
@@ -230,6 +232,35 @@ func (r *Repository) DeleteTask(spaceName, taskID string) error {
 		return err
 	}
 	return r.db.Where("id = ? AND space_name = ?", taskID, spaceName).Delete(&Task{}).Error
+}
+
+// DeleteSpace removes a space and all its associated data (agents, messages,
+// notifications, tasks, comments, events, snapshots) in a single transaction.
+func (r *Repository) DeleteSpace(name string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("space_name = ?", name).Delete(&TaskEvent{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&TaskComment{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&Task{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&AgentNotification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&AgentMessage{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&StatusSnapshot{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&Agent{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("name = ?", name).Delete(&Space{}).Error
+	})
 }
 
 // ---- StatusSnapshot operations ----
