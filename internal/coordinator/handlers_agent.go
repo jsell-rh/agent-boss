@@ -1196,3 +1196,117 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "acked", "message_id": msgID})
 }
+
+// createAgentRequest is the body for POST /spaces/{space}/agents.
+type createAgentRequest struct {
+	Name    string `json:"name"`
+	WorkDir string `json:"work_dir,omitempty"`
+	Command string `json:"command,omitempty"`
+	Backend string `json:"backend,omitempty"` // "tmux" (default) or "cloud"
+	Width   int    `json:"width,omitempty"`
+	Height  int    `json:"height,omitempty"`
+	Parent  string `json:"parent,omitempty"`
+	Role    string `json:"role,omitempty"`
+}
+
+// handleCreateAgents handles POST /spaces/{space}/agents.
+// It creates a new agent using the specified backend (default: tmux).
+func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req createAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, fmt.Sprintf("decode: %v", err), http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" {
+		writeJSONError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	backendName := req.Backend
+	if backendName == "" {
+		backendName = "tmux"
+	}
+
+	var backend AgentBackend
+	switch backendName {
+	case "tmux":
+		backend = &TmuxBackend{}
+	case "cloud":
+		backend = &CloudBackend{}
+	default:
+		writeJSONError(w, fmt.Sprintf("unknown backend %q; supported: tmux, cloud", backendName), http.StatusBadRequest)
+		return
+	}
+
+	spec := AgentSpec{
+		Name:    req.Name,
+		Space:   spaceName,
+		WorkDir: req.WorkDir,
+		Command: req.Command,
+		Width:   req.Width,
+		Height:  req.Height,
+		Parent:  req.Parent,
+		Role:    req.Role,
+	}
+
+	info, err := backend.Spawn(r.Context(), spec)
+	if err != nil {
+		writeJSONError(w, fmt.Sprintf("spawn: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Register the new agent in the space.
+	ks := s.getOrCreateSpace(spaceName)
+	s.mu.Lock()
+	agentKey := strings.ToLower(req.Name)
+	agent, exists := ks.Agents[agentKey]
+	if !exists {
+		agent = &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   fmt.Sprintf("%s: spawned via %s backend", req.Name, backendName),
+			UpdatedAt: time.Now().UTC(),
+		}
+		ks.Agents[agentKey] = agent
+	}
+	agent.TmuxSession = info.SessionID
+	if req.Parent != "" && agent.Parent == "" {
+		agent.Parent = strings.ToLower(req.Parent)
+		rebuildChildren(ks)
+	}
+	if req.Role != "" && agent.Role == "" {
+		agent.Role = req.Role
+	}
+	if err := s.saveSpace(ks); err != nil {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.mu.Unlock()
+
+	s.logEvent(fmt.Sprintf("[%s/%s] created via %s backend (session: %s)", spaceName, req.Name, backendName, info.SessionID))
+	s.broadcastSSE(spaceName, req.Name, "agent_spawned", req.Name)
+
+	// Send ignite asynchronously after agent has time to initialize.
+	go func() {
+		time.Sleep(5 * time.Second)
+		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, req.Name, spaceName)
+		if err := tmuxSendKeys(info.SessionID, igniteCmd); err != nil {
+			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, req.Name, err))
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"agent":   req.Name,
+		"backend": backendName,
+		"session": info.SessionID,
+		"space":   spaceName,
+	})
+}
