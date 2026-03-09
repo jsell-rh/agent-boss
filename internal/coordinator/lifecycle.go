@@ -118,7 +118,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 
 	sessionName := req.TmuxSession
 	if sessionName == "" {
-		sessionName = agentName
+		sessionName = tmuxDefaultSession(spaceName, agentName)
 	}
 	command := req.Command
 	if command == "" {
@@ -353,11 +353,11 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	agent.TmuxSession = ""
 	s.mu.Unlock()
 
-	// Spawn a new session using the canonical name as session name
-	newSession := canonical
+	// Spawn a new session using a space-scoped name to avoid cross-space collisions.
+	newSession := tmuxDefaultSession(spaceName, canonical)
 	if tmuxSessionExists(newSession) {
-		// Append -new suffix if canonical name is taken
-		newSession = canonical + "-new"
+		// Append -new suffix if the session name is already taken.
+		newSession = newSession + "-new"
 	}
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
