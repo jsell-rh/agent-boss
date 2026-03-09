@@ -172,6 +172,8 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 				}
 			}
 		}
+		// Targeted DB write for the specific agent only (avoids N+1).
+		s.upsertAgentToDB(spaceName, canonical, ks.Agents[canonical])
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
 			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
@@ -203,6 +205,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		delete(ks.Agents, canonical)
 		rebuildChildren(ks) // keep children lists consistent after removal
 		ks.UpdatedAt = time.Now().UTC()
+		s.deleteAgentFromDB(spaceName, canonical)
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
 			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
@@ -370,6 +373,14 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	}
 
 	ks.UpdatedAt = time.Now().UTC()
+	// Targeted DB writes for each recipient agent.
+	for _, r := range recipients {
+		if ag, ok := ks.Agents[r]; ok {
+			s.saveMessageToDB(spaceName, r, &messageReq)
+			s.saveNotificationToDB(spaceName, r, &ag.Notifications[len(ag.Notifications)-1])
+			s.upsertAgentToDB(spaceName, r, ag)
+		}
+	}
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
@@ -524,6 +535,7 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		agent.UpdatedAt = time.Now().UTC()
 		ks.UpdatedAt = time.Now().UTC()
 
+		s.upsertAgentToDB(spaceName, canonical, agent)
 		if err := s.saveSpace(ks); err != nil {
 			s.mu.Unlock()
 			writeJSONError(w, fmt.Sprintf("save space: %v", err), http.StatusInternalServerError)
@@ -1114,6 +1126,7 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	ks.UpdatedAt = time.Now().UTC()
+	s.upsertAgentToDB(spaceName, canonical, agent)
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		writeJSONError(w, "save: "+err.Error(), http.StatusInternalServerError)
@@ -1184,6 +1197,10 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 		"message_id": msgID,
 		"acked_at":   now,
 	})
+	// Persist the read-status update to DB.
+	if err := s.repo.MarkMessageRead(msgID, now); err != nil {
+		s.logEvent(fmt.Sprintf("warning: mark message %q read in db: %v", msgID, err))
+	}
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)

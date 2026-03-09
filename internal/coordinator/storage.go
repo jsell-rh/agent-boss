@@ -295,4 +295,3 @@ func (s *Server) maybeCompact(spaceName string) {
 		go s.compactSpace(spaceName)
 	}
 }
-
