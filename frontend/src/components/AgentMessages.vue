@@ -275,7 +275,13 @@ const enrichedMessages = computed((): MessageEntry[] => {
                   {{ formatTime(entry.msg.timestamp) }}
                 </time>
                 <span
-                  v-if="entry.isBoss"
+                  v-if="entry.isBoss && entry.msg.read"
+                  class="flex items-center gap-0.5 text-xs text-muted-foreground"
+                >
+                  <Check class="size-3" />Read
+                </span>
+                <span
+                  v-else-if="entry.isBoss"
                   class="flex items-center gap-0.5 text-xs text-muted-foreground"
                 >
                   <Check class="size-3" />Delivered

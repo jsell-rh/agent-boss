@@ -29,6 +29,8 @@ interface ConversationMessage {
   sender: string
   recipient: string
   timestamp: string
+  priority?: import('@/types').MessagePriority
+  read?: boolean
 }
 
 interface Conversation {
@@ -58,6 +60,8 @@ const conversations = computed((): Conversation[] => {
         sender: msg.sender,
         recipient: agentName,
         timestamp: msg.timestamp,
+        priority: msg.priority,
+        read: msg.read,
       })
     }
   }
@@ -96,12 +100,20 @@ const selectedConversation = computed((): Conversation | null => {
   return null
 })
 
-// Unread tracking — conversations not yet visited this session
+// Unread tracking — only boss ↔ agent conversations can be "unread".
+// Agent-to-agent threads do not drive unread badges (boss can't act on them).
 const readKeys = ref(new Set<string>())
 
+function isBossConversation(conv: Conversation): boolean {
+  return conv.participants.includes('boss')
+}
+
 function unreadCount(conv: Conversation): number {
+  // Agent-to-agent conversations never show unread badges
+  if (!isBossConversation(conv)) return 0
   if (readKeys.value.has(conv.key)) return 0
-  return conv.messages.length
+  // Count messages not yet read (prefer backend read field when available)
+  return conv.messages.filter(m => m.read === false || m.read === undefined).length
 }
 
 // Mark conversation as read when selected
@@ -426,7 +438,16 @@ watch(composeRecipient, async (agent) => {
                     {{ conv.participants[0] }} ↔ {{ conv.participants[1] }}
                   </span>
                   <div class="flex items-center gap-1 shrink-0">
-                    <!-- Unread badge -->
+                    <!-- Priority badge — show highest priority in thread -->
+                    <span
+                      v-if="conv.messages.some(m => m.priority === 'urgent')"
+                      class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/30"
+                    >urgent</span>
+                    <span
+                      v-else-if="conv.messages.some(m => m.priority === 'directive')"
+                      class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
+                    >directive</span>
+                    <!-- Unread badge (boss conversations only) -->
                     <span
                       v-if="unreadCount(conv) > 0"
                       class="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold min-w-[16px] h-4 px-1"
@@ -573,10 +594,27 @@ watch(composeRecipient, async (agent) => {
                       {{ new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                     </time>
                   </div>
+                  <!-- Priority badge -->
+                  <div v-if="msg.priority && msg.priority !== 'info'" class="mb-1">
+                    <span
+                      v-if="msg.priority === 'urgent'"
+                      class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/30"
+                    >urgent</span>
+                    <span
+                      v-else-if="msg.priority === 'directive'"
+                      class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
+                    >directive</span>
+                  </div>
                   <div
                     class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
                     v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))"
                   />
+                  <!-- Read indicator -->
+                  <div v-if="msg.read !== undefined" class="flex items-center gap-1 mt-0.5">
+                    <span class="text-[10px] text-muted-foreground">
+                      {{ msg.read ? '✓ Read' : '○ Unread' }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </template>

@@ -27,6 +27,8 @@ export interface AgentMessage {
   sender: string
   priority?: MessagePriority
   timestamp: string
+  read?: boolean
+  read_at?: string
 }
 
 export interface AgentUpdate {
