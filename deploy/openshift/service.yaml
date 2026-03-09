@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: boss-coordinator
+  namespace: jsell-agent-boss
+  labels:
+    app: boss-coordinator
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8899
+      targetPort: 8899
+  selector:
+    app: boss-coordinator

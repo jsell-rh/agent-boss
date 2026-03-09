@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boss-coordinator
+  namespace: jsell-agent-boss
+  labels:
+    app: boss-coordinator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boss-coordinator
+  template:
+    metadata:
+      labels:
+        app: boss-coordinator
+    spec:
+      containers:
+        - name: boss-coordinator
+          image: image-registry.openshift-image-registry.svc:5000/jsell-agent-boss/boss-coordinator:latest
+          ports:
+            - containerPort: 8899
+          envFrom:
+            - configMapRef:
+                name: boss-config
+          env:
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: DB_DSN
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /spaces
+              port: 8899
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /spaces
+              port: 8899
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: data
+          emptyDir: {}
