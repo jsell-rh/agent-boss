@@ -100,7 +100,7 @@ describe('ApiClient', () => {
   it('archiveSpace sends POST to /spaces/{space}/archive with timestamp body', async () => {
     mockFetch('ok')
     await api.archiveSpace('TestSpace')
-    const call = vi.mocked(fetch).mock.calls[0]
+    const call = vi.mocked(fetch).mock.calls[0]!
     expect(call[0]).toBe('/spaces/TestSpace/archive')
     expect((call[1] as RequestInit).method).toBe('POST')
     const body = (call[1] as RequestInit).body as string

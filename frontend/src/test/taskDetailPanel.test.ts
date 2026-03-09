@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Task, KnowledgeSpace, AgentUpdate } from '@/types'
+import type { Task, AgentUpdate } from '@/types'
 
 // Replicate the buildPrUrl logic from TaskDetailPanel for isolated testing
 

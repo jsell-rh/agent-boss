@@ -1,5 +1,4 @@
 // Global test setup for Vitest + jsdom
-import { config } from '@vue/test-utils'
 
 // Stub CSS imports (Tailwind etc.) that jsdom can't handle
 Object.defineProperty(window, 'matchMedia', {

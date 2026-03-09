@@ -11,7 +11,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -609,10 +609,24 @@ watch(composeRecipient, async (agent) => {
                     class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
                     v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))"
                   />
-                  <!-- Read indicator -->
-                  <div v-if="msg.read !== undefined" class="flex items-center gap-1 mt-0.5">
-                    <span class="text-[10px] text-muted-foreground">
-                      {{ msg.read ? '✓ Read' : '○ Unread' }}
+                  <!-- Read receipt — always shown for boss-sent messages -->
+                  <div v-if="msg.sender === 'boss'" class="flex items-center gap-1 mt-1">
+                    <span
+                      v-if="msg.read"
+                      class="flex items-center gap-0 text-xs font-medium text-primary"
+                      title="Read by agent"
+                    >
+                      <Check class="size-3.5 -mr-1" />
+                      <Check class="size-3.5" />
+                      <span class="ml-1">Read</span>
+                    </span>
+                    <span
+                      v-else
+                      class="flex items-center gap-0.5 text-xs text-muted-foreground"
+                      title="Delivered to agent"
+                    >
+                      <Check class="size-3.5" />
+                      <span>Delivered</span>
                     </span>
                   </div>
                 </div>
