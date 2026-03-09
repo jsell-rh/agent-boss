@@ -367,8 +367,8 @@ onUnmounted(() => {
 <style scoped>
 @keyframes deep-link-flash {
   0%   { box-shadow: none; outline: none; }
-  15%  { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.8); outline: 2px solid hsl(var(--primary) / 0.5); }
-  60%  { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.4); outline: 2px solid hsl(var(--primary) / 0.2); }
+  15%  { box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 80%, transparent); outline: 2px solid color-mix(in oklch, var(--color-primary) 50%, transparent); }
+  60%  { box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 40%, transparent); outline: 2px solid color-mix(in oklch, var(--color-primary) 20%, transparent); }
   100% { box-shadow: none; outline: none; }
 }
 
