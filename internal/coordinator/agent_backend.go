@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -57,7 +58,7 @@ func (b *TmuxBackend) Name() string { return "tmux" }
 // Spawn creates a new detached tmux session, launches the agent command, and
 // sends the /boss.ignite prompt after initialization.
 func (b *TmuxBackend) Spawn(ctx context.Context, spec AgentSpec) (AgentInfo, error) {
-	sessionName := spec.Name
+	sessionName := tmuxDefaultSession(spec.Space, spec.Name)
 
 	command := spec.Command
 	if command == "" {
@@ -155,6 +156,29 @@ func (b *CloudBackend) Stop(ctx context.Context, space, name string) error {
 // List is not yet implemented for the cloud backend.
 func (b *CloudBackend) List(ctx context.Context, space string) ([]AgentInfo, error) {
 	return nil, fmt.Errorf("cloud backend: %w", ErrNotImplemented)
+}
+
+// tmuxDefaultSession generates a tmux-safe session name that is unique per space+agent pair.
+// Format: {sanitized-space}-{sanitized-agent}, replacing non-alphanumeric characters with hyphens.
+// This prevents tmux session name collisions when the same agent name is used in different spaces.
+func tmuxDefaultSession(spaceName, agentName string) string {
+	clean := func(s string) string {
+		var b strings.Builder
+		for _, r := range strings.ToLower(s) {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+				b.WriteRune(r)
+			} else {
+				b.WriteByte('-')
+			}
+		}
+		return strings.Trim(b.String(), "-")
+	}
+	sp := clean(spaceName)
+	ag := clean(agentName)
+	if sp == "" {
+		return ag
+	}
+	return sp + "-" + ag
 }
 
 // shellQuote wraps a string in single quotes, escaping any existing single quotes.
