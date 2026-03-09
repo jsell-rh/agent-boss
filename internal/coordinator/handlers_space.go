@@ -49,6 +49,7 @@ func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 		Name           string    `json:"name"`
 		AgentCount     int       `json:"agent_count"`
 		AttentionCount int       `json:"attention_count"`
+		Archive        string    `json:"archive,omitempty"`
 		CreatedAt      time.Time `json:"created_at"`
 		UpdatedAt      time.Time `json:"updated_at"`
 	}
@@ -64,6 +65,7 @@ func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 			Name:           ks.Name,
 			AgentCount:     len(ks.Agents),
 			AttentionCount: attention,
+			Archive:        ks.Archive,
 			CreatedAt:      ks.CreatedAt,
 			UpdatedAt:      ks.UpdatedAt,
 		})
