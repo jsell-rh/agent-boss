@@ -234,6 +234,26 @@ class ApiClient {
 
   // --------------- Lifecycle ---------------
 
+  createAgent(
+    space: string,
+    spec: {
+      name: string
+      work_dir?: string
+      command?: string
+      backend?: 'tmux' | 'cloud'
+      width?: number
+      height?: number
+      parent?: string
+      role?: string
+    },
+  ): Promise<{ ok: boolean; agent: string; backend: string; session: string; space: string }> {
+    return this.request(`/spaces/${encodeURIComponent(space)}/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(spec),
+    })
+  }
+
   spawnAgent(space: string, agent: string, command?: string): Promise<{ ok: boolean; tmux_session: string }> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/spawn`,

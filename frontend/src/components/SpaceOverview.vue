@@ -43,6 +43,7 @@ import {
   Clock,
   Layers,
   Search,
+  Plus,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
@@ -50,6 +51,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
+import AgentCreateDialog from './AgentCreateDialog.vue'
 import { prLink } from '@/lib/utils'
 
 const props = defineProps<{
@@ -72,6 +74,7 @@ const emit = defineEmits<{
 
 const agentSearch = ref('')
 const activeTab = ref('agents')
+const agentCreateDialogOpen = ref(false)
 const deleteDialogOpen = ref(false)
 const deleteDialogAgent = ref<string | null>(null)
 const deleteSpaceDialogOpen = ref(false)
@@ -301,6 +304,18 @@ const activeSections = computed(() => [
           </p>
         </div>
         <div class="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                size="sm"
+                @click="agentCreateDialogOpen = true"
+              >
+                <Plus class="size-4" />
+                Add Agent
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Spawn a new agent in this space</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger as-child>
               <Button
@@ -917,6 +932,12 @@ const activeSections = computed(() => [
           </form>
         </DialogContent>
       </Dialog>
+
+      <AgentCreateDialog
+        v-model:open="agentCreateDialogOpen"
+        :space="space.name"
+        @created="() => {}"
+      />
     </div>
   </ScrollArea>
 </template>

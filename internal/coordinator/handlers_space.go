@@ -176,6 +176,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			rest = strings.TrimRight(strings.Join(parts[2:], "/"), "/")
 		}
 		s.handleSpaceTasks(w, r, spaceName, rest)
+	case "agents":
+		s.handleCreateAgents(w, r, spaceName)
 	case "hierarchy":
 		s.handleSpaceHierarchy(w, r, spaceName)
 	case "history":
