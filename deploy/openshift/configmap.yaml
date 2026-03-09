@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boss-config
+  namespace: jsell-agent-boss
+data:
+  DB_TYPE: postgres
+  DATA_DIR: /data
+  COORDINATOR_PORT: "8899"
+  POSTGRESQL_DATABASE: boss

@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: boss-coordinator
+  namespace: jsell-agent-boss
+  labels:
+    app: boss-coordinator
+spec:
+  host: jsell-agent-boss.apps.okd1.timslab
+  to:
+    kind: Service
+    name: boss-coordinator
+  port:
+    targetPort: 8899
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
