@@ -75,6 +75,23 @@ const subtaskItems = computed(() => {
 
 function buildPrUrl(pr: string): string | null {
   if (pr.startsWith('http')) return pr
+  // Try to build URL from the assigned agent's repo_url
+  if (props.task?.assigned_to) {
+    const agent = props.space.agents[props.task.assigned_to]
+    if (agent?.repo_url) {
+      const base = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+      const num = pr.replace(/^#/, '')
+      return `${base}/pull/${num}`
+    }
+  }
+  // Fall back to any agent in the space that has a repo_url
+  for (const agent of Object.values(props.space.agents)) {
+    if (agent.repo_url) {
+      const base = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
+      const num = pr.replace(/^#/, '')
+      return `${base}/pull/${num}`
+    }
+  }
   return null
 }
 
@@ -380,8 +397,8 @@ async function setDueDate(value: string) {
                 <code class="text-xs bg-muted px-1.5 py-0.5 rounded">{{ task.linked_branch }}</code>
               </div>
               <a
-                v-if="task.linked_pr"
-                :href="buildPrUrl(task.linked_pr) ?? '#'"
+                v-if="task.linked_pr && buildPrUrl(task.linked_pr)"
+                :href="buildPrUrl(task.linked_pr)!"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="flex items-center gap-1.5 text-sm text-primary hover:underline"
@@ -389,6 +406,13 @@ async function setDueDate(value: string) {
                 <ExternalLink class="size-3.5" />
                 {{ task.linked_pr }}
               </a>
+              <span
+                v-else-if="task.linked_pr"
+                class="flex items-center gap-1.5 text-sm text-muted-foreground"
+              >
+                <ExternalLink class="size-3.5" />
+                {{ task.linked_pr }}
+              </span>
             </div>
           </div>
 

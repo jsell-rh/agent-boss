@@ -384,6 +384,22 @@ async function handleDeleteSpace(spaceName: string) {
   }
 }
 
+async function handleArchiveSpace(spaceName: string) {
+  const isArchived = !!currentSpace.value?.archive
+  try {
+    await api.archiveSpace(spaceName, isArchived ? '' : undefined)
+    showStatus(isArchived ? `Unarchived space "${spaceName}"` : `Archived space "${spaceName}"`)
+    await loadSpaces()
+    // Reload current space to reflect archive field change
+    if (selectedSpace.value === spaceName) {
+      currentSpace.value = await api.fetchSpace(spaceName)
+    }
+  } catch (err) {
+    console.error('Archive space failed:', err)
+    showError(`Failed to ${isArchived ? 'unarchive' : 'archive'} space "${spaceName}".`)
+  }
+}
+
 async function handleCreateSpace(spaceName: string) {
   try {
     await api.createSpace(spaceName)
@@ -780,6 +796,7 @@ onUnmounted(() => {
         @broadcast="handleBroadcastSpace"
         @delete-space="handleDeleteSpace"
         @create-space="handleCreateSpace"
+        @archive-space="handleArchiveSpace"
       />
       <SidebarInset class="flex flex-col h-dvh">
         <!-- Header -->
@@ -980,6 +997,7 @@ onUnmounted(() => {
             @broadcast-agent="handleBroadcastSingleAgent"
             @send-message-to-agent="handleSendMessageToAgent"
             @delete-space="handleDeleteSpace(selectedSpace)"
+            @archive-space="handleArchiveSpace(selectedSpace)"
             @clear-done-agents="handleClearDoneAgents"
           />
 
