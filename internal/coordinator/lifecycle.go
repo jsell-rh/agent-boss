@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+// isNonTmuxAgent returns true if the agent has an explicit registration with an
+// agent_type that is not tmux. Agents without a registration, or with agent_type
+// "tmux" or "", are considered potentially tmux-managed.
+func isNonTmuxAgent(agent *AgentUpdate) bool {
+	if agent == nil || agent.Registration == nil {
+		return false
+	}
+	t := agent.Registration.AgentType
+	return t != "" && t != "tmux"
+}
+
+// nonTmuxLifecycleError writes an HTTP 422 response explaining that tmux lifecycle
+// management is not available for agents whose agent_type is not "tmux".
+func nonTmuxLifecycleError(w http.ResponseWriter, agentType string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error": fmt.Sprintf(
+			"lifecycle management via tmux is not available for agent_type %q; manage your agent process externally",
+			agentType,
+		),
+	})
+}
+
 // inferAgentStatus derives a human-readable inferred status string from tmux observations.
 // This is stored as InferredStatus on the agent record and does not override self-reported Status.
 func inferAgentStatus(exists, idle, needsApproval bool) string {
@@ -107,6 +131,18 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	height := req.Height
 	if height <= 0 {
 		height = 50
+	}
+
+	// If the agent already exists with a non-tmux registration, reject the spawn.
+	if existingKS, ok := s.getSpace(spaceName); ok {
+		s.mu.RLock()
+		canonical := resolveAgentName(existingKS, agentName)
+		existingAgent := existingKS.Agents[canonical]
+		s.mu.RUnlock()
+		if isNonTmuxAgent(existingAgent) {
+			nonTmuxLifecycleError(w, existingAgent.Registration.AgentType)
+			return
+		}
 	}
 
 	if tmuxSessionExists(sessionName) {
@@ -213,6 +249,10 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
 		return
 	}
+	if isNonTmuxAgent(agent) {
+		nonTmuxLifecycleError(w, agent.Registration.AgentType)
+		return
+	}
 	if sessionName == "" {
 		http.Error(w, fmt.Sprintf("agent %q has no registered tmux session", canonical), http.StatusBadRequest)
 		return
@@ -284,6 +324,10 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 
 	if !exists {
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
+		return
+	}
+	if isNonTmuxAgent(agent) {
+		nonTmuxLifecycleError(w, agent.Registration.AgentType)
 		return
 	}
 	if oldSession == "" {
@@ -361,16 +405,17 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 
 // introspectResponse is returned by GET /spaces/{space}/agent/{name}/introspect.
 type introspectResponse struct {
-	Agent         string    `json:"agent"`
-	Space         string    `json:"space"`
-	TmuxSession   string    `json:"tmux_session,omitempty"`
-	SessionExists bool      `json:"session_exists"`
-	Idle          bool      `json:"idle"`
-	NeedsApproval bool      `json:"needs_approval"`
-	ToolName      string    `json:"tool_name,omitempty"`
-	PromptText    string    `json:"prompt_text,omitempty"`
-	Lines         []string  `json:"lines"`
-	CapturedAt    time.Time `json:"captured_at"`
+	Agent          string    `json:"agent"`
+	Space          string    `json:"space"`
+	TmuxSession    string    `json:"tmux_session,omitempty"`
+	TmuxAvailable  bool      `json:"tmux_available"`
+	SessionExists  bool      `json:"session_exists"`
+	Idle           bool      `json:"idle"`
+	NeedsApproval  bool      `json:"needs_approval"`
+	ToolName       string    `json:"tool_name,omitempty"`
+	PromptText     string    `json:"prompt_text,omitempty"`
+	Lines          []string  `json:"lines"`
+	CapturedAt     time.Time `json:"captured_at"`
 }
 
 // handleAgentIntrospect handles GET /spaces/{space}/agent/{name}/introspect.
@@ -402,11 +447,12 @@ func (s *Server) handleAgentIntrospect(w http.ResponseWriter, r *http.Request, s
 	}
 
 	resp := introspectResponse{
-		Agent:       canonical,
-		Space:       spaceName,
-		TmuxSession: sessionName,
-		Lines:       []string{},
-		CapturedAt:  time.Now().UTC(),
+		Agent:         canonical,
+		Space:         spaceName,
+		TmuxSession:   sessionName,
+		TmuxAvailable: sessionName != "" || !isNonTmuxAgent(agent),
+		Lines:         []string{},
+		CapturedAt:    time.Now().UTC(),
 	}
 
 	if sessionName != "" && tmuxSessionExists(sessionName) {
