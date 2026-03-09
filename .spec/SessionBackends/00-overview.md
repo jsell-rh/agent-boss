@@ -9,6 +9,7 @@
 | [03-tmux-backend.md](03-tmux-backend.md) | `TmuxSessionBackend` implementation, method mapping, file layout |
 | [04-ambient-backend.md](04-ambient-backend.md) | `AmbientSessionBackend` implementation, API mapping, behavioral differences |
 | [05-agentcore-feasibility.md](05-agentcore-feasibility.md) | AWS Bedrock AgentCore feasibility analysis |
+| [06-paude-backend.md](06-paude-backend.md) | Paude (containerized Claude) backend feasibility & design |
 
 ## Summary
 
@@ -91,12 +92,24 @@ type SessionBackend interface {
 | Frontend | `types/index.ts`, `AgentDetail.vue`, `client.ts` | Rename `tmux_session` -> `session_id` |
 | Tests | `server_test.go`, `hierarchy_test.go`, `lifecycle_test.go` | Update field names, add mock backend tests |
 
+### Backend comparison
+
+| Backend | Phase | Interaction model | Latency profile | Best for |
+|---------|-------|-------------------|-----------------|----------|
+| **Tmux** | 1 | Direct local tmux calls | ~1ms per op | Local dev, any agent count |
+| **Ambient** | 2 | HTTP API to ACP platform | ~100-500ms per op | Remote teams, managed infrastructure |
+| **Paude (Podman)** | 3a | Exec into local container + tmux | ~50ms per op | Local dev with isolation/network filtering |
+| **Paude (OpenShift)** | 3b | Exec into remote pod + tmux | ~500ms-2s per op | Remote with isolation, 1-5 agents |
+| **AgentCore** | 3 | AWS SDK invoke/stop | ~100-500ms per op | AWS infrastructure, model-agnostic agents |
+
 ### Known gaps (deferred)
 
 | Gap | Notes |
 |-----|-------|
 | Context/tool injection for Ambient | Ambient sessions don't inherit local boss commands. Needs workflow or MCP server approach. Deferred to Phase 2. |
+| Context/tool injection for Paude | Same as Ambient — containerized sessions need boss API access (network config) and boss commands (CLAUDE.md or MCP). Deferred to Phase 3. |
 | Cross-space session name collisions | Current `agentdeck_*` naming doesn't include space. Same agent name in two spaces can collide. PR #49 proposes a fix but is out of scope here. |
 | Session ownership/filtering | `tmuxListSessions` returns all sessions, not just agent-boss. Mitigated by naming convention but not solved. |
 | Idle detection brittleness | `isShellPrompt` relies on PS1 heuristics. Claude Code hooks would be cleaner. |
 | Model switching compaction risk | Switching from opus to haiku with large context triggers compaction. Needs separate evaluation. |
+| Paude CLI gaps | `paude start --no-attach` and `paude list --json` needed for production paude backend. Requires upstream contribution. |
