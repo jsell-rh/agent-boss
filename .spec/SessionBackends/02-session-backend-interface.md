@@ -13,17 +13,20 @@ without forking the entire coordinator.
 ## Design Goals
 
 1. **Single interface** that covers the full lifecycle: create, destroy, observe, interact
-2. **Drop-in tmux implementation** that wraps existing functions with zero behavior change
-3. **Ambient backend** implementable against the ACP public API
-4. **Per-agent backend selection** — agents in the same space can use different backends
-5. **Backward compatible** — existing `TmuxSession` field, ignition `?tmux_session=` param, and
-   all API responses continue to work
+2. **Subsume `AgentBackend`** — the new `SessionBackend` replaces the existing `AgentBackend`
+   interface from PR #47. `AgentBackend.Spawn` maps to `CreateSession`, `Stop` maps to
+   `KillSession`, `List` maps to `ListSessions`, `Name` maps to `Name`.
+3. **Drop-in tmux implementation** that wraps existing functions with zero behavior change
+4. **Ambient backend** implementable against the ACP public API
+5. **Per-agent backend selection** — agents in the same space can use different backends
 
 ## Non-Goals
 
 - Changing the agent protocol (blackboard, messages, tasks, SSE)
 - Modifying the frontend beyond renaming JSON fields
 - Implementing the Ambient backend in this design doc (separate spec)
+- Backward compatibility with `tmux_session` JSON field or `?tmux_session=` query param
+  (no production agents running — clean break)
 
 ---
 
@@ -34,6 +37,9 @@ without forking the entire coordinator.
 // Each backend (tmux, ambient, etc.) implements this interface.
 // The coordinator routes operations through it instead of calling
 // tmux functions directly.
+//
+// This replaces the existing AgentBackend interface (Spawn/Stop/List/Name)
+// with full lifecycle coverage.
 type SessionBackend interface {
     // --- Identity ---
 
@@ -53,9 +59,9 @@ type SessionBackend interface {
     // For ambient: calls POST /sessions with the command as the task.
     CreateSession(ctx context.Context, opts SessionCreateOpts) (string, error)
 
-    // KillSession stops/destroys a session by ID.
+    // KillSession permanently destroys a session by ID.
     // For tmux: kills the tmux session (gone forever).
-    // For ambient: calls POST /sessions/{id}/stop (session data preserved).
+    // For ambient: calls DELETE /sessions/{id} (permanent removal).
     KillSession(ctx context.Context, sessionID string) error
 
     // SessionExists checks whether a session with the given ID is alive.
@@ -107,8 +113,10 @@ type SessionBackend interface {
 
     // Interrupt cancels the session's current work without killing it.
     // The session remains alive and can accept new messages.
-    // For tmux: sends Ctrl-C (C-c) to the session.
+    // For tmux: sends Escape key to interrupt Claude Code.
     // For ambient: calls POST /sessions/{id}/interrupt.
+    // Note: this is a new capability — no equivalent exists in the
+    // current codebase. Claude Code uses Escape (not Ctrl-C) to interrupt.
     Interrupt(ctx context.Context, sessionID string) error
 
     // --- Discovery ---
@@ -122,7 +130,47 @@ type SessionBackend interface {
 }
 ```
 
-**Method count: 13** (was 11 in the initial draft; +`GetStatus`, +`Interrupt`)
+**Method count: 13** — maps 1:1 from the existing `AgentBackend` (4 methods) plus the 9
+additional operations that are currently hardcoded as direct tmux calls.
+
+### Role Interfaces
+
+The 13-method interface is large. Backends that don't support certain roles (e.g.,
+Ambient has no approval flow) must implement no-op methods. To support smaller
+consumers and cleaner testing, the interface is decomposable into role interfaces:
+
+```go
+// SessionLifecycle covers session creation and destruction.
+type SessionLifecycle interface {
+    CreateSession(ctx context.Context, opts SessionCreateOpts) (string, error)
+    KillSession(ctx context.Context, sessionID string) error
+    SessionExists(sessionID string) bool
+    ListSessions() ([]string, error)
+}
+
+// SessionObserver covers session status and observability.
+type SessionObserver interface {
+    GetStatus(ctx context.Context, sessionID string) (SessionStatus, error)
+    IsIdle(sessionID string) bool
+    CaptureOutput(sessionID string, lines int) ([]string, error)
+    CheckApproval(sessionID string) ApprovalInfo
+}
+
+// SessionActor covers session interaction.
+type SessionActor interface {
+    SendInput(sessionID string, text string) error
+    Approve(sessionID string) error
+    Interrupt(ctx context.Context, sessionID string) error
+}
+```
+
+`SessionBackend` embeds all three plus identity and discovery. Smaller consumers
+(e.g., the liveness loop only needs `SessionObserver`) can depend on the narrow
+interface. This makes testing easier — mock only the role you're testing.
+
+**Implementation note:** All backends still implement the full `SessionBackend`.
+The role interfaces are for *consumers*, not *providers*. Go's structural typing
+means any `SessionBackend` automatically satisfies all three role interfaces.
 
 ### Supporting Types
 
@@ -140,19 +188,23 @@ const (
     SessionStatusMissing   SessionStatus = "missing"    // session does not exist
 )
 
-// SessionCreateOpts holds parameters for creating a new session.
-// Each backend uses the fields relevant to it and ignores the rest.
+// SessionCreateOpts holds common parameters for creating a new session.
+// Backend-specific options are passed via the BackendOpts field.
 type SessionCreateOpts struct {
-    // Common
-    SessionID string // desired session name/ID (backend may adjust)
-    Command   string // tmux: shell command to run; ambient: initial task/prompt
+    SessionID string      // desired session name/ID (backend may adjust)
+    Command   string      // tmux: shell command to run; ambient: initial task/prompt
+    BackendOpts interface{} // backend-specific options (TmuxCreateOpts, AmbientCreateOpts, etc.)
+}
 
-    // Tmux-specific (ignored by ambient)
+// TmuxCreateOpts holds tmux-specific session creation options.
+type TmuxCreateOpts struct {
     WorkDir string // working directory to cd into before launching
     Width   int    // terminal width (default 220)
     Height  int    // terminal height (default 50)
+}
 
-    // Ambient-specific (ignored by tmux)
+// AmbientCreateOpts holds Ambient-specific session creation options.
+type AmbientCreateOpts struct {
     DisplayName string        // human-readable session name
     Model       string        // Claude model to use
     Repos       []SessionRepo // repositories to clone into the session
@@ -193,28 +245,8 @@ SessionID   string `json:"session_id,omitempty"`
 BackendType string `json:"backend_type,omitempty"` // "tmux", "ambient", etc.
 ```
 
-**Backward compatibility:** The JSON tag changes from `tmux_session` to `session_id`. Since agents
-POST status updates and the server preserves `SessionID` as a sticky field, old agents sending
-`tmux_session` will need a migration shim in the JSON unmarshaler:
-
-```go
-func (u *AgentUpdate) UnmarshalJSON(data []byte) error {
-    type Alias AgentUpdate
-    aux := &struct {
-        TmuxSession string `json:"tmux_session,omitempty"`
-        *Alias
-    }{Alias: (*Alias)(u)}
-    if err := json.Unmarshal(data, aux); err != nil {
-        return err
-    }
-    // Backward compat: accept tmux_session if session_id is empty
-    if u.SessionID == "" && aux.TmuxSession != "" {
-        u.SessionID = aux.TmuxSession
-        u.BackendType = "tmux"
-    }
-    return nil
-}
-```
+**No backward compatibility shim.** No production agents are running. This is a clean
+break — all references to `tmux_session` are updated in a single pass.
 
 ### DB schema
 
@@ -230,10 +262,11 @@ func (u *AgentUpdate) UnmarshalJSON(data []byte) error {
 -- Before:
 GET /spaces/{space}/ignition/{agent}?tmux_session=X
 
--- After (both accepted, old one triggers compat path):
+-- After:
 GET /spaces/{space}/ignition/{agent}?session_id=X&backend=tmux
-GET /spaces/{space}/ignition/{agent}?tmux_session=X  (compat: sets session_id=X, backend=tmux)
 ```
+
+Old `?tmux_session=` param is removed. No compat path.
 
 ---
 
@@ -280,6 +313,46 @@ func (s *Server) backendFor(agent *AgentUpdate) SessionBackend {
 
 ---
 
+## Reconciliation with `AgentBackend` (PR #47)
+
+The existing `AgentBackend` interface from PR #47 is **folded into** `SessionBackend`.
+`agent_backend.go` is deleted, and all callers are migrated.
+
+| `AgentBackend` method | `SessionBackend` equivalent | Notes |
+|----------------------|---------------------------|-------|
+| `Name()` | `Name()` | Identical |
+| `Spawn(ctx, spec)` | `CreateSession(ctx, opts)` | `AgentSpec` fields map to `SessionCreateOpts` + `TmuxCreateOpts` |
+| `Stop(ctx, space, name)` | `KillSession(ctx, sessionID)` | Callers must resolve the session ID first |
+| `List(ctx, space)` | `ListSessions()` | Backend returns all sessions; caller filters by space |
+
+### `AgentSpec` -> `SessionCreateOpts` mapping
+
+```go
+// AgentSpec (PR #47):
+type AgentSpec struct {
+    Space, Name, Command, WorkDir string
+    Width, Height int
+}
+
+// Becomes:
+opts := SessionCreateOpts{
+    SessionID:   spec.Name,
+    Command:     spec.Command,
+    BackendOpts: TmuxCreateOpts{
+        WorkDir: spec.WorkDir,
+        Width:   spec.Width,
+        Height:  spec.Height,
+    },
+}
+```
+
+### `handleCreateAgents` migration
+
+This is the only consumer of `AgentBackend`. It currently calls `s.backend.Spawn(ctx, spec)`.
+After migration, it calls `s.backendFor(agent).CreateSession(ctx, opts)`.
+
+---
+
 ## Migration Plan: Which Code Changes
 
 ### Phase 1: Interface + TmuxBackend (this PR)
@@ -287,21 +360,61 @@ func (s *Server) backendFor(agent *AgentUpdate) SessionBackend {
 | Current code | Change |
 |-------------|--------|
 | `tmux.go` top-level functions | Keep as-is. `TmuxSessionBackend` delegates to them. |
-| `agent_backend.go` | Replace `AgentBackend` with `SessionBackend`. Remove `TmuxBackend`/`CloudBackend` (superseded). |
+| `agent_backend.go` | Delete entirely. `AgentBackend`, `TmuxBackend`, `CloudBackend`, `AgentSpec`, `AgentInfo` all superseded. `tmuxDefaultSession` and `shellQuote` move to `session_backend_tmux.go`. |
 | `lifecycle.go` handlers | Route through `s.backendFor(agent)` instead of calling tmux directly |
 | `liveness.go` loop | Route through backend instead of calling tmux directly |
 | `handlers_agent.go` approve/reply/introspect/tmux-status | Route through backend |
+| `handlers_agent.go` `handleCreateAgents` | Replace `s.backend.Spawn` with `s.backendFor(agent).CreateSession` |
 | `tmux.go` broadcast/check-in | Route through backend for sendkeys/idle/approve |
 | `types.go` `AgentUpdate` | Rename `TmuxSession` -> `SessionID`, add `BackendType` |
 | `db/models.go` | Rename column |
 | `db/convert.go` | Update field mappings |
-| `handlers_agent.go` ignition | Accept both `?session_id=` and `?tmux_session=` |
+| `handlers_agent.go` ignition | Replace `?tmux_session=` with `?session_id=&backend=` |
 | `server.go` | Add `backends` map, initialize with tmux backend |
 | Frontend types | Rename `tmux_session` -> `session_id` |
 
 ### Phase 2: Ambient Backend (follow-up PR)
 
 Implement `AmbientSessionBackend` using ACP public API. Separate spec.
+
+---
+
+## Migration Sequencing
+
+The rename and refactoring must be done in a specific order to avoid breaking
+the build at any intermediate step:
+
+```
+Step 1: Add new files
+  - session_backend.go (interface, types)
+  - session_backend_tmux.go (TmuxSessionBackend)
+  Both compile independently. Existing code unchanged.
+
+Step 2: Add backend registry to Server
+  - server.go: add backends map, defaultBackend, backendFor()
+  - Initialize with TmuxSessionBackend in NewServer()
+  Existing code still works — backends is additive.
+
+Step 3: Migrate handlers one at a time
+  - Each handler switches from direct tmux calls to s.backendFor(agent)
+  - Do this file-by-file: lifecycle.go, liveness.go, handlers_agent.go, tmux.go (broadcast)
+  - Each file is independently testable after migration.
+
+Step 4: Rename data model fields
+  - types.go: TmuxSession -> SessionID, add BackendType
+  - db/models.go, db/convert.go, db_adapter.go: rename column
+  - handlers_agent.go: update ignition query param
+  - Frontend: update types and components
+  This is the "big bang" step — do it all at once since field
+  names are referenced across the stack.
+
+Step 5: Delete old code
+  - Delete agent_backend.go
+  - Remove any remaining direct tmux calls from handlers
+  - Remove isNonTmuxAgent / nonTmuxLifecycleError helpers
+```
+
+Each step produces a compilable, testable codebase.
 
 ---
 
@@ -316,7 +429,7 @@ Before:
   tmuxSendKeys(session, igniteCmd)
 
 After:
-  backend := s.backends["tmux"]  // or from request
+  backend := s.backendFor(agent)  // or from request
   sessionID, err := backend.CreateSession(ctx, opts)
   backend.SendInput(sessionID, igniteCmd)
 ```
@@ -403,7 +516,7 @@ After:
 
 ### `handleSpaceTmuxStatus` -> generalize to `handleSpaceSessionStatus`
 
-Rename route from `/api/tmux-status` to `/api/session-status` (keep `/api/tmux-status` as alias).
+Rename route from `/api/tmux-status` to `/api/session-status`.
 Response struct rename `tmuxAgentStatus` -> `agentSessionStatus`.
 
 ### `BroadcastCheckIn` / `SingleAgentCheckIn` -> route through backend
@@ -444,30 +557,18 @@ After:
 ### `/api/tmux-status` -> `/api/session-status`
 
 ```json
-// Before:
-{ "agent": "FE", "session": "agentdeck_FE_1", "registered": true, "exists": true, "idle": false, "needs_approval": true }
-
-// After:
-{ "agent": "FE", "session_id": "agentdeck_FE_1", "backend": "tmux", "registered": true, "exists": true, "idle": false, "needs_approval": true }
+{ "agent": "FE", "session_id": "myspace-FE", "backend": "tmux", "registered": true, "exists": true, "idle": false, "needs_approval": true }
 ```
 
 ### Agent JSON
 
 ```json
-// Before:
-{ "status": "active", "tmux_session": "FE", ... }
-
-// After:
 { "status": "active", "session_id": "FE", "backend_type": "tmux", ... }
 ```
 
 ### Spawn/restart responses
 
 ```json
-// Before:
-{ "ok": true, "tmux_session": "FE" }
-
-// After:
 { "ok": true, "session_id": "FE", "backend": "tmux" }
 ```
 
@@ -477,8 +578,7 @@ After:
 
 ### `tmux_liveness` -> `session_liveness`
 
-Keep `tmux_liveness` as an alias for one release cycle. The payload changes from
-`"session": "X"` to `"session_id": "X"` with a new `"backend": "tmux"` field.
+Rename the event type. No alias — clean break.
 
 ---
 
@@ -487,4 +587,4 @@ Keep `tmux_liveness` as an alias for one release cycle. The payload changes from
 1. **All existing tests pass** after refactoring (behavior-preserving)
 2. **New unit tests** for `TmuxSessionBackend` implementing `SessionBackend`
 3. **Mock backend** for integration tests that don't require tmux
-4. **Backward compat tests** for `tmux_session` JSON field and `?tmux_session=` query param
+4. **Role interface tests** — verify backends satisfy `SessionObserver`, etc.

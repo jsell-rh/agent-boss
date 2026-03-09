@@ -2,6 +2,9 @@
 
 Implementation of `SessionBackend` backed by the Ambient Code Platform public API.
 
+**Dependency:** Requires [platform PR #855](https://github.com/ambient-code/platform/pull/855)
+to be merged. Assumes no major changes to the OpenAPI spec.
+
 ## Ambient Public API Summary
 
 | Endpoint | Method | Purpose |
@@ -37,12 +40,53 @@ The two backends have fundamentally different interaction models:
 | "Send input" | `tmux send-keys` text + Enter | `POST /sessions/{id}/message` |
 | "Approval check" | Parse terminal for "Do you want...?" | Not applicable (sessions run with configured permissions). Returns `NeedsApproval: false`. |
 | "Approve" | `tmux send-keys Enter` | Not applicable. No-op. |
-| "Kill" | `tmux kill-session` (gone forever) | `POST /sessions/{id}/stop` (session data preserved) |
+| "Kill" (permanent) | `tmux kill-session` (gone forever) | `DELETE /sessions/{id}` (permanent removal) |
+| "Stop" (preserve) | Not available | `POST /sessions/{id}/stop` (pod terminated, session data preserved) |
 | "Create" | `tmux new-session -d -s name` | `POST /sessions` (async pod creation) |
 | "Discovery" | Parse `agentdeck_*` session names | List sessions, match by `display_name` convention |
-| "Interrupt" | `tmux send-keys C-c` | `POST /sessions/{id}/interrupt` |
+| "Interrupt" | `tmux send-keys Escape` | `POST /sessions/{id}/interrupt` |
 | "Status" | Inferred from existence + idle + approval | Explicit: pending/running/completed/failed |
 | "Resume" | Not possible (create new session) | `POST /sessions/{id}/start` |
+
+### Kill vs Stop
+
+Ambient distinguishes between two levels of session termination:
+
+- **`DELETE /sessions/{id}`** — permanent. Removes the session resource and all
+  associated data. This is the semantic equivalent of `tmux kill-session`.
+- **`POST /sessions/{id}/stop`** — graceful. Stops the pod but preserves session
+  data, output history, and the session resource. The session can be resumed
+  later with `POST /sessions/{id}/start`.
+
+`KillSession` maps to `DELETE` (permanent), matching the tmux behavior. The
+stop/resume flow is a separate Ambient capability not exposed in the current
+interface. A future `StopSession`/`ResumeSession` pair could be added as an
+optimization — the coordinator's `handleAgentRestart` currently does kill + create,
+which works for both backends.
+
+---
+
+## Known Gap: Context and Tool Injection
+
+**Problem:** Tmux sessions are launched in an environment where agent-boss commands
+(`/boss.check`, `/boss.ignite`, etc.) are available as Claude Code slash commands
+or via the CLAUDE.md configuration. The session inherits the local filesystem
+context, MCP servers, and tool configurations.
+
+Ambient sessions are remote Kubernetes pods. They do not automatically have access
+to agent-boss commands. The boss commands must be provided through one of:
+
+1. **Ambient workflows** — structured configs defining system prompts, slash
+   commands, and tool access. This is the Ambient-native approach but requires
+   designing a workflow specifically for agent-boss.
+2. **Session creation options** — some minimal context can be passed at creation
+   time via the `task` field and repo configuration.
+3. **MCP server configuration** — Ambient sessions can connect to MCP servers.
+   An agent-boss MCP server could expose boss commands as tools.
+
+**Decision:** Defer to Phase 2 implementation. This gap will surface during
+Ambient backend integration and must be resolved before Ambient agents can
+participate in the broadcast/check-in flow.
 
 ---
 
@@ -113,40 +157,34 @@ for scenarios like: "agent is stuck on a bad task, cancel and reassign."
 ```go
 // Interrupt cancels the session's current work without killing the session.
 // The session remains alive and can accept new messages.
-// For tmux: sends Ctrl-C (C-c) to the session.
+// For tmux: sends Escape key to the session (Claude Code interrupt).
 // For ambient: calls POST /sessions/{id}/interrupt.
 Interrupt(ctx context.Context, sessionID string) error
 ```
 
-### Gap 3: `SessionCreateOpts` needs ambient-specific fields
+Note: this is a new capability. No equivalent exists in the current codebase.
+For tmux, the implementation sends the Escape key (Claude Code uses Escape, not
+Ctrl-C, to interrupt).
+
+### Gap 3: `SessionCreateOpts` needs backend-specific options
 
 **Problem:** Ambient sessions need `task` (initial prompt), `display_name`, `model`,
-and `repos`. The current `SessionCreateOpts` only has tmux-specific fields (`Width`,
-`Height`).
+and `repos`. These are not relevant to tmux.
 
-**Solution:** Make `SessionCreateOpts` a union of all backend fields. Each backend
-ignores fields it doesn't use.
+**Solution:** Use a generic `BackendOpts interface{}` field on `SessionCreateOpts`.
+Each backend defines its own options struct and type-asserts at runtime.
 
 ```go
 type SessionCreateOpts struct {
-    // Common
-    SessionID string // desired session name/ID
-    Command   string // tmux: shell command; ambient: mapped to task
-
-    // Tmux-specific (ignored by ambient)
-    WorkDir string
-    Width   int
-    Height  int
-
-    // Ambient-specific (ignored by tmux)
-    DisplayName string            // human-readable session name
-    Model       string            // Claude model to use
-    Repos       []SessionRepo     // repositories to clone
+    SessionID   string      // desired session name/ID
+    Command     string      // tmux: shell command; ambient: mapped to task
+    BackendOpts interface{} // backend-specific (TmuxCreateOpts, AmbientCreateOpts, etc.)
 }
 
-type SessionRepo struct {
-    URL    string `json:"url"`
-    Branch string `json:"branch,omitempty"`
+type AmbientCreateOpts struct {
+    DisplayName string        // human-readable session name
+    Model       string        // Claude model to use
+    Repos       []SessionRepo // repositories to clone
 }
 ```
 
@@ -229,16 +267,25 @@ func (b *AmbientSessionBackend) CreateSession(ctx context.Context, opts SessionC
     body := map[string]interface{}{
         "task": opts.Command, // Command maps to the initial task/prompt
     }
-    if opts.DisplayName != "" {
-        body["display_name"] = opts.DisplayName
+
+    // Extract ambient-specific options
+    var ambientOpts AmbientCreateOpts
+    if opts.BackendOpts != nil {
+        if ao, ok := opts.BackendOpts.(AmbientCreateOpts); ok {
+            ambientOpts = ao
+        }
+    }
+
+    if ambientOpts.DisplayName != "" {
+        body["display_name"] = ambientOpts.DisplayName
     } else if opts.SessionID != "" {
         body["display_name"] = opts.SessionID
     }
-    if opts.Model != "" {
-        body["model"] = opts.Model
+    if ambientOpts.Model != "" {
+        body["model"] = ambientOpts.Model
     }
-    if len(opts.Repos) > 0 {
-        body["repos"] = opts.Repos
+    if len(ambientOpts.Repos) > 0 {
+        body["repos"] = ambientOpts.Repos
     }
 
     // POST /v1/sessions
@@ -256,12 +303,12 @@ ignite prompt as their first message anyway.
 
 #### `KillSession(ctx, id) error`
 
-Maps to `POST /v1/sessions/{id}/stop`. Does NOT delete — preserves session data.
+Maps to `DELETE /v1/sessions/{id}`. Permanently removes the session.
 
 ```go
 func (b *AmbientSessionBackend) KillSession(ctx context.Context, sessionID string) error {
-    // POST /v1/sessions/{id}/stop
-    // Accept 202 (stopped) or 422 (already stopped) as success
+    // DELETE /v1/sessions/{id}
+    // Accept 200 (deleted) or 404 (already gone) as success
 }
 ```
 
@@ -451,20 +498,38 @@ end time, and event stream. This is important for:
   message. This may not work as intended — Ambient sessions have a fixed model
   set at creation. Model switching may need to be a no-op or handled differently.
 
-### 4. No approval flow
+### 4. Model switching concern
+
+The broadcast check-in flow switches agents to a cheaper model (`/model haiku`)
+before sending the check-in prompt, then restores the work model afterward. This
+is problematic for two reasons:
+
+- **Ambient:** Sessions have a fixed model set at creation. `/model` is a Claude
+  Code slash command, not an Ambient API concept. Sending it as a message would
+  be interpreted as a task, not a model switch.
+- **Context compaction risk:** Even for tmux, switching from opus (1M context) to
+  haiku with 300K tokens in context would trigger compaction, potentially losing
+  important context.
+
+For non-tmux backends, the coordinator should skip model switching entirely.
+For tmux, the model-switch behavior is preserved but the compaction risk should
+be evaluated separately.
+
+### 5. No approval flow
 
 Ambient sessions run with the permissions configured at session creation. There
 are no interactive approval prompts. The entire approval detection + interrupt
 ledger pipeline in the liveness loop becomes a no-op for Ambient agents.
 
-### 5. Persistent sessions
+### 6. Persistent sessions
 
 Tmux sessions are ephemeral — if the machine reboots, they're gone. Ambient
 sessions are persistent Kubernetes resources with stored state. `KillSession`
-(= stop) preserves the session and its history. This means:
+(= `DELETE`) permanently removes the session. For non-destructive pause, use
+the Ambient-specific `POST /stop` endpoint (not exposed in the interface).
 
-- Sessions can be resumed (`POST /start`) after being stopped
-- Session output/history survives restarts
+- Sessions can be resumed (`POST /start`) after being stopped (not killed)
+- Session output/history survives stops
 - The coordinator could reconnect to existing sessions after its own restart
 
 ---
@@ -533,7 +598,8 @@ tmux-dependent flow. Here's how it adapts for Ambient:
 ### Ambient adaptation
 
 ```
-1. Skip model switch:       Ambient sessions have a fixed model (or handle it via message)
+1. Skip model switch:       Ambient sessions have a fixed model; model switching
+                            risks context compaction even for tmux (see §4 above)
 2. Check status:            backend.GetStatus() == idle
 3. Send check-in:           backend.SendInput("/boss.check Agent Space")
 4. Wait for board post:     poll agentUpdatedAt() every 3s (same — blackboard is boss-side)
@@ -541,9 +607,8 @@ tmux-dependent flow. Here's how it adapts for Ambient:
 6. Check status:            backend.GetStatus() == idle
 ```
 
-The key difference: steps 1 and 5 (model switching) may be no-ops for Ambient.
 The coordinator should check `backend.Name()` and skip model switching for
-non-tmux backends, or attempt it as a message and tolerate failure.
+non-tmux backends.
 
 ---
 
@@ -551,7 +616,7 @@ non-tmux backends, or attempt it as a message and tolerate failure.
 
 ```
 internal/coordinator/
-  session_backend.go              # Interface, types, SessionStatus
+  session_backend.go              # Interface, types, SessionStatus, role interfaces
   session_backend_tmux.go         # TmuxSessionBackend
   session_backend_ambient.go      # AmbientSessionBackend (this spec)
   tmux.go                         # Low-level tmux primitives (unchanged)

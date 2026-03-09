@@ -7,7 +7,7 @@ Every place in the codebase that directly touches tmux, categorized by purpose.
 | Function | What it does | Called by |
 |----------|-------------|-----------|
 | `tmuxAvailable()` | Checks if `tmux` binary is in PATH | `TmuxAutoDiscover`, `BroadcastCheckIn`, `SingleAgentCheckIn`, `checkAllSessionLiveness` |
-| `tmuxListSessions()` | Runs `tmux list-sessions -F #S` | `tmuxSessionExists`, `TmuxAutoDiscover` |
+| `tmuxListSessions()` | Runs `tmux list-sessions -F #S`. **Note:** returns ALL tmux sessions on the machine, not just agent-boss sessions. Needs filtering/tagging mechanism (see §Session Ownership below). | `tmuxSessionExists`, `TmuxAutoDiscover` |
 | `tmuxSessionExists(session)` | Checks if a named session is in the list | `handleAgentSpawn`, `handleAgentStop`, `handleAgentRestart`, `handleAgentIntrospect`, `BroadcastCheckIn`, `handleApproveAgent`, `handleReplyAgent`, `handleSpaceTmuxStatus`, `TmuxBackend.Spawn`, `TmuxBackend.Stop`, `checkAllSessionLiveness` |
 | `tmuxCapturePaneLines(session, n)` | Runs `tmux capture-pane -t session -p`, returns last N non-empty lines | `tmuxIsIdle`, `tmuxCheckApproval`, `handleAgentIntrospect`, `handleSpaceTmuxStatus` |
 | `tmuxCapturePaneLastLine(session)` | Wrapper: captures last 1 line | `handleSpaceTmuxStatus` |
@@ -22,7 +22,7 @@ Every place in the codebase that directly touches tmux, categorized by purpose.
 | Function | What it does |
 |----------|-------------|
 | `lineIsIdleIndicator(line)` | Returns true if a line matches known idle patterns: `>`, shell `$`/`%`/`#`, Claude Code hints, status bars |
-| `isShellPrompt(line)` | Detects `$`, `%`, `>`, `#`, `>` as trailing prompt characters |
+| `isShellPrompt(line)` | Detects `$`, `%`, `>`, `#` as trailing prompt characters. **Brittle:** assumes PS1 follows convention. A cleaner approach would be using [Claude Code hooks](https://code.claude.com/docs/en/hooks) to emit structured idle/busy signals instead of parsing terminal output. |
 | `waitForIdle(session, timeout)` | Polls `tmuxIsIdle` every 3s until idle or timeout |
 | `waitForBoardPost(space, agent, since, timeout)` | Polls `agentUpdatedAt` every 3s (not tmux-specific, but used exclusively by broadcast which is tmux-only) |
 
@@ -108,3 +108,22 @@ Every place in the codebase that directly touches tmux, categorized by purpose.
 | `docs/lifecycle-spec.md` | Spawn/stop/restart reference `tmux_session` |
 | `docs/api-reference.md` | API docs reference `tmux_session` |
 | `docs/hierarchy-design.md` | Compares parent stickiness to `TmuxSession` |
+
+## Session Ownership
+
+`tmuxListSessions()` returns ALL tmux sessions on the machine — not just those
+created by agent-boss. This means discovery and liveness can incorrectly interact
+with unrelated sessions.
+
+Currently, agent-boss sessions are identified by naming convention only:
+- Legacy: `agentdeck_{name}_{timestamp}` (parsed by `parseTmuxAgentName`)
+- PR #49: `{space}-{agent}` (parsed by space prefix matching)
+
+Neither convention provides a strong ownership guarantee. Options for improvement:
+- **tmux environment variable**: set `@agent_boss=true` on sessions at creation,
+  filter by it during listing
+- **Dedicated tmux server**: use `tmux -L agent-boss` to isolate sessions entirely
+- **Prefix convention**: require a fixed prefix (e.g., `ab-{space}-{agent}`) that
+  is unlikely to collide with user sessions
+
+This is out of scope for the current refactoring but should be addressed.

@@ -8,6 +8,7 @@
 | [02-session-backend-interface.md](02-session-backend-interface.md) | `SessionBackend` interface, data model changes, migration plan |
 | [03-tmux-backend.md](03-tmux-backend.md) | `TmuxSessionBackend` implementation, method mapping, file layout |
 | [04-ambient-backend.md](04-ambient-backend.md) | `AmbientSessionBackend` implementation, API mapping, behavioral differences |
+| [05-agentcore-feasibility.md](05-agentcore-feasibility.md) | AWS Bedrock AgentCore feasibility analysis |
 
 ## Summary
 
@@ -15,10 +16,11 @@
 
 - **tmux hardcoded everywhere**: 10+ functions in `tmux.go`, called directly from lifecycle
   handlers, liveness loop, broadcast, introspect, approve, and reply.
-- **Nascent `AgentBackend` interface** in `agent_backend.go` with `Spawn/Stop/List/Name`. Only
-  used by `handleCreateAgents`. All other code bypasses it.
+- **`AgentBackend` interface** in `agent_backend.go` (PR #47) with `Spawn/Stop/List/Name`.
+  Only used by `handleCreateAgents`. All other code bypasses it.
 - **`AgentUpdate.TmuxSession`** is the field that links an agent to its session. Used across
   types, DB models, handlers, frontend, scripts, and docs.
+- **`tmuxDefaultSession`** (PR #49, open) proposes space-scoped names `{space}-{agent}` — not adopted here.
 
 ### What this design introduces
 
@@ -27,15 +29,24 @@
   `ListSessions`), status (`GetStatus`), observability (`IsIdle`, `CaptureOutput`,
   `CheckApproval`), interaction (`SendInput`, `Approve`, `Interrupt`), and discovery
   (`DiscoverSessions`).
-- **`TmuxSessionBackend`** — pure wrapper around existing tmux functions. Zero behavior change.
+- **Role interfaces** (`SessionLifecycle`, `SessionObserver`, `SessionActor`) for
+  narrow consumer dependencies and easier testing.
+- **`TmuxSessionBackend`** — wraps existing tmux functions. Preserves current
+  `agentdeck_*` naming convention. Zero behavior change.
 - **`AmbientSessionBackend`** — backed by the ACP public API (`POST /sessions`,
-  `POST /message`, `GET /output`, `POST /stop`, `POST /interrupt`, etc.).
-- **`AgentUpdate.SessionID`** + **`AgentUpdate.BackendType`** — replaces `TmuxSession` with
-  backend-agnostic fields. Backward-compatible JSON unmarshaling for old `tmux_session` payloads.
-- **`Server.backends`** registry — map of backend name to implementation. Agents carry their
-  backend type; the server resolves the right implementation per-agent.
+  `POST /message`, `GET /output`, `DELETE /sessions/{id}`, `POST /interrupt`, etc.).
+  Depends on platform PR #855.
+- **Subsumes `AgentBackend`** — the existing interface from PR #47 is folded into
+  `SessionBackend`. `agent_backend.go` is deleted.
+- **`AgentUpdate.SessionID`** + **`AgentUpdate.BackendType`** — replaces `TmuxSession`
+  with backend-agnostic fields. No backward-compat shim (clean break).
+- **`Server.backends`** registry — map of backend name to implementation. Agents carry
+  their backend type; the server resolves the right implementation per-agent.
 - **`SessionStatus`** enum — unified status model (`unknown`, `pending`, `running`, `idle`,
-  `completed`, `failed`, `missing`) that both backends map into.
+  `completed`, `failed`, `missing`) that all backends map into.
+- **`BackendOpts interface{}`** — backend-specific creation options. Each backend defines
+  its own options struct (`TmuxCreateOpts`, `AmbientCreateOpts`), keeping backend-specific
+  code contained within each backend.
 
 ### Interface at a glance
 
@@ -69,7 +80,7 @@ type SessionBackend interface {
 |------|---------------|-----------------|
 | Interface definition | New: `session_backend.go` | New file |
 | Tmux backend | New: `session_backend_tmux.go` | Wraps existing functions |
-| Old backend | Delete: `agent_backend.go` | Superseded |
+| Old backend | Delete: `agent_backend.go` | Superseded (folded into SessionBackend) |
 | Tmux primitives | `tmux.go` | Unchanged (kept as unexported helpers) |
 | Data model | `types.go`, `db/models.go`, `db/convert.go`, `db_adapter.go` | Rename `TmuxSession` -> `SessionID`, add `BackendType` |
 | Server | `server.go` | Add `backends` map, `backendFor()` helper |
@@ -79,3 +90,13 @@ type SessionBackend interface {
 | Broadcast | `tmux.go` (orchestration funcs) | Route through backend |
 | Frontend | `types/index.ts`, `AgentDetail.vue`, `client.ts` | Rename `tmux_session` -> `session_id` |
 | Tests | `server_test.go`, `hierarchy_test.go`, `lifecycle_test.go` | Update field names, add mock backend tests |
+
+### Known gaps (deferred)
+
+| Gap | Notes |
+|-----|-------|
+| Context/tool injection for Ambient | Ambient sessions don't inherit local boss commands. Needs workflow or MCP server approach. Deferred to Phase 2. |
+| Cross-space session name collisions | Current `agentdeck_*` naming doesn't include space. Same agent name in two spaces can collide. PR #49 proposes a fix but is out of scope here. |
+| Session ownership/filtering | `tmuxListSessions` returns all sessions, not just agent-boss. Mitigated by naming convention but not solved. |
+| Idle detection brittleness | `isShellPrompt` relies on PS1 heuristics. Claude Code hooks would be cleaner. |
+| Model switching compaction risk | Switching from opus to haiku with large context triggers compaction. Needs separate evaluation. |
