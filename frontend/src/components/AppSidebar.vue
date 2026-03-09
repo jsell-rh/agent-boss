@@ -90,6 +90,10 @@ const sortedSpaces = computed(() => {
   })
 })
 
+const activeSpaces = computed(() => sortedSpaces.value.filter(s => !s.archive))
+const archivedSpaces = computed(() => sortedSpaces.value.filter(s => !!s.archive))
+const archivedOpen = ref(false)
+
 // Sort order matching card grid: error first, then blocked, active, idle, done
 const STATUS_ORDER: Record<string, number> = { error: 0, blocked: 1, active: 2, idle: 3, done: 4 }
 
@@ -171,20 +175,24 @@ watch(
 
 // Space delete confirmation
 const spaceToDelete = ref<string | null>(null)
+const deleteDialogOpen = ref(false)
 
 function requestDeleteSpace(name: string) {
   spaceToDelete.value = name
+  deleteDialogOpen.value = true
 }
 
 function confirmDeleteSpace() {
   if (spaceToDelete.value) {
     emit('delete-space', spaceToDelete.value)
-    spaceToDelete.value = null
   }
+  spaceToDelete.value = null
+  deleteDialogOpen.value = false
 }
 
 function cancelDeleteSpace() {
   spaceToDelete.value = null
+  deleteDialogOpen.value = false
 }
 
 // Attention count: use server-provided value, but for the selected space
@@ -291,7 +299,7 @@ function submitNewSpace() {
         </SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
-            <SidebarMenuItem v-for="space in sortedSpaces" :key="space.name" class="group/space-item">
+            <SidebarMenuItem v-for="space in activeSpaces" :key="space.name" class="group/space-item">
               <Tooltip>
                 <TooltipTrigger as-child>
                   <SidebarMenuButton
@@ -351,12 +359,82 @@ function submitNewSpace() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>
-            <SidebarMenuItem v-if="spaces.length === 0">
+            <SidebarMenuItem v-if="activeSpaces.length === 0 && archivedSpaces.length === 0">
               <div class="px-2 py-3 text-sm text-muted-foreground font-text">
                 No spaces yet — agents will create spaces when they register
               </div>
             </SidebarMenuItem>
           </SidebarMenu>
+
+          <!-- Archived spaces collapsible section -->
+          <Collapsible v-if="archivedSpaces.length > 0" v-model:open="archivedOpen">
+            <CollapsibleTrigger
+              class="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer select-none"
+              :aria-expanded="archivedOpen"
+            >
+              <ChevronRight
+                :class="['size-3 transition-transform', archivedOpen && 'rotate-90']"
+                aria-hidden="true"
+              />
+              Archived
+              <span class="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
+                {{ archivedSpaces.length }}
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu>
+                <SidebarMenuItem v-for="space in archivedSpaces" :key="space.name" class="group/space-item">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <SidebarMenuButton
+                        :data-active="space.name === selectedSpace"
+                        :aria-current="space.name === selectedSpace ? 'true' : undefined"
+                        class="flex flex-col items-start h-auto py-2 gap-0.5 opacity-60"
+                        @click="handleSelectSpace(space.name)"
+                      >
+                        <div class="flex items-center gap-1.5 w-full">
+                          <Archive class="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span class="truncate leading-tight">{{ space.name }}</span>
+                        </div>
+                        <span class="text-[10px] text-muted-foreground leading-none pl-5">{{ relativeTime(space.updated_at) }}</span>
+                      </SidebarMenuButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <div>{{ space.name }} (archived)</div>
+                      <div class="text-xs text-muted-foreground">Last active: {{ relativeTime(space.updated_at) }}</div>
+                    </TooltipContent>
+                  </Tooltip>
+                  <!-- Space context menu for archived spaces -->
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <SidebarMenuAction
+                        :show-on-hover="true"
+                        :aria-label="`Options for space ${space.name}`"
+                      >
+                        <MoreHorizontal class="size-4" aria-hidden="true" />
+                      </SidebarMenuAction>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start">
+                      <DropdownMenuItem
+                        class="cursor-pointer"
+                        @click="emit('archive-space', space.name)"
+                      >
+                        <Archive class="size-4 mr-2" aria-hidden="true" />
+                        Unarchive space
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        class="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                        @click="requestDeleteSpace(space.name)"
+                      >
+                        <Trash2 class="size-4 mr-2" aria-hidden="true" />
+                        Delete space
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroupContent>
       </SidebarGroup>
 
@@ -617,7 +695,7 @@ function submitNewSpace() {
   </Sidebar>
 
   <!-- Delete space confirmation dialog -->
-  <AlertDialog :open="spaceToDelete !== null" @update:open="(v) => { if (!v) cancelDeleteSpace() }">
+  <AlertDialog v-model:open="deleteDialogOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>Delete space "{{ spaceToDelete }}"?</AlertDialogTitle>
