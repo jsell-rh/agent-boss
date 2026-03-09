@@ -263,28 +263,31 @@ const enrichedMessages = computed((): MessageEntry[] => {
                 </TooltipContent>
               </Tooltip>
 
-              <!-- Timestamp + delivered (last message in group only) -->
+              <!-- Timestamp + read/delivered status (last message in group only) -->
               <div
                 v-if="entry.isLastInGroup"
-                :class="[
-                  'flex items-center gap-1 mt-1 px-1',
-                  entry.isBoss ? 'flex-row' : 'flex-row',
-                ]"
+                class="flex items-center gap-1.5 mt-1 px-1"
               >
                 <time :datetime="entry.msg.timestamp" class="text-xs text-muted-foreground">
                   {{ formatTime(entry.msg.timestamp) }}
                 </time>
+                <!-- Read receipt: double-check in blue when read, single grey when delivered -->
                 <span
                   v-if="entry.isBoss && entry.msg.read"
-                  class="flex items-center gap-0.5 text-xs text-muted-foreground"
+                  class="flex items-center gap-0 text-xs font-medium text-primary"
+                  title="Read by agent"
                 >
-                  <Check class="size-3" />Read
+                  <Check class="size-3.5 -mr-1" />
+                  <Check class="size-3.5" />
+                  <span class="ml-1">Read</span>
                 </span>
                 <span
                   v-else-if="entry.isBoss"
                   class="flex items-center gap-0.5 text-xs text-muted-foreground"
+                  title="Delivered to agent"
                 >
-                  <Check class="size-3" />Delivered
+                  <Check class="size-3.5" />
+                  <span>Delivered</span>
                 </span>
               </div>
             </div>
