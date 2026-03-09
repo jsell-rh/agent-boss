@@ -4,6 +4,7 @@ import { STATUS_DISPLAY } from '@/types'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { relativeTime } from '@/composables/useTime'
+import { prLink } from '@/lib/utils'
 import {
   Sidebar,
   SidebarContent,
@@ -48,7 +49,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown } from 'lucide-vue-next'
+import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown, Archive } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
@@ -65,6 +66,7 @@ const emit = defineEmits<{
   broadcast: []
   'delete-space': [name: string]
   'create-space': [name: string]
+  'archive-space': [name: string]
 }>()
 
 const router = useRouter()
@@ -315,6 +317,13 @@ function submitNewSpace() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start">
                   <DropdownMenuItem
+                    class="cursor-pointer"
+                    @click="emit('archive-space', space.name)"
+                  >
+                    <Archive class="size-4 mr-2" aria-hidden="true" />
+                    Archive space
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
                     class="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
                     @click="requestDeleteSpace(space.name)"
                   >
@@ -426,14 +435,18 @@ function submitNewSpace() {
                           </TooltipContent>
                         </Tooltip>
                         <a
-                          v-if="agent.pr"
-                          :href="agent.pr"
+                          v-if="agent.pr && prLink(agent)"
+                          :href="prLink(agent)!"
                           target="_blank"
                           rel="noopener noreferrer"
                           class="text-[10px] text-primary hover:underline shrink-0"
-                          :title="agent.pr"
+                          :title="prLink(agent)!"
                           @click.stop
-                        >PR</a>
+                        >{{ agent.pr }}</a>
+                        <span
+                          v-else-if="agent.pr"
+                          class="text-[10px] text-muted-foreground shrink-0"
+                        >{{ agent.pr }}</span>
                       </div>
                     </div>
                   </SidebarMenuButton>
@@ -519,14 +532,18 @@ function submitNewSpace() {
                               </TooltipContent>
                             </Tooltip>
                             <a
-                              v-if="agent.pr"
-                              :href="agent.pr"
+                              v-if="agent.pr && prLink(agent)"
+                              :href="prLink(agent)!"
                               target="_blank"
                               rel="noopener noreferrer"
                               class="text-[10px] text-primary hover:underline shrink-0"
-                              :title="agent.pr"
+                              :title="prLink(agent)!"
                               @click.stop
-                            >PR</a>
+                            >{{ agent.pr }}</a>
+                            <span
+                              v-else-if="agent.pr"
+                              class="text-[10px] text-muted-foreground shrink-0"
+                            >{{ agent.pr }}</span>
                           </div>
                         </div>
                       </SidebarMenuButton>

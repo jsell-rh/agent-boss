@@ -32,6 +32,7 @@ import {
   Radio,
   Bell,
   Trash2,
+  Archive,
   MessageSquare,
   SendHorizontal,
   HelpCircle,
@@ -65,6 +66,7 @@ const emit = defineEmits<{
   'broadcast-agent': [name: string]
   'send-message-to-agent': [agentName: string, text: string]
   'delete-space': []
+  'archive-space': []
   'clear-done-agents': [names: string[]]
 }>()
 
@@ -280,6 +282,16 @@ const activeSections = computed(() => [
 <template>
   <ScrollArea class="flex-1 min-h-0">
     <div class="p-6 space-y-6 max-w-7xl">
+      <!-- Archived banner -->
+      <div
+        v-if="space.archive"
+        class="flex items-center gap-2 px-3 py-2 rounded-md bg-muted border border-border text-sm text-muted-foreground mb-2"
+        role="status"
+      >
+        <Archive class="size-4 shrink-0" aria-hidden="true" />
+        <span>This space is archived. <span class="font-mono text-xs">{{ space.archive }}</span></span>
+      </div>
+
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
@@ -319,6 +331,22 @@ const activeSections = computed(() => [
             </TooltipTrigger>
             <TooltipContent>
               Remove all {{ doneIdleAgents.length }} done or idle agent{{ doneIdleAgents.length !== 1 ? 's' : '' }} from this space
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                :class="space.archive ? 'text-muted-foreground' : ''"
+                @click="emit('archive-space')"
+              >
+                <Archive class="size-4" />
+                {{ space.archive ? 'Unarchive' : 'Archive Space' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {{ space.archive ? 'Remove archived status from this space' : 'Mark this space as archived' }}
             </TooltipContent>
           </Tooltip>
           <Tooltip>

@@ -62,6 +62,34 @@ class ApiClient {
     })
   }
 
+  archiveSpace(space: string, body?: string): Promise<void> {
+    return this.requestVoid(`/spaces/${encodeURIComponent(space)}/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: body !== undefined ? body : `Archived at ${new Date().toISOString()}`,
+    })
+  }
+
+  fetchAgentMessages(space: string, agent: string, since?: string): Promise<{ agent: string; cursor: string; messages: import('@/types').AgentMessage[] }> {
+    const url = since
+      ? `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/messages?since=${encodeURIComponent(since)}`
+      : `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/messages`
+    return this.request(url)
+  }
+
+  ackMessage(space: string, agent: string, messageId: string, agentName: string): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/message/${encodeURIComponent(messageId)}/ack`,
+      { method: 'POST', headers: { 'X-Agent-Name': agentName } },
+    )
+  }
+
+  fetchAgentHistory(space: string, agent: string): Promise<import('@/types').StatusSnapshot[]> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/history`,
+    )
+  }
+
   // --------------- Agents ---------------
 
   fetchAgent(space: string, agent: string): Promise<AgentUpdate> {
@@ -109,13 +137,16 @@ class ApiClient {
 
   // --------------- History ---------------
 
-  fetchHistory(space: string, sinceMs?: number): Promise<StatusSnapshot[]> {
-    let path = `/spaces/${encodeURIComponent(space)}/history`
+  fetchHistory(space: string, sinceMs?: number, agent?: string): Promise<StatusSnapshot[]> {
+    const params = new URLSearchParams()
     if (sinceMs !== undefined) {
-      const since = new Date(Date.now() - sinceMs).toISOString()
-      path += `?since=${encodeURIComponent(since)}`
+      params.set('since', new Date(Date.now() - sinceMs).toISOString())
     }
-    return this.request<StatusSnapshot[]>(path)
+    if (agent) params.set('agent', agent)
+    const qs = params.toString()
+    return this.request<StatusSnapshot[]>(
+      `/spaces/${encodeURIComponent(space)}/history${qs ? '?' + qs : ''}`,
+    )
   }
 
   // --------------- Events ---------------
