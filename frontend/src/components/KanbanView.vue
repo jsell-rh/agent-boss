@@ -108,10 +108,18 @@ async function loadTasks() {
 onMounted(async () => {
   await loadTasks()
   // Scroll to task anchor if URL hash is present (e.g. /kanban#TASK-001)
+  // After scrolling, briefly highlight the card with a ring animation.
   if (window.location.hash) {
     const id = window.location.hash.slice(1)
     const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Wait for smooth scroll to finish, then flash a highlight ring
+      setTimeout(() => {
+        el.classList.add('task-deep-link-highlight')
+        setTimeout(() => el.classList.remove('task-deep-link-highlight'), 1800)
+      }, 600)
+    }
   }
 })
 watch(() => props.space.name, () => {
@@ -355,3 +363,17 @@ onUnmounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+@keyframes deep-link-flash {
+  0%   { box-shadow: none; outline: none; }
+  15%  { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.8); outline: 2px solid hsl(var(--primary) / 0.5); }
+  60%  { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.4); outline: 2px solid hsl(var(--primary) / 0.2); }
+  100% { box-shadow: none; outline: none; }
+}
+
+:global(.task-deep-link-highlight) {
+  animation: deep-link-flash 1.8s ease-out forwards;
+  border-radius: 0.5rem;
+}
+</style>
