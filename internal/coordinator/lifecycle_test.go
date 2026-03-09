@@ -150,6 +150,97 @@ func TestAgentIntrospect(t *testing.T) {
 	if resp.Lines == nil {
 		t.Error("expected lines to be non-nil (empty slice)")
 	}
+	// Unregistered agent has no explicit non-tmux type, so tmux_available should be true.
+	if !resp.TmuxAvailable {
+		t.Error("expected tmux_available=true for agent with no registration (type unknown)")
+	}
+}
+
+// TestAgentIntrospectNonTmux verifies that agents registered with a non-tmux
+// agent_type have tmux_available=false in the introspect response.
+func TestAgentIntrospectNonTmux(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	base := serverBaseURL(srv)
+	space := "TestIntrospectNonTmux"
+
+	// Register the agent via /register with agent_type=http
+	regResp := postJSONWithCaller(t, base+"/spaces/"+space+"/agent/Webhook/register", "Webhook", map[string]interface{}{
+		"agent_type": "http",
+	})
+	regResp.Body.Close()
+
+	// Post a status so the agent appears in the space
+	postJSON(t, base+"/spaces/"+space+"/agent/Webhook", map[string]interface{}{
+		"status":  "active",
+		"summary": "Webhook: active",
+	})
+
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/Webhook/introspect")
+	if code != http.StatusOK {
+		t.Fatalf("introspect returned %d: %s", code, body)
+	}
+
+	var resp introspectResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("unmarshal introspect response: %v", err)
+	}
+
+	if resp.TmuxAvailable {
+		t.Error("expected tmux_available=false for agent_type=http")
+	}
+	if resp.SessionExists {
+		t.Error("expected session_exists=false for http agent")
+	}
+}
+
+// TestLifecycleNonTmuxAgentReturns422 verifies that spawn, stop, and restart
+// return HTTP 422 for agents registered with a non-tmux agent_type.
+func TestLifecycleNonTmuxAgentReturns422(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	base := serverBaseURL(srv)
+	space := "TestLifecycle422"
+
+	// Register and post status for an http agent
+	regResp := postJSONWithCaller(t, base+"/spaces/"+space+"/agent/HttpBot/register", "HttpBot", map[string]interface{}{
+		"agent_type": "http",
+	})
+	regResp.Body.Close()
+
+	postJSON(t, base+"/spaces/"+space+"/agent/HttpBot", map[string]interface{}{
+		"status":  "active",
+		"summary": "HttpBot: active",
+	})
+
+	doPost := func(path string) int {
+		req, err := http.NewRequest(http.MethodPost, base+path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("X-Agent-Name", "HttpBot")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// /stop should return 422
+	if code := doPost("/spaces/" + space + "/agent/HttpBot/stop"); code != http.StatusUnprocessableEntity {
+		t.Errorf("/stop: expected 422, got %d", code)
+	}
+	// /restart should return 422
+	if code := doPost("/spaces/" + space + "/agent/HttpBot/restart"); code != http.StatusUnprocessableEntity {
+		t.Errorf("/restart: expected 422, got %d", code)
+	}
+	// /spawn should return 422
+	if code := doPost("/spaces/" + space + "/agent/HttpBot/spawn"); code != http.StatusUnprocessableEntity {
+		t.Errorf("/spawn: expected 422, got %d", code)
+	}
 }
 
 // TestAgentIntrospectNotFound verifies 404 for unknown agents.
