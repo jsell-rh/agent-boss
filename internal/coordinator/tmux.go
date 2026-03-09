@@ -77,6 +77,7 @@ func (s *Server) TmuxAutoDiscover(spaceName string) int {
 	}
 
 	matched := 0
+	updated := map[string]*AgentUpdate{}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, session := range sessions {
@@ -92,12 +93,16 @@ func (s *Server) TmuxAutoDiscover(spaceName string) int {
 				strings.EqualFold(strings.ReplaceAll(agentName, "-", ""), strings.ReplaceAll(name, "-", "")) {
 				agent.TmuxSession = session
 				matched++
+				updated[agentName] = agent
 				s.logEvent(fmt.Sprintf("[%s/%s] tmux session auto-discovered: %s", spaceName, agentName, session))
 				break
 			}
 		}
 	}
 	if matched > 0 {
+		for agentName, agent := range updated {
+			s.upsertAgentToDB(spaceName, agentName, agent)
+		}
 		s.saveSpace(ks)
 	}
 	return matched

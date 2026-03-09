@@ -107,6 +107,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request, spa
 		rebuildChildren(ks)
 	}
 	ks.UpdatedAt = time.Now().UTC()
+	s.upsertAgentToDB(spaceName, canonical, agent)
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
@@ -184,6 +185,7 @@ func (s *Server) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request, sp
 			agent.LastHeartbeat = now
 			agent.HeartbeatStale = false
 			ks.UpdatedAt = now
+			s.upsertAgentToDB(spaceName, canonical, agent)
 			s.saveSpace(ks)
 		}
 		s.mu.Unlock()
@@ -387,6 +389,7 @@ func (s *Server) checkHeartbeatStaleness() {
 			if agent, ok := ks.Agents[canonical]; ok {
 				agent.HeartbeatStale = ch.stale
 				ks.UpdatedAt = now
+				s.upsertAgentToDB(ch.spaceName, canonical, agent)
 				s.saveSpace(ks)
 			}
 		}

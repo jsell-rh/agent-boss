@@ -164,8 +164,9 @@ func (s *Server) rotateBackups(spaceName string) {
 }
 
 func (s *Server) saveSpace(ks *KnowledgeSpace) error {
-	// Persist to SQLite (primary store).
-	s.persistSpaceToDB(ks)
+	// Persist space metadata to SQLite. Callers add targeted entity upserts
+	// (upsertAgentToDB, upsertTaskToDB, etc.) before calling saveSpace to avoid N+1 writes.
+	s.upsertSpaceToDB(ks)
 
 	s.refreshProtocol(ks)
 	data, err := json.MarshalIndent(ks, "", "  ")

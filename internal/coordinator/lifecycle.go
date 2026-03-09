@@ -56,6 +56,9 @@ func (s *Server) checkStaleness() {
 			}
 		}
 		if changed {
+			for name, agent := range ks.Agents {
+				s.upsertAgentToDB(spaceName, name, agent)
+			}
 			s.saveSpace(ks) //nolint:errcheck
 		}
 		// Record a periodic snapshot for all agents so history captures liveness ticks.
@@ -157,6 +160,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		rebuildChildren(ks)
 	}
 
+	s.upsertAgentToDB(spaceName, resolveAgentName(ks, agentName), agent)
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		s.logEvent(fmt.Sprintf("[%s/%s] spawn: save failed: %v", spaceName, agentName, err))
@@ -234,6 +238,7 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 	agent.Summary = fmt.Sprintf("%s: stopped", canonical)
 	agent.TmuxSession = ""
 	agent.UpdatedAt = time.Now().UTC()
+	s.upsertAgentToDB(spaceName, canonical, agent)
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
@@ -335,6 +340,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	agent.Status = StatusIdle
 	agent.Summary = fmt.Sprintf("%s: restarted", canonical)
 	agent.UpdatedAt = time.Now().UTC()
+	s.upsertAgentToDB(spaceName, canonical, agent)
 	s.saveSpace(ks)
 	s.mu.Unlock()
 

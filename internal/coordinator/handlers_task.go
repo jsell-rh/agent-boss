@@ -146,6 +146,10 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
+	s.upsertTaskToDB(spaceName, &taskCopy)
+	if len(taskCopy.Events) > 0 {
+		s.saveTaskEventToDB(spaceName, &taskCopy, &taskCopy.Events[len(taskCopy.Events)-1])
+	}
 	s.saveSpace(snap)
 
 	// Broadcast SSE
@@ -327,6 +331,7 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
+	s.upsertTaskToDB(spaceName, &taskCopy)
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
@@ -364,6 +369,7 @@ func (s *Server) handleTaskDelete(w http.ResponseWriter, r *http.Request, spaceN
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskDeleted, "", map[string]string{"id": taskID})
+	s.deleteTaskFromDB(spaceName, taskID)
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{"id": taskID, "space": spaceName, "deleted": true}); err == nil {
@@ -422,6 +428,10 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 		"id": taskID, "from_status": string(fromStatus), "status": string(req.Status), "by": caller,
 	})
+	s.upsertTaskToDB(spaceName, &taskCopy)
+	if len(taskCopy.Events) > 0 {
+		s.saveTaskEventToDB(spaceName, &taskCopy, &taskCopy.Events[len(taskCopy.Events)-1])
+	}
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
@@ -482,6 +492,10 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 	s.journal.Append(spaceName, EventTaskAssigned, "", map[string]string{
 		"id": taskID, "from_agent": fromAgent, "assigned_to": req.AssignedTo, "by": caller,
 	})
+	s.upsertTaskToDB(spaceName, &taskCopy)
+	if len(taskCopy.Events) > 0 {
+		s.saveTaskEventToDB(spaceName, &taskCopy, &taskCopy.Events[len(taskCopy.Events)-1])
+	}
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
@@ -549,6 +563,11 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 	s.journal.Append(spaceName, EventTaskCommented, "", map[string]any{
 		"task_id": taskID, "comment": comment,
 	})
+	s.upsertTaskToDB(spaceName, &taskCopy)
+	s.saveTaskCommentToDB(spaceName, &taskCopy, &comment)
+	if len(taskCopy.Events) > 0 {
+		s.saveTaskEventToDB(spaceName, &taskCopy, &taskCopy.Events[len(taskCopy.Events)-1])
+	}
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{
@@ -611,6 +630,9 @@ func (s *Server) notifyTaskComment(spaceName, taskID, taskTitle, assignedTo, com
 	snap := ks.snapshot()
 	s.mu.Unlock()
 
+	s.saveMessageToDB(spaceName, canonical, &msg)
+	s.saveNotificationToDB(spaceName, canonical, &notif)
+	s.upsertAgentToDB(spaceName, canonical, ag)
 	s.saveSpace(snap)
 	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
 
@@ -673,6 +695,9 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 	snap := ks.snapshot()
 	s.mu.Unlock()
 
+	s.saveMessageToDB(spaceName, canonical, &msg)
+	s.saveNotificationToDB(spaceName, canonical, &notif)
+	s.upsertAgentToDB(spaceName, canonical, ag)
 	s.saveSpace(snap)
 	s.logEvent(fmt.Sprintf("[%s/%s] Task %s assigned by %s — notification delivered", spaceName, canonical, taskID, assignedBy))
 	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
@@ -777,6 +802,10 @@ func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request,
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
+	s.upsertTaskToDB(spaceName, &taskCopy)
+	if len(taskCopy.Events) > 0 {
+		s.saveTaskEventToDB(spaceName, &taskCopy, &taskCopy.Events[len(taskCopy.Events)-1])
+	}
 	s.saveSpace(snap)
 
 	if sseData, err := json.Marshal(map[string]any{

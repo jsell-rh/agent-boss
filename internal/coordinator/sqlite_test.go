@@ -109,6 +109,34 @@ func TestSQLiteInvalidDBType(t *testing.T) {
 	}
 }
 
+func TestPostgresNoDSN(t *testing.T) {
+	t.Setenv("DB_TYPE", "postgres")
+	t.Setenv("DB_DSN", "") // explicitly empty
+	dir := t.TempDir()
+	s := NewServer(":0", dir)
+	err := s.Start()
+	if err == nil {
+		s.Stop()
+		t.Fatal("expected error for DB_TYPE=postgres without DB_DSN, got nil")
+	}
+	if !strings.Contains(err.Error(), "DB_DSN") {
+		t.Errorf("expected error to mention DB_DSN, got: %v", err)
+	}
+}
+
+func TestPostgresInvalidDSN(t *testing.T) {
+	t.Setenv("DB_TYPE", "postgres")
+	// Port 1 is always closed; the driver should fail to connect quickly.
+	t.Setenv("DB_DSN", "host=127.0.0.1 port=1 dbname=bosstest sslmode=disable connect_timeout=2")
+	dir := t.TempDir()
+	s := NewServer(":0", dir)
+	err := s.Start()
+	if err == nil {
+		s.Stop()
+		t.Fatal("expected error for DB_TYPE=postgres with unreachable host, got nil")
+	}
+}
+
 func TestSQLiteCustomPath(t *testing.T) {
 	dir := t.TempDir()
 	customPath := dir + "/custom.db"
