@@ -280,6 +280,8 @@ func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, space
 
 	os.Remove(s.spacePath(spaceName))
 	os.Remove(s.spaceMarkdownPath(spaceName))
+	os.Remove(filepath.Join(s.dataDir, spaceName+".events.jsonl"))
+	s.deleteSpaceFromDB(spaceName)
 
 	s.logEvent(fmt.Sprintf("space %q deleted", spaceName))
 	s.broadcastSSE(spaceName, "", "space_deleted", spaceName)

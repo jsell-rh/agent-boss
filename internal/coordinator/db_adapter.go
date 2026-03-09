@@ -259,6 +259,15 @@ func (s *Server) saveSnapshotToDB(snap *StatusSnapshot) {
 	}
 }
 
+func (s *Server) deleteSpaceFromDB(spaceName string) {
+	if s.repo == nil {
+		return
+	}
+	if err := s.repo.DeleteSpace(spaceName); err != nil {
+		s.logEvent(fmt.Sprintf("warning: delete space %q from db: %v", spaceName, err))
+	}
+}
+
 func (s *Server) deleteAgentFromDB(spaceName, agentName string) {
 	if s.repo == nil {
 		return
