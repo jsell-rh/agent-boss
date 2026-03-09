@@ -365,6 +365,7 @@ func (s *Server) handleTaskDelete(w http.ResponseWriter, r *http.Request, spaceN
 
 	s.journal.Append(spaceName, EventTaskDeleted, "", map[string]string{"id": taskID})
 	s.saveSpace(snap)
+	s.deleteTaskFromDB(spaceName, taskID)
 
 	if sseData, err := json.Marshal(map[string]any{"id": taskID, "space": spaceName, "deleted": true}); err == nil {
 		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))

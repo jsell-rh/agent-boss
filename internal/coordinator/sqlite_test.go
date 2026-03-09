@@ -258,3 +258,130 @@ func TestSQLiteMessagePersistence(t *testing.T) {
 		t.Errorf("message not found after restart, got: %s", msgsBody)
 	}
 }
+
+// TestSQLiteDeleteAgentPersists verifies that deleting an agent removes it from
+// SQLite so it does not reappear after a server restart.
+func TestSQLiteDeleteAgentPersists(t *testing.T) {
+	t.Setenv("DB_TYPE", "sqlite")
+	dir := t.TempDir()
+
+	s := NewServer(":0", dir)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	base := "http://localhost" + s.Port()
+
+	// Create a space with an agent.
+	postJSON(t, base+"/spaces/del-agent-space/agent/GhostAgent", map[string]any{
+		"status": "active", "summary": "GhostAgent: will be deleted",
+	})
+
+	// Verify agent exists.
+	code, _ := getBody(t, base+"/spaces/del-agent-space/agent/GhostAgent")
+	if code != http.StatusOK {
+		t.Fatalf("agent should exist before delete, got %d", code)
+	}
+
+	// Delete the agent.
+	req, _ := http.NewRequest(http.MethodDelete, base+"/spaces/del-agent-space/agent/GhostAgent", nil)
+	req.Header.Set("X-Agent-Name", "GhostAgent")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete status %d", resp.StatusCode)
+	}
+
+	s.Stop()
+
+	// Restart and verify the agent is gone.
+	s2 := NewServer(":0", dir)
+	t.Setenv("DB_TYPE", "sqlite")
+	if err := s2.Start(); err != nil {
+		t.Fatalf("restart Start: %v", err)
+	}
+	defer s2.Stop()
+
+	base2 := "http://localhost" + s2.Port()
+	// Agent GET returns {} (not 404) when the agent doesn't exist in a space.
+	// Verify the agent was actually removed from the space's agent list.
+	code2, body2 := getBody(t, base2+"/spaces/del-agent-space/agent/GhostAgent")
+	if code2 != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", code2, body2)
+	}
+	if strings.TrimSpace(body2) != "{}" {
+		t.Errorf("expected empty agent {} after restart (agent should be gone), got: %s", body2)
+	}
+	// Also verify the agent is absent from the space listing.
+	_, spaceBody := getBody(t, base2+"/spaces/del-agent-space/")
+	if strings.Contains(spaceBody, "GhostAgent") {
+		t.Errorf("GhostAgent still listed in space after restart: %s", spaceBody)
+	}
+}
+
+// TestSQLiteDeleteTaskPersists verifies that deleting a task removes it from
+// SQLite so it does not reappear after a server restart.
+func TestSQLiteDeleteTaskPersists(t *testing.T) {
+	t.Setenv("DB_TYPE", "sqlite")
+	dir := t.TempDir()
+
+	s := NewServer(":0", dir)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	base := "http://localhost" + s.Port()
+
+	// Create a task.
+	resp := postTaskJSON(t, base+"/spaces/del-task-space/tasks", map[string]any{
+		"title": "ghost task",
+	}, "BotCreator")
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create task status %d: %s", resp.StatusCode, body)
+	}
+
+	// Verify task exists.
+	code, body := getBody(t, base+"/spaces/del-task-space/tasks")
+	if code != http.StatusOK || !strings.Contains(body, "ghost task") {
+		t.Fatalf("task should exist before delete, got %d: %s", code, body)
+	}
+
+	// Find the task ID (first task in new space is TASK-001).
+	taskID := fmt.Sprintf("TASK-%03d", 1)
+
+	// Delete the task.
+	delReq, _ := http.NewRequest(http.MethodDelete,
+		base+"/spaces/del-task-space/tasks/"+taskID, nil)
+	delReq.Header.Set("X-Agent-Name", "BotCreator")
+	delResp, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delResp.Body.Close()
+	if delResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("task delete status %d", delResp.StatusCode)
+	}
+
+	s.Stop()
+
+	// Restart and verify the task is gone.
+	s2 := NewServer(":0", dir)
+	t.Setenv("DB_TYPE", "sqlite")
+	if err := s2.Start(); err != nil {
+		t.Fatalf("restart Start: %v", err)
+	}
+	defer s2.Stop()
+
+	base2 := "http://localhost" + s2.Port()
+	_, body2 := getBody(t, base2+"/spaces/del-task-space/tasks")
+	if strings.Contains(body2, "ghost task") {
+		t.Errorf("deleted task reappeared after restart: %s", body2)
+	}
+	// Verify the specific task returns 404.
+	code3, body3 := getBody(t, base2+"/spaces/del-task-space/tasks/"+taskID)
+	if code3 != http.StatusNotFound {
+		t.Errorf("expected 404 for deleted task after restart, got %d: %s", code3, body3)
+	}
+}
