@@ -71,8 +71,11 @@ func Open(dataDir string) (*gorm.DB, error) {
 // migrate runs GORM AutoMigrate for all models. Safe to call on every startup —
 // it only adds missing tables/columns; it never drops or alters existing data.
 func migrate(db *gorm.DB) error {
-	// Run manual migration before AutoMigrate so schema is correct before GORM
-	// inspects it.
+	// Task is excluded from AutoMigrate: GORM's SQLite dialect does not handle
+	// composite primary keys correctly during auto-migration — it tries to
+	// recreate via tasks__temp and fails with NOT NULL constraint errors.
+	// migrateTasksCompositeKey manages the tasks table schema entirely (both
+	// fresh creation and migration from the old single-column PK).
 	if err := migrateTasksCompositeKey(db); err != nil {
 		return fmt.Errorf("migrate tasks composite key: %w", err)
 	}
@@ -81,7 +84,6 @@ func migrate(db *gorm.DB) error {
 		&Agent{},
 		&AgentMessage{},
 		&AgentNotification{},
-		&Task{},
 		&TaskComment{},
 		&TaskEvent{},
 		&StatusSnapshot{},
@@ -103,12 +105,34 @@ func migrateTasksCompositeKey(db *gorm.DB) error {
 		return err
 	}
 
-	// Check whether the tasks table exists at all. If not, AutoMigrate will
-	// create it fresh with the correct composite PK — nothing to do here.
+	// Check whether the tasks table exists. If not, create it fresh with the
+	// correct composite PK. (Task is excluded from AutoMigrate, so we must
+	// handle initial creation here too.)
 	var tableCount int
 	row := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='tasks'`)
 	if err := row.Scan(&tableCount); err != nil || tableCount == 0 {
-		return nil
+		_, err := sqlDB.Exec(`
+			CREATE TABLE IF NOT EXISTS tasks (
+				id            TEXT NOT NULL,
+				space_name    TEXT NOT NULL,
+				title         TEXT NOT NULL,
+				description   TEXT,
+				status        TEXT NOT NULL DEFAULT 'backlog',
+				priority      TEXT DEFAULT 'medium',
+				assigned_to   TEXT,
+				created_by    TEXT NOT NULL,
+				labels        TEXT,
+				parent_task   TEXT,
+				subtasks      TEXT,
+				linked_branch TEXT,
+				linked_pr     TEXT,
+				created_at    DATETIME,
+				updated_at    DATETIME,
+				due_at        DATETIME,
+				PRIMARY KEY (space_name, id)
+			)
+		`)
+		return err
 	}
 
 	// Inspect current primary key columns via the table_info pragma.
