@@ -11,11 +11,13 @@ import (
 	"time"
 )
 
+// handleRoot serves the Vue SPA index.html for all non-API routes.
+// Since this handler is registered as "/" (catch-all in Go's ServeMux),
+// it receives every request that doesn't match a more specific pattern
+// (i.e., every path that isn't /spaces/, /events, /assets/, etc.).
+// Serving index.html for all such paths lets Vue Router handle client-side
+// navigation, enabling deep-linking to URLs like /SpaceName or /SpaceName/kanban.
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
 	// Serve Vue SPA index.html: runtime FRONTEND_DIR takes priority, then embedded.
 	if s.frontendDir != "" {
 		indexPath := filepath.Join(s.frontendDir, "index.html")

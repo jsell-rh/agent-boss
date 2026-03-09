@@ -3369,3 +3369,36 @@ func TestNotificationPruning(t *testing.T) {
 	}
 }
 
+// TestSPAFallback verifies that deep-linked frontend paths (e.g. /SpaceName,
+// /SpaceName/kanban) are handled by handleRoot instead of returning Go's
+// default "404 page not found" response. This allows Vue Router to handle
+// client-side navigation when the user navigates directly to a URL.
+//
+// In tests there is no compiled frontend, so all these paths return a 404
+// with "frontend not available" — but that's still correct: they all go
+// through handleRoot rather than getting the raw http.NotFound response.
+func TestSPAFallback(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Fetch what the root path returns — this is our baseline SPA response.
+	_, rootBody := getBody(t, base+"/")
+
+	spaPaths := []string{
+		"/AgentBossDevTeam",
+		"/AgentBossDevTeam/kanban",
+		"/some-space/agent/foo",
+		"/unknown-deep-path",
+	}
+	for _, path := range spaPaths {
+		_, body := getBody(t, base+path)
+		// Deep-linked paths must return the same body as "/" — either the SPA
+		// index.html (in production) or "frontend not available" (in tests).
+		// They must NOT return Go's default "404 page not found\n".
+		if body != rootBody {
+			t.Errorf("GET %s: expected same body as /, got: %.100s", path, body)
+		}
+	}
+}
+
