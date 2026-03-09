@@ -215,8 +215,14 @@
     @apply border-border outline-ring/50;
     transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
   }
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    height: 100%;
+    overflow: hidden;
   }
   code, pre, .font-mono {
     font-family: 'Red Hat Mono', ui-monospace, monospace;

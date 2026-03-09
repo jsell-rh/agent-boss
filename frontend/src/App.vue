@@ -800,7 +800,7 @@ onUnmounted(() => {
       />
       <SidebarInset class="flex flex-col h-dvh">
         <!-- Header -->
-        <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4">
+        <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4 overflow-hidden">
           <SidebarTrigger class="-ml-1" />
           <Separator orientation="vertical" class="h-5" />
           <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm font-text">
