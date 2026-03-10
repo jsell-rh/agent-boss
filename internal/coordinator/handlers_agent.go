@@ -1088,11 +1088,14 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 		writeJSONError(w, canonical+": session not found", http.StatusBadRequest)
 		return
 	}
+	// Get current approval state for metadata (tool name, prompt text).
+	// Do NOT block on this check — the user explicitly clicked Approve in the
+	// dashboard (meaning an approval interrupt was already recorded by the
+	// liveness monitor). A re-check here is a race: the detection pattern may
+	// not match on a second read even though the agent is still waiting.
+	// We send the approval keystroke regardless and let the liveness monitor
+	// clear the interrupt on the next poll.
 	approval := backend.CheckApproval(sessionID)
-	if !approval.NeedsApproval {
-		writeJSONError(w, canonical+": not waiting for approval", http.StatusConflict)
-		return
-	}
 	if err := backend.Approve(sessionID); err != nil {
 		writeJSONError(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
 		return

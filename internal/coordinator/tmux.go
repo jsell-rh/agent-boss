@@ -196,9 +196,17 @@ func tmuxCheckApproval(session string) ApprovalInfo {
 }
 
 func tmuxApprove(session string) error {
+	// Send "1" to explicitly select "Yes" (option 1 in the approval dialog),
+	// then Enter to confirm. This is more robust than Enter alone, which
+	// depends on "1. Yes" already being focused (❯) in the menu.
 	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
 	defer cancel()
-	return exec.CommandContext(ctx, "tmux", "send-keys", "-t", session, "Enter").Run()
+	if err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", session, "1").Run(); err != nil {
+		return err
+	}
+	ctx2, cancel2 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel2()
+	return exec.CommandContext(ctx2, "tmux", "send-keys", "-t", session, "Enter").Run()
 }
 
 // tmuxIsIdle reports whether the tmux session appears to be waiting for input
