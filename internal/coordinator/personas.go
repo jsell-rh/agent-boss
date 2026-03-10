@@ -6,10 +6,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// slugRe matches any character that is not a letter, digit, or hyphen.
+var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// slugify converts a name to a URL-safe identifier (lowercase, hyphens).
+func slugify(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = slugRe.ReplaceAllString(s, "-")
+	return strings.Trim(s, "-")
+}
 
 // personasFile is the filename for global persona storage in DATA_DIR.
 const personasFile = "personas.json"
@@ -174,6 +185,11 @@ func (s *Server) handlePersonaList(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		// Browser navigation sends Accept: text/html; API calls send Accept: application/json or */*
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			s.handleRoot(w, r)
+			return
+		}
 		personas := s.personas.list()
 		// Annotate with spaces_used info
 		type personaWithUsage struct {
@@ -210,7 +226,10 @@ func (s *Server) handlePersonaList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if strings.TrimSpace(p.ID) == "" {
-			writeJSONError(w, "id is required", http.StatusBadRequest)
+			p.ID = slugify(p.Name)
+		}
+		if strings.TrimSpace(p.ID) == "" {
+			writeJSONError(w, "name is required", http.StatusBadRequest)
 			return
 		}
 		if strings.TrimSpace(p.Name) == "" {
