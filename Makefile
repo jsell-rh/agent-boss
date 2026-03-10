@@ -32,3 +32,13 @@ deploy:
 
 rollout: build-image push-image
 	oc rollout restart deploy/boss-coordinator -n $(NAMESPACE)
+
+# E2E tests (Playwright)
+e2e:
+	cd e2e && npx playwright test
+
+e2e-ui:
+	cd e2e && npx playwright test --headed
+
+e2e-report:
+	cd e2e && npx playwright show-report
