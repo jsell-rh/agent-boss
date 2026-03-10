@@ -436,8 +436,16 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 
 	boardTimeBefore := s.agentUpdatedAt(spaceName, canonical)
 
-	progress("sending /boss.check prompt")
-	if err := backend.SendInput(sessionID, "/boss.check "+canonical+" "+spaceName); err != nil {
+	// Send a plain-text check-in prompt. The old /boss.check slash command
+	// relied on symlinked command files which no longer exist.
+	checkInURL := fmt.Sprintf("http://localhost%s/spaces/%s/agent/%s", s.port, spaceName, canonical)
+	msgURL := fmt.Sprintf("http://localhost%s/spaces/%s/agent/%s/messages", s.port, spaceName, canonical)
+	checkInPrompt := fmt.Sprintf(
+		"Check in now. 1) Fetch new messages: curl -s %q 2) Post your current status: curl -s -X POST %q -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"status\":\"active\",\"summary\":\"%s: checking in\"}' 3) Act on any message directives.",
+		msgURL, checkInURL, canonical, canonical,
+	)
+	progress("sending check-in prompt")
+	if err := backend.SendInput(sessionID, checkInPrompt); err != nil {
 		result.addError(canonical + ": check-in send failed: " + err.Error())
 		return
 	}
