@@ -215,12 +215,12 @@ func (r *Repository) ListTasks(spaceName string, filters map[string]string) ([]*
 
 // SaveComment adds a comment to a task.
 func (r *Repository) SaveComment(c *TaskComment) error {
-	return r.db.Create(c).Error
+	return r.db.Save(c).Error
 }
 
 // SaveTaskEvent records a task lifecycle event.
 func (r *Repository) SaveTaskEvent(e *TaskEvent) error {
-	return r.db.Create(e).Error
+	return r.db.Save(e).Error
 }
 
 // DeleteTask removes a task and its comments/events.
