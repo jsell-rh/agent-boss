@@ -180,9 +180,12 @@ which is out of scope for this spec.
 
 ## Open Questions
 
-- **[?BOSS] Wizard vs. inline guidance**: Should onboarding be a modal wizard or
-  inline empty-state cards? Wizard is faster to implement; inline is less intrusive.
+These questions require human decision and are tracked as escalations in the coordinator
+(see [human-escalation.md](./human-escalation.md)).
+
+- **Wizard vs. inline guidance**: Should onboarding be a modal wizard or inline
+  empty-state cards? Wizard is faster to implement; inline is less intrusive.
   Proposal: inline empty states first (simpler), wizard as a follow-up.
 
-- **[?BOSS] `boss init` scope**: Should `boss init` also write an MCP config file and
-  set up the commands directory? Proposal: yes, as part of the "zero-manual-steps" goal.
+- **`boss init` scope**: Should `boss init` also write an MCP config file and set up
+  the commands directory? Proposal: yes, as part of the "zero-manual-steps" goal.

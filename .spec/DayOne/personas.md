@@ -139,10 +139,13 @@ If a persona is assigned to any agent, the delete button is disabled with a tool
 
 ## Open Questions
 
-- **[?BOSS] Scope**: Should personas be space-scoped or global (shared across spaces)?
-  Current proposal: space-scoped for simplicity. Global sharing can be added in v2 via
-  an import/export mechanism.
+These questions require human decision. They are tracked as escalations in the coordinator
+(see [human-escalation.md](./human-escalation.md)) rather than inline text tags.
 
-- **[?BOSS] Persona versioning**: Should editing a persona re-inject into running agents?
+- **Scope**: Should personas be space-scoped or global (shared across spaces)?
+  Current proposal: space-scoped for simplicity. Global sharing can be added in v2 via
+  an import/export mechanism. Escalation: `POST /spaces/{space}/escalations` type=question.
+
+- **Persona versioning**: Should editing a persona re-inject into running agents?
   Current proposal: No — injection only happens at spawn/restart time. Running agents are
-  not disturbed.
+  not disturbed. Escalation: `POST /spaces/{space}/escalations` type=question.
