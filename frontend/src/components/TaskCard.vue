@@ -4,7 +4,7 @@ import { TASK_PRIORITY_LABELS, TASK_PRIORITY_COLOR } from '@/types'
 import { computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import AgentAvatar from './AgentAvatar.vue'
-import { MessageSquare, GitBranch, ChevronsUpDown, ListTree, Calendar } from 'lucide-vue-next'
+import { MessageSquare, GitBranch, ChevronsUpDown, ListTree, Calendar, AlertTriangle } from 'lucide-vue-next'
 
 const props = defineProps<{
   task: Task
@@ -33,6 +33,12 @@ const isOverdue = computed(() => {
   return dueDate.value < new Date()
 })
 
+const isStale = computed(() => {
+  if (props.task.status !== 'in_progress') return false
+  const updatedAt = new Date(props.task.updated_at)
+  return Date.now() - updatedAt.getTime() > 60 * 60 * 1000 // >1 hour
+})
+
 const isDueSoon = computed(() => {
   if (!dueDate.value || isOverdue.value || props.task.status === 'done') return false
   return (dueDate.value.getTime() - Date.now()) < 48 * 60 * 60 * 1000
@@ -51,8 +57,11 @@ function onDragStart(e: DragEvent) {
 <template>
   <div
     :id="task.id"
-    class="group bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all select-none"
-    :class="{ 'opacity-50 rotate-1 shadow-lg': dragging }"
+    class="group bg-card border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all select-none"
+    :class="[
+      dragging ? 'opacity-50 rotate-1 shadow-lg' : '',
+      isStale ? 'border-amber-500/60 bg-amber-500/5' : 'border-border',
+    ]"
     draggable="true"
     @click="emit('click', task)"
     @dragstart="onDragStart"
@@ -64,6 +73,9 @@ function onDragStart(e: DragEvent) {
         <span v-if="task.parent_task" class="flex items-center gap-0.5 text-[9px] text-muted-foreground/70" :title="`Subtask of ${task.parent_task}`">
           <ChevronsUpDown class="size-2.5" />
           {{ task.parent_task }}
+        </span>
+        <span v-if="isStale" class="flex items-center gap-0.5 text-[10px] text-amber-500 font-medium" title="No update for >1 hour">
+          <AlertTriangle class="size-3" /> Stale
         </span>
       </div>
       <Badge v-if="task.priority" :class="['text-[10px] px-1.5 py-0 h-4', priorityClass]">

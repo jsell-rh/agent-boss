@@ -28,6 +28,7 @@ const agentName = ref('')
 const workDir = ref('')
 const reposText = ref('')
 const taskPrompt = ref('')
+const initialMessage = ref('')
 const backend = ref<'tmux' | 'ambient'>('tmux')
 const submitting = ref(false)
 const errorMsg = ref('')
@@ -53,6 +54,7 @@ function reset() {
   workDir.value = ''
   reposText.value = ''
   taskPrompt.value = ''
+  initialMessage.value = ''
   backend.value = 'tmux'
   selectedPersonaIds.value = []
   errorMsg.value = ''
@@ -93,6 +95,7 @@ async function submit() {
       backend: backend.value,
       repos: repos && repos.length > 0 ? repos : undefined,
       task,
+      initial_message: initialMessage.value.trim() || undefined,
     })
     if (selectedPersonaIds.value.length > 0) {
       await api.updateAgentConfig(props.space, name, { persona_ids: [...selectedPersonaIds.value] })
@@ -197,6 +200,22 @@ async function submit() {
           />
           <p class="text-xs text-muted-foreground">
             The task prompt sent to the ACP session on creation.
+          </p>
+        </div>
+
+        <!-- Initial Message (all backends) -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Initial Mission (optional)
+          </label>
+          <Textarea
+            v-model="initialMessage"
+            placeholder="e.g. Your first task is to implement the login page."
+            rows="3"
+            class="text-sm"
+          />
+          <p class="text-xs text-muted-foreground">
+            A message queued to the agent immediately after ignite.
           </p>
         </div>
 

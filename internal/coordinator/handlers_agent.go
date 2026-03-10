@@ -1300,14 +1300,15 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 
 // createAgentRequest is the body for POST /spaces/{space}/agents.
 type createAgentRequest struct {
-	Name    string `json:"name"`
-	WorkDir string `json:"work_dir,omitempty"`
-	Command string `json:"command,omitempty"`
-	Backend string `json:"backend,omitempty"` // "tmux" (default) or "ambient"
-	Width   int    `json:"width,omitempty"`
-	Height  int    `json:"height,omitempty"`
-	Parent  string `json:"parent,omitempty"`
-	Role    string `json:"role,omitempty"`
+	Name           string `json:"name"`
+	WorkDir        string `json:"work_dir,omitempty"`
+	Command        string `json:"command,omitempty"`
+	Backend        string `json:"backend,omitempty"` // "tmux" (default) or "ambient"
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
+	Parent         string `json:"parent,omitempty"`
+	Role           string `json:"role,omitempty"`
+	InitialMessage string `json:"initial_message,omitempty"` // one-time message sent to agent after ignite
 	// Ambient-specific fields
 	Repos []SessionRepo `json:"repos,omitempty"`
 	Task  string        `json:"task,omitempty"` // initial prompt for ambient sessions
@@ -1408,21 +1409,28 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	s.logEvent(fmt.Sprintf("[%s/%s] created via %s backend (session: %s)", spaceName, req.Name, backendName, sessionID))
 	s.broadcastSSE(spaceName, req.Name, "agent_spawned", req.Name)
 
+	// Capture closure variables before goroutine.
+	initialMsg := req.InitialMessage
+	agentNameForIgnite := req.Name
+
 	// Send ignite asynchronously after agent has time to initialize.
 	go func() {
 		if ab, ok := backend.(*AmbientSessionBackend); ok {
 			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
-				s.logEvent(fmt.Sprintf("[%s/%s] create: session did not reach running state: %v", spaceName, req.Name, err))
+				s.logEvent(fmt.Sprintf("[%s/%s] create: session did not reach running state: %v", spaceName, agentNameForIgnite, err))
 				return
 			}
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, req.Name, spaceName)
+		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentNameForIgnite, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
-			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, req.Name, err))
+			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, agentNameForIgnite, err))
+		}
+		if initialMsg != "" {
+			s.deliverInternalMessage(spaceName, agentNameForIgnite, "boss", initialMsg)
 		}
 	}()
 
