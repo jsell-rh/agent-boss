@@ -71,10 +71,12 @@ func (s *Server) checkStaleness() {
 			if agent.Stale != wasStale {
 				changed = true
 				if agent.Stale {
-					s.logEvent(fmt.Sprintf("[%s/%s] marked stale (last update: %s ago)",
-						spaceName, name, now.Sub(agent.UpdatedAt).Round(time.Second)))
+					s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentStale, Space: spaceName, Agent: name,
+						Msg:    fmt.Sprintf("marked stale (last update: %s ago)", now.Sub(agent.UpdatedAt).Round(time.Second)),
+						Fields: map[string]string{"idle_duration": now.Sub(agent.UpdatedAt).Round(time.Second).String()}})
 				} else {
-					s.logEvent(fmt.Sprintf("[%s/%s] staleness cleared", spaceName, name))
+					s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStale, Space: spaceName, Agent: name,
+						Msg: "staleness cleared"})
 				}
 			}
 		}
@@ -180,12 +182,15 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
-		s.logEvent(fmt.Sprintf("[%s/%s] spawn: save failed: %v", spaceName, agentName, err))
+		s.emit(DomainEvent{Level: LevelError, EventType: EventServerError, Space: spaceName, Agent: agentName,
+			Msg: fmt.Sprintf("spawn: save failed: %v", err)})
 	} else {
 		s.mu.Unlock()
 	}
 
-	s.logEvent(fmt.Sprintf("[%s/%s] spawned in session %q", spaceName, agentName, sessionID))
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+		Msg:    fmt.Sprintf("spawned in session %q", sessionID),
+		Fields: map[string]string{"session_id": sessionID}})
 	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
 
 	// Send ignite asynchronously after agent has time to initialize
@@ -193,7 +198,8 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		time.Sleep(5 * time.Second)
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentName, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
-			s.logEvent(fmt.Sprintf("[%s/%s] spawn: ignite send failed: %v (ignite manually)", spaceName, agentName, err))
+			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+				Msg: fmt.Sprintf("spawn: ignite send failed: %v (ignite manually)", err)})
 		}
 	}()
 
@@ -264,7 +270,9 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
-	s.logEvent(fmt.Sprintf("[%s/%s] stopped (session %q killed)", spaceName, canonical, sessionName))
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStopped, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("stopped (session %q killed)", sessionName),
+		Fields: map[string]string{"session_id": sessionName}})
 	s.broadcastSSE(spaceName, canonical, "agent_stopped", canonical)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -333,7 +341,8 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 			return
 		}
 		cancel()
-		s.logEvent(fmt.Sprintf("[%s/%s] restart: killed session %q", spaceName, canonical, oldSession))
+		s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
+			Msg: fmt.Sprintf("restart: killed old session %q", oldSession)})
 		time.Sleep(1 * time.Second)
 	}
 
@@ -366,7 +375,9 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
-	s.logEvent(fmt.Sprintf("[%s/%s] restarted in new session %q", spaceName, canonical, sessionID))
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("restarted in new session %q", sessionID),
+		Fields: map[string]string{"session_id": sessionID}})
 	s.broadcastSSE(spaceName, canonical, "agent_restarted", canonical)
 
 	// Send ignite asynchronously after agent has time to initialize
@@ -374,7 +385,8 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		time.Sleep(5 * time.Second)
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, canonical, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
-			s.logEvent(fmt.Sprintf("[%s/%s] restart: ignite send failed: %v", spaceName, canonical, err))
+			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
+				Msg: fmt.Sprintf("restart: ignite send failed: %v", err)})
 		}
 	}()
 

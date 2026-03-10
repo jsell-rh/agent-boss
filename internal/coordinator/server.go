@@ -70,6 +70,7 @@ type Server struct {
 	repo           *bossdb.Repository // nil until Start() initialises the DB
 	backends       map[string]SessionBackend
 	defaultBackend string
+	logger         Logger
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -98,6 +99,7 @@ func NewServer(port, dataDir string) *Server {
 		journal:            NewEventJournal(dataDir),
 		backends:           map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
 		defaultBackend:     "tmux",
+		logger:             NewLogger(os.Stdout),
 	}
 }
 
@@ -201,9 +203,12 @@ func (s *Server) Start() error {
 	s.running = true
 
 	go func() {
-		s.logEvent(fmt.Sprintf("coordinator started on %s (data: %s)", s.port, s.dataDir))
+		s.emit(DomainEvent{Level: LevelInfo, EventType: EventServerStarted,
+			Msg:    fmt.Sprintf("coordinator started on %s (data: %s)", s.port, s.dataDir),
+			Fields: map[string]string{"port": s.port, "data_dir": s.dataDir}})
 		if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			s.logEvent(fmt.Sprintf("server error: %v", err))
+			s.emit(DomainEvent{Level: LevelError, EventType: EventServerError,
+				Msg: fmt.Sprintf("server error: %v", err)})
 		}
 	}()
 
@@ -225,6 +230,6 @@ func (s *Server) Stop() error {
 	close(s.stopLiveness)
 	err := s.httpServer.Shutdown(ctx)
 	s.running = false
-	s.logEvent("coordinator stopped")
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventServerStopped, Msg: "coordinator stopped"})
 	return err
 }
