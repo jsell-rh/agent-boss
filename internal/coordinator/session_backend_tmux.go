@@ -65,6 +65,10 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		return "", fmt.Errorf("create tmux session: %w", err)
 	}
 
+	// Wait for the shell to initialise before sending keys — without this,
+	// send-keys races shell startup and the cd keystroke is silently dropped.
+	time.Sleep(300 * time.Millisecond)
+
 	if workDir != "" {
 		if err := tmuxSendKeys(sessionID, "cd "+shellQuote(workDir)); err != nil {
 			exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionID).Run() //nolint:errcheck
