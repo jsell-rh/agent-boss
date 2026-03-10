@@ -24,6 +24,7 @@ and self-guiding.
 | [personas.md](./personas.md) | Reusable persona prompt injections |
 | [mcp-bootstrap.md](./mcp-bootstrap.md) | MCP server replacing `./commands/*` symlinks |
 | [day-one-ux.md](./day-one-ux.md) | Holistic new-user onboarding experience |
+| [human-escalation.md](./human-escalation.md) | Structured human review/approval replacing `[?BOSS]` |
 
 ## Design Principles
 

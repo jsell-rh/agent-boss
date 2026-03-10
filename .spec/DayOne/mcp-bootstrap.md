@@ -154,10 +154,13 @@ All other methods return `-32601 Method not found`.
 
 ## Open Questions
 
-- **[?BOSS] MCP server port**: Should the MCP server share port 8899 with the HTTP API
+These questions require human decision and are tracked as escalations in the coordinator
+(see [human-escalation.md](./human-escalation.md)).
+
+- **MCP server port**: Should the MCP server share port 8899 with the HTTP API
   (different path prefix `/mcp/`) or run on a separate port? Proposal: share the port
   to minimize configuration.
 
-- **[?BOSS] MCP config generation**: Should `/tmp/boss-mcp.json` be written by the
+- **MCP config generation**: Should `/tmp/boss-mcp.json` be written by the
   coordinator server (side effect of spawn) or by a CLI command (`boss mcp-config`)?
   Proposal: written by server at spawn time to `/tmp/boss-mcp-{space}-{agent}.json`.
