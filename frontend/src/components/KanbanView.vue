@@ -36,6 +36,7 @@ const filterOverdueOnly = ref(false)
 const selectedTask = ref<Task | null>(null)
 const panelOpen = ref(false)
 const newTaskOpen = ref(false)
+const newTaskInitialStatus = ref<TaskStatus>('backlog')
 
 // ── Computed: tasks grouped by column ─────────────────────────────
 const allLabels = computed(() => {
@@ -170,6 +171,11 @@ function onTaskDeleted(id: string) {
 
 function onTaskCreated() {
   loadTasks()
+}
+
+function openNewTaskInColumn(status: TaskStatus) {
+  newTaskInitialStatus.value = status
+  newTaskOpen.value = true
 }
 
 function openTaskById(id: string) {
@@ -310,7 +316,7 @@ onUnmounted(() => {
           <RefreshCw :class="['size-3.5', loading && 'animate-spin']" />
         </Button>
 
-        <Button size="sm" class="h-7 text-xs gap-1" @click="newTaskOpen = true">
+        <Button size="sm" class="h-7 text-xs gap-1" @click="newTaskInitialStatus = 'backlog'; newTaskOpen = true">
           <Plus class="size-3.5" />
           New Task
         </Button>
@@ -343,6 +349,7 @@ onUnmounted(() => {
         @task-click="openTask"
         @task-drop="onTaskDrop"
         @task-drag-start="t => draggingTaskId = t.id"
+        @create-in-column="openNewTaskInColumn"
       />
     </div>
 
@@ -362,6 +369,8 @@ onUnmounted(() => {
     <NewTaskDialog
       :open="newTaskOpen"
       :space="space"
+      :tasks="tasks"
+      :initial-status="newTaskInitialStatus"
       @update:open="newTaskOpen = $event"
       @created="onTaskCreated"
     />
