@@ -34,7 +34,7 @@ type AgentConfig struct {
     InitialPrompt string        `json:"initial_prompt,omitempty"` // instructions sent to agent after session start (no slash commands)
     PersonaIDs    []string      `json:"persona_ids,omitempty"`    // ordered list of global persona IDs to inject
     Backend       string        `json:"backend,omitempty"`        // "tmux" | "ambient" (default "tmux")
-    Command       string        `json:"command,omitempty"`        // override default claude command
+    Command       string        `json:"command,omitempty"`        // launch command (default: "claude"); user opts into --dangerously-skip-permissions explicitly
 
     // tmux-specific
     RepoURL       string        `json:"repo_url,omitempty"`       // primary git remote for display/linking

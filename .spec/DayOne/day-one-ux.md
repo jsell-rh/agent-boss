@@ -68,9 +68,16 @@ exposes all `AgentConfig` fields in a single form, grouped by section:
 - Backend (dropdown: tmux / ambient)
 
 **Behavior**
-- Personas (multi-select from space's persona library)
-- Initial prompt (optional textarea — defaults to generated `/boss.ignite "..." "..."`)
+- Personas (multi-select from global persona library)
+- Initial prompt (optional textarea — plain text instructions, no slash commands)
   - Shows assembled preview below the textarea (persona prompts + initial_prompt)
+
+**Advanced**
+- Launch command (default: `claude`; user types the full command if they want flags)
+- "Skip permission prompts" checkbox — when checked, appends `--dangerously-skip-permissions`
+  to the launch command. **Unchecked by default.** Displays a warning:
+  > "This allows the agent to run tools without asking for confirmation. Only enable if you
+  > trust this agent's behavior."
 
 **Actions** (at bottom)
 - [Create] — creates agent record, does not spawn

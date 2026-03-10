@@ -30,7 +30,8 @@ and self-guiding.
 - **Zero-friction defaults**: a new user can create a working space and agent in under 2 minutes
 - **Reproducibility**: agent configuration is data, not shell state — it survives restarts
 - **Backend agnosticism**: every improvement works for both tmux and ambient backends
-- **No new external dependencies**: Go stdlib only in the server; MCP served locally
+- **One external Go dependency**: `mark3labs/mcp-go` for the MCP server (justified by protocol complexity)
+- **Security by default**: `--dangerously-skip-permissions` is opt-in, not the default
 
 ## Shared Contracts
 
@@ -38,17 +39,17 @@ and self-guiding.
 
 ```json
 {
-  "name": "LifecycleMgr",
-  "space": "AgentBossDevTeam",
   "work_dir": "/home/jsell/code/sandbox/agent-boss",
   "repo_url": "https://github.com/jsell-rh/agent-boss.git",
-  "initial_prompt": "/boss.ignite \"LifecycleMgr\" \"AgentBossDevTeam\"",
-  "persona_ids": ["senior-engineer"],
+  "initial_prompt": "You are LifecycleMgr. Read the blackboard and act on pending tasks.",
+  "personas": [{"id": "senior-engineer"}],
   "backend": "tmux",
-  "parent": "boss",
-  "role": "Manager"
+  "command": "claude"
 }
 ```
+
+Note: `command` defaults to `claude` (no `--dangerously-skip-permissions`). Users opt in
+via the "Skip permission prompts" checkbox in the agent create dialog.
 
 ### Persona (new top-level object)
 
@@ -75,6 +76,7 @@ and self-guiding.
 | MCP library | **mark3labs/mcp-go** |
 | Boss identity | First-class dashboard user; not an agent record (optional only) |
 | Restart scope | Individual agent + **fleet restart** (restart all) |
+| `--dangerously-skip-permissions` | **Not the default** — opt-in checkbox in create dialog with warning |
 
 ## Non-Goals (this spec)
 

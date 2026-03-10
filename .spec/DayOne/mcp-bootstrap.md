@@ -87,16 +87,22 @@ For the tmux backend:
 # 1. Register boss MCP server (idempotent — safe if already registered)
 claude mcp add boss-mcp --transport http http://localhost:8899/mcp
 
-# 2. Start Claude (MCP server auto-connects on startup)
-claude --dangerously-skip-permissions
+# 2. Start Claude — flags depend on user permission settings (see AgentConfig.Command)
+claude
 ```
 
 The tmux backend workflow:
 1. `tmux new-session -d -s {session_id}` — create session
 2. Send: `claude mcp add boss-mcp --transport http http://localhost:8899/mcp` + Enter
 3. Wait 300ms
-4. Send: `claude --dangerously-skip-permissions` + Enter
+4. Send the configured launch command (from `AgentConfig.Command`, default `claude`) + Enter
 5. Claude initializes, reads `boss://bootstrap/{space}/{agent}`, and begins work
+
+`--dangerously-skip-permissions` is **not** the default. It must be explicitly set by the
+user in `AgentConfig.Command` (e.g. `claude --dangerously-skip-permissions`). The agent
+create dialog shows a checkbox "Skip permission prompts" that, when enabled, appends the
+flag to the command. The checkbox is unchecked by default and displays a warning about
+what it means.
 
 The server checks `claude mcp list` output to detect if `boss-mcp` is already registered
 before running `claude mcp add` (avoids duplicates).
