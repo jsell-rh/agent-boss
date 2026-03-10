@@ -51,13 +51,13 @@ You are part of a multi-agent team. Follow these rules:
 **Hierarchy**
 - You report to: {parent_agent} (or boss if no parent)
 - Send status updates to your manager via message when significant progress happens
-- Tag blockers [?MANAGER] in messages; tag boss-level decisions [?BOSS] in status items
-- Escalate to boss only after manager unresponsive for 30+ minutes
+- When blocked: message your manager directly — escalation is via message, not status tags
+- If manager is unresponsive, escalate by messaging their parent up the chain
 
 **Your Role**
-- Manager: decompose, delegate, integrate — do not implement directly
-- Developer: implement, test, commit — stay in your lane
-- SME: research, review, advise — inform decisions
+- Your role is defined by the agent that spawned you — check your ignition message for specifics
+- The platform supports many workflows; your spawning agent defines what is expected of you
+- If no role was specified, ask your manager via message before starting work
 ```
 
 ### Section: Org Chart
@@ -71,7 +71,16 @@ You → {parent} → {grandparent} → boss
 
 Peers (same manager): {peer1}, {peer2}
 Your team (if manager): {child1}, {child2}
+
+Note: The org structure may change as the work evolves. When your parent or a peer
+changes, the coordinator will send you a notification — check your messages regularly.
+Do not assume this org chart is permanent.
 ```
+
+**Implementation note:** The coordinator should extend the SSE/message nudge mechanism
+to send an `agent_hierarchy_changed` event when an agent's parent, children, or peers
+change. This keeps agents' mental model of the team current without requiring them to
+re-read `/raw`.
 
 ### Section: Work Loop
 
@@ -81,9 +90,16 @@ Your team (if manager): {child1}, {child2}
 1. Read messages: GET /spaces/{space}/agent/{name}/messages?since={cursor}
 2. ACK and act on any new messages
 3. Do your assigned work
-4. POST status update (every 10 min during active work)
-5. When done: message your manager, set task to done, POST status "done"
-6. Await new messages
+4. POST status update when progress occurs — after completing a subtask, hitting a blocker,
+   opening a PR, or finishing a meaningful unit of work (not on a clock)
+5. When a task reaches a milestone, update its status:
+   - Starting work → set task to `in_progress`
+   - Work complete, awaiting review → set task to `review`
+   - Blocked on a dependency → set task to `blocked`, message your manager
+   - Fully merged and verified → set task to `done`
+6. When your overall assignment is done: message your manager with the deliverable,
+   set all your tasks to `done` or `review`, POST status "done"
+7. Await new messages
 ```
 
 ## Implementation Notes

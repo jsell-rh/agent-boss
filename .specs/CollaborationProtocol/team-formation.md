@@ -9,12 +9,19 @@ Any task that cannot be completed in a single focused session by a single agent 
 
 ## Definition: Non-Trivial Task
 
-A task is non-trivial if it meets any of these criteria:
-- Requires touching more than 2 subsystems (frontend + backend + tests = 3 → non-trivial)
-- Has estimated effort > 1 hour of focused work
-- Requires specialized knowledge in more than one domain
-- Has >3 acceptance criteria
-- Is a planning or design task (always non-trivial — requires at least a researcher)
+The threshold is deliberately low — when in doubt, form a team. A task is non-trivial if it
+meets **any** of these criteria:
+
+- Touches more than one file or component area
+- Has more than one distinct deliverable
+- Requires any research before implementation can begin
+- Has more than one acceptance criterion
+- Is a planning, spec, or design task (always non-trivial)
+- Would benefit from an independent review pass
+- Estimated effort exceeds ~30 minutes of focused work
+
+Solo work is appropriate only for tightly scoped leaf tasks: a single bug fix, a one-file
+documentation update, or a clearly-specified implementation with no design decisions.
 
 ## Required Team Roles
 
@@ -39,23 +46,23 @@ Before spawning agents, the manager must:
 
 ### Step 2: Spawn agents via API
 
+Use the coordinator spawn API to create sub-agents:
+
 ```bash
-# Spawn a developer agent
 POST /spaces/{space}/agent/{AgentName}/spawn
   X-Agent-Name: {Manager}
+  Content-Type: application/json
   {
     "session_name": "{AgentName}",
     "command": "claude --dangerously-skip-permissions"
   }
 ```
 
-Alternatively (if API spawn not yet supported), spawn via tmux:
-```bash
-tmux new-session -d -s "{AgentName}" -x 220 -y 50
-tmux send-keys -t "{AgentName}" "claude --dangerously-skip-permissions" Enter
-sleep 8
-tmux send-keys -t "{AgentName}" '/boss.ignite "{AgentName}" "{Space}"' Enter
-```
+**`--dangerously-skip-permissions` opt-in:** For tmux-based agents, the `command` field
+controls whether Claude runs in autonomous mode. Platform operators and users must explicitly
+configure whether this flag is permitted. Do not assume it is always enabled — check the
+space's configuration or ask the user. Future: the coordinator will expose a setting to
+allow/disallow this flag per-space so agents are not surprised by the behavior.
 
 ### Step 3: Register hierarchy
 

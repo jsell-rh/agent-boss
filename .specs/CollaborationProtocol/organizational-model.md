@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Owner:** ProtoSME (delegated from ProtocolMgr)
+**SME Review:** ProtoSME — research complete, hierarchy design cross-referenced with `hierarchy-design.md`
 
 ## Hierarchy
 
@@ -16,6 +17,12 @@ Boss (human)
 ```
 
 The hierarchy is registered in the coordinator via `parent=` in ignition. Dashboard renders it visually.
+
+> **Note:** This diagram reflects one common pattern (software development teams), not a
+> required template. Agent Boss supports any workflow. Roles and team shapes are defined by
+> the spawning agent and the use case — not by the platform. The org structure also changes
+> over time; agents should treat their ignition hierarchy as a starting point, not a permanent
+> arrangement.
 
 ## Leadership Responsibilities
 
@@ -73,10 +80,10 @@ Managers do **not** poll `/raw` to observe agent status narratively.
 
 ```
 Agent blocked → message Manager → Manager unresponsive 30m → agent messages CTO
-CTO blocked   → message Boss    → Boss tags [?BOSS] resolved → CTO unblocks work
+CTO blocked   → message Boss    → Boss responds via message → CTO unblocks work
 ```
 
-Escalations are always via messages, never via status fields.
+Escalations are always via **messages**, not via status field tags or special markers.
 
 ## Decision Authority
 
@@ -114,3 +121,51 @@ Every task must have: an assignee, a parent (or be a root task), and a status th
 ### 5. Context at the edge
 
 Agents closest to the work have the most context. Managers should trust their judgment on implementation details; agents should escalate only genuine blockers, not minor decisions.
+
+---
+
+## Cross-Team Coordination
+
+Different manager domains occasionally need to coordinate. The correct channel is **Manager-to-Manager messaging**, not direct Developer-to-Developer communication.
+
+### Correct Pattern
+
+```
+FrontendDev needs a new API field from DataDev:
+  1. FrontendDev messages FrontendMgr: "Need DataDev to add X field to /tasks API"
+  2. FrontendMgr messages DataMgr: "FrontendMgr → DataMgr: TASK-{n} needs X field added"
+  3. DataMgr creates a subtask, assigns to DataDev, sends mission message
+  4. DataDev implements and messages DataMgr on completion
+  5. DataMgr messages FrontendMgr: "X field available in main"
+  6. FrontendMgr messages FrontendDev: "DataDev done, proceed"
+```
+
+### Intra-Team Peer Coordination
+
+Agents on the same team may message each other directly without manager authorization —
+peer communication is the default. A manager can explicitly forbid a specific interaction
+if needed, but this is the exception, not the rule.
+
+Peer exchanges that affect shared deliverables should be summarized in the next status update
+so managers have visibility.
+
+### API Aid: Subtree Messages
+
+When a Manager needs to broadcast to their entire team:
+```bash
+POST /spaces/{space}/agent/{Manager}/message?scope=subtree
+  X-Agent-Name: {sender}
+  {"message": "Team-wide directive: ..."}
+```
+This delivers to the Manager and all descendants. Fan-out cap: 50 recipients.
+
+### API Aid: Parent Escalation
+
+Workers can escalate without knowing their manager's name:
+```bash
+POST /spaces/{space}/agent/parent/message
+  X-Agent-Name: {WorkerAgent}
+  {"message": "TASK-{id} blocked: {reason}. Waiting on your decision."}
+```
+The server resolves `parent` to the caller's declared parent agent. No special tag syntax needed —
+the message content communicates the blocker.

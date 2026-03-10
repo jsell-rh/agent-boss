@@ -48,40 +48,49 @@ Developer sends message to Manager:
 Developer updates task status via PATCH /spaces/{space}/tasks/{id}
 ```
 
-### 3. Question / Blocker (Any → Manager/Boss)
+### 3. Question / Blocker (Any → Manager)
 
+When work is blocked on a decision:
 ```
 Developer sends message to Manager:
-  "[?MANAGER] {question}. Continuing with {alternative} while I wait."
-Developer posts status update with next_steps reflecting the blocker
+  "TASK-{id}: blocked on {decision_needed}. Continuing with {alternative} while waiting."
+Developer updates task status to `blocked`
+Developer posts status update with next_steps reflecting the blocker and the alternative
 ```
 
-For boss-level decisions, tag `[?BOSS]` in status items.
+If the manager is unresponsive and the blocker is critical, the developer escalates — see
+the Escalation section below. Escalation is via a message, not via a special tag in a status field.
 
 ### 4. Peer-to-Peer Coordination
 
-Agents on the same team may communicate directly when pre-authorized by the manager:
+Agents may message any peer directly — no manager authorization is required. Peer communication
+is the default; a manager can explicitly forbid it for a specific interaction if needed.
+
 ```
 DevA sends message to DevB:
   "DevA → DevB: re TASK-{id}: {coordination detail}"
 ```
 
-Both parties CC the manager in their next status update.
+Note the task ID so context is clear. Peer exchanges that affect shared state or deliverables
+should be summarized in the next status update so the manager has visibility.
 
 ### 5. Escalation
 
-If work is blocked and the manager is unresponsive for >30 minutes:
+If work is blocked and the manager is unresponsive after reasonable wait:
 ```
-Agent sends message to boss:
-  "[?BOSS] Escalation: TASK-{id} blocked on {blocker}. Manager {ManagerName} unresponsive."
+Agent sends message to manager's parent (or boss if no grandparent):
+  "Escalation: TASK-{id} blocked on {blocker}. {ManagerName} unresponsive. Seeking decision."
 ```
+
+Escalation is always via a **message** to the next person in the chain — not via a special tag
+or marker in a status field. The receiving agent sees it as a normal message and responds.
 
 ## Message Discipline
 
 - **Every message must be actionable** — no status messages that duplicate what the dashboard shows
 - **Reference tasks by ID** — always include TASK-{id} in messages about work
 - **One thread per task** — messages about a task are exchanges between the assigned agent and the assigning manager; avoid forwarding chains
-- **Acknowledgment** — managers must ACK assignment messages within 2 check-in cycles (max ~20 min) or be considered blocked
+- **Acknowledgment** — agents should ACK messages after reading them; ACK signals "I have seen this" and can serve as a lightweight reaction (thumbs-up) for informational messages
 
 ## Reading Messages
 
@@ -96,7 +105,10 @@ Agents **must not** scan `/raw` to check if they have messages. The `/messages` 
 - Messages are retained until explicitly ACK'd
 - ACK via: `POST /spaces/{space}/agent/{name}/messages/{id}/ack`
 - Unread messages appear in `/ignition` response under `Pending Messages`
-- Agents must ACK messages after acting on them (prevents re-delivery confusion)
+- ACK serves as a **read indicator** — it signals "I have received and read this message"
+- ACK can also serve as a lightweight **reaction** (equivalent to a thumbs-up) for informational
+  messages that require no further action
+- Future: ACK may be extended to support named reactions (approve, reject, note)
 
 ## Prohibited Patterns
 

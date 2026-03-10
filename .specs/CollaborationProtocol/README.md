@@ -16,8 +16,8 @@ This spec defines the new collaboration model for Agent Boss. The goal is to mak
 | [overview.md](./overview.md) | High-level vision and principles | Draft |
 | [messaging-protocol.md](./messaging-protocol.md) | How agents communicate exclusively via the messaging API | Draft |
 | [team-formation.md](./team-formation.md) | Rules for spawning teams for non-trivial tasks | Draft |
-| [organizational-model.md](./organizational-model.md) | Leadership, delegation, and org theory | Draft |
-| [task-management.md](./task-management.md) | Strict task/subtask usage rules | Draft |
+| [organizational-model.md](./organizational-model.md) | Leadership, delegation, and org theory | SME Review |
+| [task-management.md](./task-management.md) | Strict task/subtask usage rules | SME Review |
 | [ignition-prompts.md](./ignition-prompts.md) | What org theory to bake into agent ignition | Draft |
 | [gap-analysis.md](./gap-analysis.md) | Current API gaps vs. required capabilities | Draft |
 

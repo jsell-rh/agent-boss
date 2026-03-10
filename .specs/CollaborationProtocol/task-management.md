@@ -2,16 +2,21 @@
 
 **Status:** Draft
 **Owner:** ProtocolMgr
+**SME Review:** ProtoSME — code-verified against `types.go` task status constants
 
 ## Principle: Tasks Are the Source of Truth
 
 Every piece of work must have a task. Every task must be kept in sync with actual work. There is no invisible work.
 
+> **Non-negotiable (boss directive):** Agents must be strict about creating tasks, assigning them
+> to the correct agent, and keeping status in sync with real work. Working without a task,
+> or leaving a task stale, is a coordination failure — not a minor oversight.
+
 ## Task Lifecycle
 
 ```
 backlog → in_progress → review → done
-                ↘ blocked
+                ↘ blocked ↗
 ```
 
 | Status | Meaning | Who Sets |
@@ -21,6 +26,10 @@ backlog → in_progress → review → done
 | `blocked` | Cannot progress; needs resolution | Assignee |
 | `review` | Work complete; awaiting review/merge | Assignee |
 | `done` | Fully complete and merged | Manager or assignee |
+
+**Code-verified:** These are the only valid task status values in the API (`types.go:TaskStatus`).
+There is no `cancelled` status — to cancel work, DELETE the task or set it to `done` with a note.
+To unblock a blocked task, set it back to `in_progress` and message your manager.
 
 ## Rules
 
@@ -86,7 +95,7 @@ The manager is responsible for marking parent tasks done after all subtasks comp
 
 When a task is blocked, the assignee:
 1. Sets status to `blocked`
-2. Messages their manager with `[?MANAGER] TASK-{id} blocked: {reason}`
+2. Messages their manager: `"TASK-{id} blocked: {reason}. Waiting on {decision_or_dependency}."`
 3. Posts a status update reflecting the blocker in `next_steps`
 
 ### Rule 8: No stale in_progress
