@@ -261,7 +261,7 @@ type TaskEvent struct {
 
 type KnowledgeSpace struct {
 	Name            string                  `json:"name"`
-	Agents          map[string]*AgentUpdate `json:"agents"`
+	Agents          map[string]*AgentRecord `json:"agents"`
 	Tasks           map[string]*Task        `json:"tasks,omitempty"`
 	NextTaskSeq     int                     `json:"next_task_seq,omitempty"`
 	SharedContracts string                  `json:"shared_contracts,omitempty"`
@@ -283,7 +283,7 @@ func NewKnowledgeSpace(name string) *KnowledgeSpace {
 	now := time.Now().UTC()
 	return &KnowledgeSpace{
 		Name:      name,
-		Agents:    make(map[string]*AgentUpdate),
+		Agents:    make(map[string]*AgentRecord),
 		Tasks:     make(map[string]*Task),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -308,7 +308,7 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 	sort.Strings(sortedNames)
 
 	for _, name := range sortedNames {
-		agent := ks.Agents[name]
+		agent := ks.Agents[name].Status
 		branch := agent.Branch
 		if branch == "" {
 			branch = "—"
@@ -330,7 +330,7 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 
 	b.WriteString("## Agent Sections\n\n")
 	for _, name := range sortedNames {
-		agent := ks.Agents[name]
+		agent := ks.Agents[name].Status
 		b.WriteString("### ")
 		b.WriteString(name)
 		b.WriteString("\n\n")
@@ -483,7 +483,11 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 	}
 
 	// Build all nodes
-	for name, ag := range ks.Agents {
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil {
+			continue
+		}
+		ag := rec.Status
 		node := &HierarchyNode{
 			Agent:    name,
 			Parent:   ag.Parent,
@@ -532,22 +536,26 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 // Must be called inside s.mu.Lock().
 func rebuildChildren(ks *KnowledgeSpace) {
 	// Reset all children slices
-	for _, ag := range ks.Agents {
-		ag.Children = nil
+	for _, rec := range ks.Agents {
+		if rec != nil && rec.Status != nil {
+			rec.Status.Children = nil
+		}
 	}
 	// Populate from Parent fields
-	for name, ag := range ks.Agents {
-		if ag.Parent == "" {
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil || rec.Status.Parent == "" {
 			continue
 		}
-		canonicalParent := resolveAgentName(ks, ag.Parent)
-		if parent, ok := ks.Agents[canonicalParent]; ok {
-			parent.Children = append(parent.Children, name)
+		canonicalParent := resolveAgentName(ks, rec.Status.Parent)
+		if parentRec, ok := ks.Agents[canonicalParent]; ok && parentRec != nil && parentRec.Status != nil {
+			parentRec.Status.Children = append(parentRec.Status.Children, name)
 		}
 	}
 	// Sort children for stable output
-	for _, ag := range ks.Agents {
-		sort.Strings(ag.Children)
+	for _, rec := range ks.Agents {
+		if rec != nil && rec.Status != nil {
+			sort.Strings(rec.Status.Children)
+		}
 	}
 }
 
@@ -569,11 +577,11 @@ func hasCycle(ks *KnowledgeSpace, agentName, proposedParent string) bool {
 		}
 		visited[current] = true
 		canonical := resolveAgentName(ks, current)
-		ag, ok := ks.Agents[canonical]
-		if !ok {
+		rec, ok := ks.Agents[canonical]
+		if !ok || rec == nil || rec.Status == nil {
 			break // dangling reference — no cycle through here
 		}
-		current = strings.ToLower(ag.Parent)
+		current = strings.ToLower(rec.Status.Parent)
 	}
 	return false
 }
@@ -589,11 +597,11 @@ func collectSubtree(ks *KnowledgeSpace, agentName string) []string {
 		current := queue[0]
 		queue = queue[1:]
 		result = append(result, current)
-		ag, ok := ks.Agents[current]
-		if !ok {
+		rec, ok := ks.Agents[current]
+		if !ok || rec == nil || rec.Status == nil {
 			continue
 		}
-		for _, child := range ag.Children {
+		for _, child := range rec.Status.Children {
 			if !visited[child] {
 				visited[child] = true
 				queue = append(queue, child)
@@ -633,4 +641,110 @@ const TaskStalenessThreshold = 1 * time.Hour
 // Call this on a copy before returning a task in an API response.
 func computeTaskStaleness(t *Task) {
 	t.IsStale = t.Status == TaskStatusInProgress && time.Since(t.UpdatedAt) > TaskStalenessThreshold
+}
+
+// AgentConfig holds the durable configuration for an agent.
+// Unlike AgentUpdate (runtime state), config fields persist across restarts
+// and are never overwritten by agent status POSTs.
+type AgentConfig struct {
+	// Common fields
+	WorkDir       string   `json:"work_dir,omitempty"`
+	InitialPrompt string   `json:"initial_prompt,omitempty"`
+	PersonaIDs    []string `json:"persona_ids,omitempty"`
+	Backend       string   `json:"backend,omitempty"` // "tmux" | "ambient"
+	Command       string   `json:"command,omitempty"` // launch command (default: "claude")
+
+	// tmux-specific
+	RepoURL string `json:"repo_url,omitempty"`
+
+	// ambient-specific
+	Repos []SessionRepo `json:"repos,omitempty"`
+	Model string        `json:"model,omitempty"`
+}
+
+// AgentRecord is the persistent wrapper stored in KnowledgeSpace.Agents.
+// Config holds durable configuration; Status holds runtime state.
+type AgentRecord struct {
+	Config *AgentConfig `json:"config,omitempty"`
+	Status *AgentUpdate `json:"status"`
+}
+
+// UnmarshalJSON implements backward-compat loading.
+// Legacy JSON had AgentUpdate fields at the top level; new format has {config, status}.
+func (r *AgentRecord) UnmarshalJSON(data []byte) error {
+	// Peek at "status" key: if it's a JSON string, this is legacy format
+	var probe struct {
+		Status json.RawMessage `json:"status"`
+	}
+	if json.Unmarshal(data, &probe) == nil && len(probe.Status) > 0 {
+		if probe.Status[0] == '"' {
+			// Legacy: top-level AgentUpdate fields at the root
+			var u AgentUpdate
+			if err := json.Unmarshal(data, &u); err != nil {
+				return err
+			}
+			r.Status = &u
+			return nil
+		}
+	}
+	// New format: {config: {...}, status: {...}}
+	type Alias AgentRecord
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*r = AgentRecord(alias)
+	return nil
+}
+
+// agentRecordFromUpdate wraps an *AgentUpdate in an AgentRecord (for migration/creation).
+func agentRecordFromUpdate(u *AgentUpdate) *AgentRecord {
+	return &AgentRecord{Status: u}
+}
+
+// agentStatus returns the *AgentUpdate for name, or nil if not found.
+func (ks *KnowledgeSpace) agentStatus(name string) *AgentUpdate {
+	rec := ks.Agents[name]
+	if rec == nil {
+		return nil
+	}
+	return rec.Status
+}
+
+// agentStatusOk returns (*AgentUpdate, true) if the agent exists and has a Status.
+func (ks *KnowledgeSpace) agentStatusOk(name string) (*AgentUpdate, bool) {
+	rec, ok := ks.Agents[name]
+	if !ok || rec == nil || rec.Status == nil {
+		return nil, false
+	}
+	return rec.Status, true
+}
+
+// setAgentStatus creates or updates the Status in an AgentRecord, preserving Config.
+func (ks *KnowledgeSpace) setAgentStatus(name string, status *AgentUpdate) {
+	rec := ks.Agents[name]
+	if rec == nil {
+		rec = &AgentRecord{}
+		ks.Agents[name] = rec
+	}
+	rec.Status = status
+}
+
+// agentConfig returns the *AgentConfig for name, or nil if not found.
+func (ks *KnowledgeSpace) agentConfig(name string) *AgentConfig {
+	rec := ks.Agents[name]
+	if rec == nil {
+		return nil
+	}
+	return rec.Config
+}
+
+// setAgentConfig sets the config for name, creating the record if needed.
+func (ks *KnowledgeSpace) setAgentConfig(name string, cfg *AgentConfig) {
+	rec := ks.Agents[name]
+	if rec == nil {
+		rec = &AgentRecord{}
+		ks.Agents[name] = rec
+	}
+	rec.Config = cfg
 }

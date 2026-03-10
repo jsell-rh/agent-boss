@@ -86,14 +86,14 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request, spa
 
 	// Ensure agent exists in the space and persist registration info
 	s.mu.Lock()
-	agent, ok := ks.Agents[canonical]
-	if !ok {
+	agent := ks.agentStatus(canonical)
+	if agent == nil {
 		agent = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   canonical + ": registered",
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[canonical] = agent
+		ks.setAgentStatus(canonical, agent)
 	}
 	agent.Registration = &reg
 	// Apply hierarchy from registration if provided.
@@ -180,7 +180,7 @@ func (s *Server) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request, sp
 	// Also persist heartbeat time and clear staleness on the AgentUpdate when possible.
 	if ks != nil {
 		s.mu.Lock()
-		if agent, ok := ks.Agents[canonical]; ok {
+		if agent, ok := ks.agentStatusOk(canonical); ok {
 			agent.LastHeartbeat = now
 			agent.HeartbeatStale = false
 			ks.UpdatedAt = now
@@ -232,7 +232,7 @@ func (s *Server) handleAgentMessages(w http.ResponseWriter, r *http.Request, spa
 	}
 
 	s.mu.RLock()
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	s.mu.RUnlock()
 
 	if !exists {
@@ -384,7 +384,7 @@ func (s *Server) checkHeartbeatStaleness() {
 				continue
 			}
 			canonical := resolveAgentName(ks, ch.agentName)
-			if agent, ok := ks.Agents[canonical]; ok {
+			if agent, ok := ks.agentStatusOk(canonical); ok {
 				agent.HeartbeatStale = ch.stale
 				ks.UpdatedAt = now
 				s.saveSpace(ks)

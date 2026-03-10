@@ -137,7 +137,7 @@ func (s *Server) loadSpace(name string) (*KnowledgeSpace, error) {
 		return nil, fmt.Errorf("unmarshal %s: %w", name, err)
 	}
 	if ks.Agents == nil {
-		ks.Agents = make(map[string]*AgentUpdate)
+		ks.Agents = make(map[string]*AgentRecord)
 	}
 	return &ks, nil
 }

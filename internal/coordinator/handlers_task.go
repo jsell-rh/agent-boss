@@ -598,7 +598,7 @@ func (s *Server) notifyTaskComment(spaceName, taskID, taskTitle, assignedTo, com
 
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, assignedTo)
-	ag, exists := ks.Agents[canonical]
+	ag, exists := ks.agentStatusOk(canonical)
 	if !exists {
 		s.mu.Unlock()
 		return
@@ -649,15 +649,15 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, assignedTo)
-	ag, exists := ks.Agents[canonical]
-	if !exists {
+	ag := ks.agentStatus(canonical)
+	if ag == nil {
 		ag = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: pending task assignment", canonical),
 			Messages:  []AgentMessage{},
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[canonical] = ag
+		ks.setAgentStatus(canonical, ag)
 	}
 	if ag.Messages == nil {
 		ag.Messages = []AgentMessage{}

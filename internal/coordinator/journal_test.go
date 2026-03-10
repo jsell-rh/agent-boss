@@ -117,7 +117,7 @@ func TestEventJournalReplayAgentUpdates(t *testing.T) {
 	if len(ks.Agents) != 1 {
 		t.Fatalf("expected 1 agent, got %d", len(ks.Agents))
 	}
-	alice, ok := ks.Agents["Alice"]
+	alice, ok := ks.agentStatusOk("Alice")
 	if !ok {
 		t.Fatal("expected Alice agent")
 	}
@@ -169,7 +169,7 @@ func TestEventJournalReplayMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayInto: %v", err)
 	}
-	dave := ks.Agents["Dave"]
+	dave := ks.agentStatus("Dave")
 	if dave == nil {
 		t.Fatal("expected Dave agent")
 	}
@@ -201,7 +201,7 @@ func TestEventJournalReplayMessageAck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayInto: %v", err)
 	}
-	eve := ks.Agents["Eve"]
+	eve := ks.agentStatus("Eve")
 	if eve == nil {
 		t.Fatal("expected Eve agent")
 	}
@@ -226,7 +226,7 @@ func TestEventJournalReplaySnapshot(t *testing.T) {
 	// Snapshot replaces everything
 	ks := NewKnowledgeSpace("s")
 	tc := 3
-	ks.Agents["NewAgent"] = &AgentUpdate{Status: StatusActive, Summary: "new", TestCount: &tc, UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("NewAgent", &AgentUpdate{Status: StatusActive, Summary: "new", TestCount: &tc, UpdatedAt: time.Now().UTC()})
 	j.Append("s", EventSnapshot, "", ks)
 
 	// After snapshot: events apply on top
@@ -263,7 +263,7 @@ func TestEventJournalCompact(t *testing.T) {
 	}
 
 	ks := NewKnowledgeSpace("s")
-	ks.Agents["Alpha"] = &AgentUpdate{Status: StatusDone, Summary: "Alpha: done", UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("Alpha", &AgentUpdate{Status: StatusDone, Summary: "Alpha: done", UpdatedAt: time.Now().UTC()})
 	if err := j.Compact("s", ks); err != nil {
 		t.Fatalf("Compact: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestEventJournalCompact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayInto after compact: %v", err)
 	}
-	alpha := result.Agents["Alpha"]
+	alpha := result.agentStatus("Alpha")
 	if alpha == nil || alpha.Status != StatusDone {
 		t.Error("Alpha should be done after replay from compacted journal")
 	}
@@ -294,7 +294,7 @@ func TestEventJournalMigrateFromJSON(t *testing.T) {
 
 	ks := NewKnowledgeSpace("mig")
 	tc := 10
-	ks.Agents["Migrated"] = &AgentUpdate{Status: StatusActive, Summary: "Migrated: active", TestCount: &tc, UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("Migrated", &AgentUpdate{Status: StatusActive, Summary: "Migrated: active", TestCount: &tc, UpdatedAt: time.Now().UTC()})
 
 	if err := j.MigrateFromJSON(ks); err != nil {
 		t.Fatalf("MigrateFromJSON: %v", err)
@@ -307,7 +307,7 @@ func TestEventJournalMigrateFromJSON(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if agent := result.Agents["Migrated"]; agent == nil {
+	if agent := result.agentStatus("Migrated"); agent == nil {
 		t.Error("expected Migrated agent")
 	} else if agent.Status != StatusActive {
 		t.Errorf("expected active, got %s", agent.Status)
@@ -626,7 +626,7 @@ func TestEventJournalCompactVsConcurrentAppend(t *testing.T) {
 	}
 
 	ks := NewKnowledgeSpace("race")
-	ks.Agents["Racer"] = &AgentUpdate{Status: StatusActive, Summary: "Racer: mid", UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("Racer", &AgentUpdate{Status: StatusActive, Summary: "Racer: mid", UpdatedAt: time.Now().UTC()})
 
 	// Compact and append concurrently
 	errc := make(chan error, 1)
@@ -677,7 +677,7 @@ func TestEventJournalFileHandlePool(t *testing.T) {
 
 	// Compact should close the pooled handle and reset the file.
 	ks := NewKnowledgeSpace("pool")
-	ks.Agents["Worker"] = &AgentUpdate{Status: StatusDone, Summary: "Worker: done", UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("Worker", &AgentUpdate{Status: StatusDone, Summary: "Worker: done", UpdatedAt: time.Now().UTC()})
 	if err := j.Compact("pool", ks); err != nil {
 		t.Fatalf("Compact: %v", err)
 	}
@@ -743,7 +743,7 @@ func TestEventJournalCountTriggeredCompaction(t *testing.T) {
 
 	// Compact and verify count resets.
 	ks := NewKnowledgeSpace("heavy")
-	ks.Agents["Heavy"] = &AgentUpdate{Status: StatusActive, Summary: "Heavy: active", UpdatedAt: time.Now().UTC()}
+	ks.setAgentStatus("Heavy", &AgentUpdate{Status: StatusActive, Summary: "Heavy: active", UpdatedAt: time.Now().UTC()})
 	if err := j.Compact("heavy", ks); err != nil {
 		t.Fatalf("Compact: %v", err)
 	}

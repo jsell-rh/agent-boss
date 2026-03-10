@@ -194,7 +194,7 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 			// Snapshot replaces current state entirely.
 			ks = &snap
 			if ks.Agents == nil {
-				ks.Agents = make(map[string]*AgentUpdate)
+				ks.Agents = make(map[string]*AgentRecord)
 			}
 
 		case EventSpaceCreated:
@@ -212,7 +212,7 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 			if err := json.Unmarshal(ev.Payload, &update); err != nil {
 				continue
 			}
-			ks.Agents[ev.Agent] = &update
+			ks.setAgentStatus(ev.Agent, &update)
 			ks.UpdatedAt = ev.Timestamp
 
 		case EventAgentRemoved:
@@ -224,14 +224,14 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 			if err := json.Unmarshal(ev.Payload, &msg); err != nil {
 				continue
 			}
-			agent, ok := ks.Agents[ev.Agent]
-			if !ok {
+			agent := ks.agentStatus(ev.Agent)
+			if agent == nil {
 				agent = &AgentUpdate{
 					Status:    StatusIdle,
 					Summary:   ev.Agent + ": pending message delivery",
 					UpdatedAt: ev.Timestamp,
 				}
-				ks.Agents[ev.Agent] = agent
+				ks.setAgentStatus(ev.Agent, agent)
 			}
 			agent.Messages = append(agent.Messages, msg)
 			// Retain all unread messages; cap read messages at 50.
@@ -264,7 +264,7 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 			if err := json.Unmarshal(ev.Payload, &ack); err != nil {
 				continue
 			}
-			agent, ok := ks.Agents[ev.Agent]
+			agent, ok := ks.agentStatusOk(ev.Agent)
 			if !ok {
 				continue
 			}

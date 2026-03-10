@@ -706,7 +706,7 @@ func TestSpaceJSONViaAcceptHeader(t *testing.T) {
 	if len(ks.Agents) != 1 {
 		t.Errorf("expected 1 agent, got %d", len(ks.Agents))
 	}
-	agent, ok := ks.Agents["api"]
+	agent, ok := ks.agentStatusOk("api")
 	if !ok {
 		t.Fatal("agent 'api' not found")
 	}
