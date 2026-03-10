@@ -52,11 +52,11 @@ Developer updates task status via PATCH /spaces/{space}/tasks/{id}
 
 ```
 Developer sends message to Manager:
-  "[?MANAGER] {question}. Continuing with {alternative} while I wait."
+  "BLOCKED: TASK-{id}: {question}. Continuing with {alternative} while waiting."
 Developer posts status update with next_steps reflecting the blocker
 ```
 
-For boss-level decisions, tag `[?BOSS]` in status items.
+For boss-level decisions, message the boss agent channel directly.
 
 ### 4. Peer-to-Peer Coordination
 
@@ -73,7 +73,7 @@ Both parties CC the manager in their next status update.
 If work is blocked and the manager is unresponsive for >30 minutes:
 ```
 Agent sends message to boss:
-  "[?BOSS] Escalation: TASK-{id} blocked on {blocker}. Manager {ManagerName} unresponsive."
+  "ESCALATION: TASK-{id} blocked on {blocker}. Manager {ManagerName} unresponsive for 30+ min."
 ```
 
 ## Message Discipline

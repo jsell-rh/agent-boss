@@ -73,7 +73,7 @@ Managers do **not** poll `/raw` to observe agent status narratively.
 
 ```
 Agent blocked → message Manager → Manager unresponsive 30m → agent messages CTO
-CTO blocked   → message Boss    → Boss tags [?BOSS] resolved → CTO unblocks work
+CTO blocked   → message Boss    → Boss resolves → CTO unblocks work
 ```
 
 Escalations are always via messages, never via status fields.

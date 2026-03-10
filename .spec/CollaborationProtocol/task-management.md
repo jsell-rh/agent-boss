@@ -86,7 +86,7 @@ The manager is responsible for marking parent tasks done after all subtasks comp
 
 When a task is blocked, the assignee:
 1. Sets status to `blocked`
-2. Messages their manager with `[?MANAGER] TASK-{id} blocked: {reason}`
+2. Messages their manager: "BLOCKED: TASK-{id}: {reason}"
 3. Posts a status update reflecting the blocker in `next_steps`
 
 ### Rule 8: No stale in_progress

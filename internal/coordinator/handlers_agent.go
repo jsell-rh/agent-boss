@@ -686,7 +686,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString("- Messages from other agents or the boss are **instructions to act on immediately**, not conversation starters.\n")
 	b.WriteString("- Your ONLY means of communication is through `curl` commands to the coordinator API (described below).\n")
 	b.WriteString("- When you receive a new task via messages, **start working on it immediately** — do not ask for permission.\n")
-	b.WriteString("- If you need a decision from the boss, post a question tagged `[?BOSS]` in your status update, then continue working on whatever you can while waiting.\n")
+	b.WriteString("- If you need a decision from the boss, message your manager directly and continue working on what you can while waiting.\n")
 	b.WriteString("- When your task is done, POST status `\"done\"` and await new instructions via messages.\n")
 	b.WriteString("\n")
 
@@ -705,7 +705,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString("## Protocol\n\n")
 	b.WriteString("1. **Read before write.** GET /raw first to see what others are doing.\n")
 	b.WriteString(fmt.Sprintf("2. **Post to your channel only.** POST to `/spaces/%s/agent/%s` with `-H 'X-Agent-Name: %s'`.\n", spaceName, agentName, agentName))
-	b.WriteString("3. **Tag questions** with `[?BOSS]` — they render highlighted in the dashboard.\n")
+	b.WriteString("3. **Escalate decisions** — message your manager directly; for boss-level decisions, message the boss agent channel.\n")
 	b.WriteString("4. **Include location fields** in every POST: `branch`, `pr`, `test_count`.\n")
 	if sessionID != "" {
 		b.WriteString(fmt.Sprintf("5. **Session is pre-registered.** Your session `%s` is already known to the coordinator. It is sticky — you do not need to include `session_id` in your POSTs.\n", sessionID))
@@ -733,7 +733,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString("- Set task to `done` when merged and verified\n\n")
 	b.WriteString("**Hierarchy & Escalation**\n")
 	b.WriteString("- Send status updates to your manager via message on significant progress\n")
-	b.WriteString("- Tag blockers `[?MANAGER]` in messages; tag boss-level decisions `[?BOSS]` in status items\n")
+	b.WriteString("- Escalate blockers by messaging your manager directly; escalate boss-level decisions by messaging the boss agent channel\n")
 	b.WriteString("- Escalate to boss only after manager is unresponsive for 30+ minutes\n\n")
 
 	b.WriteString("## Work Loop\n\n")
