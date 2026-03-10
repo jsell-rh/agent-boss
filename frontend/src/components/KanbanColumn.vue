@@ -8,8 +8,17 @@ import { LayoutList } from 'lucide-vue-next'
 const props = defineProps<{
   status: TaskStatus
   tasks: Task[]
+  allTasks?: Task[]
   draggingTaskId?: string | null
 }>()
+
+// For each top-level task in this column, look up its subtasks from allTasks.
+function subtasksOf(task: Task): Task[] {
+  if (!props.allTasks || !task.subtasks?.length) return []
+  return task.subtasks
+    .map(id => props.allTasks!.find(t => t.id === id))
+    .filter((t): t is Task => t !== undefined)
+}
 
 const emit = defineEmits<{
   'task-click': [task: Task]
@@ -72,14 +81,26 @@ const statusHeaderClass: Record<TaskStatus, string> = {
     <!-- Cards -->
     <div class="flex flex-col gap-2 p-2 flex-1 min-h-24 overflow-y-auto">
       <TransitionGroup name="kanban-card" tag="div" class="flex flex-col gap-2">
-        <TaskCard
-          v-for="task in tasks"
-          :key="task.id"
-          :task="task"
-          :dragging="draggingTaskId === task.id"
-          @click="emit('task-click', task)"
-          @dragstart="onDragStart"
-        />
+        <div v-for="task in tasks" :key="task.id" class="flex flex-col gap-1">
+          <TaskCard
+            :task="task"
+            :dragging="draggingTaskId === task.id"
+            @click="emit('task-click', task)"
+            @dragstart="onDragStart"
+          />
+          <!-- Nested subtasks -->
+          <div v-if="subtasksOf(task).length" class="flex flex-col gap-1 pl-3 border-l-2 border-border ml-1">
+            <TaskCard
+              v-for="sub in subtasksOf(task)"
+              :key="sub.id"
+              :task="sub"
+              :dragging="draggingTaskId === sub.id"
+              class="opacity-90 scale-[0.98] origin-left"
+              @click="emit('task-click', sub)"
+              @dragstart="onDragStart"
+            />
+          </div>
+        </div>
       </TransitionGroup>
       <div
         v-if="tasks.length === 0"
