@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ const (
 
 	// Liveness events
 	EventAgentStale        EventType = "liveness.agent_stale"
+	EventAgentStaleCleared EventType = "liveness.agent_stale_cleared"
 	EventHeartbeatReceived EventType = "liveness.heartbeat_received"
 	EventNudgeTriggered    EventType = "liveness.nudge_triggered"
 
@@ -174,14 +176,19 @@ func NewLogger(out *os.File) Logger {
 
 // testLogger collects emitted DomainEvents in memory for use in tests.
 type testLogger struct {
+	mu     sync.Mutex
 	events []DomainEvent
 }
 
 func (l *testLogger) Log(e DomainEvent) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.events = append(l.events, e)
 }
 
 func (l *testLogger) last() *DomainEvent {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if len(l.events) == 0 {
 		return nil
 	}

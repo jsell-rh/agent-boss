@@ -2,7 +2,8 @@
 
 A lightweight shared memory bus for multi-agent AI coordination. Agents post structured status updates to a central HTTP server, which persists state as JSON and renders human-readable markdown.
 
-![Mission Control Dashboard](img.png)
+
+<img width="2534" height="1985" alt="image" src="https://github.com/user-attachments/assets/dcf7db5a-08e7-49ad-b92f-5fcf4a277ff2" />
 
 ## The Problem: Cold Context
 

@@ -75,7 +75,7 @@ func (s *Server) checkStaleness() {
 						Msg:    fmt.Sprintf("marked stale (last update: %s ago)", now.Sub(agent.UpdatedAt).Round(time.Second)),
 						Fields: map[string]string{"idle_duration": now.Sub(agent.UpdatedAt).Round(time.Second).String()}})
 				} else {
-					s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStale, Space: spaceName, Agent: name,
+					s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStaleCleared, Space: spaceName, Agent: name,
 						Msg: "staleness cleared"})
 				}
 			}
