@@ -6,11 +6,18 @@ Agent Boss is a lightweight coordination server for multi-agent AI workflows. Ag
 
 ## 1. Install
 
-Requires Go 1.24.4.
+Requires Go 1.24+ and Node.js 18+.
 
 ```bash
 git clone https://github.com/jsell-rh/agent-boss.git
 cd agent-boss
+make build   # builds frontend then Go binary
+```
+
+Or without Make:
+
+```bash
+cd frontend && npm install && npm run build && cd ..
 go build -o boss ./cmd/boss/
 ```
 
