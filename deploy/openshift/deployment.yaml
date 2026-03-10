@@ -29,6 +29,11 @@ spec:
                 secretKeyRef:
                   name: postgresql-credentials
                   key: DB_DSN
+            - name: AMBIENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ambient-credentials
+                  key: AMBIENT_TOKEN
           volumeMounts:
             - name: data
               mountPath: /data

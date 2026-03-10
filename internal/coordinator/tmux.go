@@ -417,7 +417,8 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 	}
 
 	// Model economy: switch to a lightweight model for check-ins if configured.
-	if checkModel != "" {
+	// Skip model switching for non-tmux backends (ambient sessions have fixed models).
+	if checkModel != "" && backend.Name() == "tmux" {
 		progress("switching to " + checkModel)
 		if err := backend.SendInput(sessionID, "/model "+checkModel); err != nil {
 			result.addError(canonical + ": model switch failed: " + err.Error())
@@ -447,8 +448,9 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 	result.addSent(canonical)
 	progress("board post received")
 
-	// Restore the working model if one was specified
-	if workModel != "" {
+	// Restore the working model if one was specified.
+	// Skip for non-tmux backends.
+	if workModel != "" && backend.Name() == "tmux" {
 		progress("waiting for idle before model restore...")
 		if err := waitForIdleBackend(backend, sessionID, idlePollTimeout); err != nil {
 			result.addError(canonical + ": post-checkin idle wait failed: " + err.Error())
@@ -472,13 +474,8 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *BroadcastResult {
 	result := &BroadcastResult{}
 
-	backend := s.backends[s.defaultBackend]
-	if !backend.Available() {
-		result.Errors = append(result.Errors, backend.Name()+" not found in PATH")
-		return result
-	}
-
-	s.TmuxAutoDiscover(spaceName)
+	// Auto-discover sessions across all available backends.
+	s.AutoDiscoverAll(spaceName)
 
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
@@ -488,15 +485,17 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 
 	s.mu.RLock()
 	type target struct {
-		agentName string
-		sessionID string
+		agentName   string
+		sessionID   string
+		backendType string
 	}
 	var targets []target
 	for name, agent := range ks.Agents {
 		if agent.SessionID != "" {
 			targets = append(targets, target{
-				agentName: name,
-				sessionID: agent.SessionID,
+				agentName:   name,
+				sessionID:   agent.SessionID,
+				backendType: agent.BackendType,
 			})
 		}
 	}
@@ -511,6 +510,11 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 
 	var wg sync.WaitGroup
 	for i, t := range targets {
+		backend := s.backendByName(t.backendType)
+		if !backend.Available() {
+			result.addSkipped(t.agentName + " (backend " + backend.Name() + " unavailable)")
+			continue
+		}
 		if !backend.SessionExists(t.sessionID) {
 			result.addSkipped(t.agentName + " (session not found: " + t.sessionID + ")")
 			time.Sleep(200 * time.Millisecond)
@@ -522,10 +526,10 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 			continue
 		}
 		wg.Add(1)
-		go func(agentName, sessionID string) {
+		go func(agentName, sessionID string, b SessionBackend) {
 			defer wg.Done()
-			s.runAgentCheckIn(spaceName, agentName, sessionID, backend, checkModel, workModel, result)
-		}(t.agentName, t.sessionID)
+			s.runAgentCheckIn(spaceName, agentName, sessionID, b, checkModel, workModel, result)
+		}(t.agentName, t.sessionID, backend)
 		if i < len(targets)-1 {
 			time.Sleep(200 * time.Millisecond)
 		}
@@ -537,14 +541,46 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 	return result
 }
 
+// AutoDiscoverAll runs session discovery across all available backends and
+// associates discovered sessions with agents in the given space.
+func (s *Server) AutoDiscoverAll(spaceName string) {
+	for _, backend := range s.backends {
+		if !backend.Available() {
+			continue
+		}
+		discovered, err := backend.DiscoverSessions()
+		if err != nil || len(discovered) == 0 {
+			continue
+		}
+		ks, ok := s.getSpace(spaceName)
+		if !ok {
+			return
+		}
+		s.mu.Lock()
+		for name, session := range discovered {
+			if name == "" {
+				continue
+			}
+			for agentName, agent := range ks.Agents {
+				if agent.SessionID != "" {
+					continue
+				}
+				if strings.EqualFold(agentName, name) ||
+					strings.EqualFold(strings.ReplaceAll(agentName, "-", ""), strings.ReplaceAll(name, "-", "")) {
+					agent.SessionID = session
+					agent.BackendType = backend.Name()
+					s.logEvent(fmt.Sprintf("[%s/%s] session auto-discovered via %s: %s", spaceName, agentName, backend.Name(), session))
+					break
+				}
+			}
+		}
+		s.saveSpace(ks) //nolint:errcheck
+		s.mu.Unlock()
+	}
+}
+
 func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel string) *BroadcastResult {
 	result := &BroadcastResult{}
-
-	backend := s.backends[s.defaultBackend]
-	if !backend.Available() {
-		result.Errors = append(result.Errors, backend.Name()+" not found in PATH")
-		return result
-	}
 
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
@@ -567,6 +603,12 @@ func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel 
 	}
 	if sessionID == "" {
 		result.Errors = append(result.Errors, canonical+": no session registered")
+		return result
+	}
+
+	backend := s.backendFor(agent)
+	if !backend.Available() {
+		result.Errors = append(result.Errors, backend.Name()+" not available")
 		return result
 	}
 	if !backend.SessionExists(sessionID) {
