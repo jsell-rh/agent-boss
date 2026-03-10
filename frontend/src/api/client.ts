@@ -305,6 +305,17 @@ class ApiClient {
     )
   }
 
+  duplicateAgent(space: string, agent: string, newName: string): Promise<{ ok: boolean; agent: string }> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/duplicate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': agent },
+        body: JSON.stringify({ new_name: newName }),
+      },
+    )
+  }
+
   introspectAgent(space: string, agent: string): Promise<IntrospectResponse> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/introspect`,

@@ -28,6 +28,7 @@ const agentName = ref('')
 const workDir = ref('')
 const reposText = ref('')
 const taskPrompt = ref('')
+const initialMessage = ref('')
 const backend = ref<'tmux' | 'ambient'>('tmux')
 const submitting = ref(false)
 const errorMsg = ref('')
@@ -53,6 +54,7 @@ function reset() {
   workDir.value = ''
   reposText.value = ''
   taskPrompt.value = ''
+  initialMessage.value = ''
   backend.value = 'tmux'
   selectedPersonaIds.value = []
   errorMsg.value = ''
@@ -96,6 +98,10 @@ async function submit() {
     })
     if (selectedPersonaIds.value.length > 0) {
       await api.updateAgentConfig(props.space, name, { persona_ids: [...selectedPersonaIds.value] })
+    }
+    const msg = initialMessage.value.trim()
+    if (msg) {
+      await api.sendMessage(props.space, name, msg, 'boss')
     }
     const created = name
     reset()
@@ -213,6 +219,22 @@ async function submit() {
           />
           <p class="text-xs text-muted-foreground">
             One repo per line. Optionally append a branch after a space.
+          </p>
+        </div>
+
+        <!-- Initial Mission (tmux only — ambient uses task prompt) -->
+        <div v-if="isTmux" class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Initial Mission (optional)
+          </label>
+          <Textarea
+            v-model="initialMessage"
+            placeholder="e.g. Your first task is to implement the login page per TASK-042."
+            rows="3"
+            class="text-sm"
+          />
+          <p class="text-xs text-muted-foreground">
+            Queued to the agent's inbox immediately after spawn — read on first check-in.
           </p>
         </div>
 

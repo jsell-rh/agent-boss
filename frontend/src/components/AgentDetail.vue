@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -331,7 +331,7 @@ async function loadAgentTasks() {
 onMounted(loadAgentTasks)
 watch(() => props.agentName, loadAgentTasks)
 
-// --------------- Personas ---------------
+// --------------- AgentConfig + Personas ---------------
 const agentConfig = ref<AgentConfig | null>(null)
 const allPersonas = ref<Persona[]>([])
 
@@ -350,12 +350,70 @@ async function loadPersonaData() {
     agentConfig.value = cfg
     if (allPersonas.value.length === 0) allPersonas.value = personas
   } catch {
-    // personas endpoint may not exist yet — silently ignore
+    // config endpoint unavailable — silently ignore
   }
 }
 
 onMounted(loadPersonaData)
 watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData() })
+
+// AgentConfig inline edit
+const configEditMode = ref(false)
+const configSaving = ref(false)
+const editWorkDir = ref('')
+const editInitialPrompt = ref('')
+
+function startConfigEdit() {
+  editWorkDir.value = agentConfig.value?.work_dir ?? ''
+  editInitialPrompt.value = agentConfig.value?.initial_prompt ?? ''
+  configEditMode.value = true
+}
+
+function cancelConfigEdit() {
+  configEditMode.value = false
+}
+
+async function saveConfig() {
+  configSaving.value = true
+  try {
+    agentConfig.value = await api.updateAgentConfig(props.spaceName, props.agentName, {
+      work_dir: editWorkDir.value.trim() || undefined,
+      initial_prompt: editInitialPrompt.value.trim() || undefined,
+    })
+    configEditMode.value = false
+  } catch {
+    // keep edit mode open on error
+  } finally {
+    configSaving.value = false
+  }
+}
+
+// Duplicate dialog
+const duplicateDialogOpen = ref(false)
+const duplicateName = ref('')
+const duplicating = ref(false)
+const duplicateError = ref('')
+
+function openDuplicate() {
+  duplicateName.value = props.agentName + '-copy'
+  duplicateError.value = ''
+  duplicateDialogOpen.value = true
+}
+
+async function submitDuplicate() {
+  const newName = duplicateName.value.trim()
+  if (!newName) return
+  duplicating.value = true
+  duplicateError.value = ''
+  try {
+    await api.duplicateAgent(props.spaceName, props.agentName, newName)
+    duplicateDialogOpen.value = false
+  } catch (e) {
+    duplicateError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    duplicating.value = false
+  }
+}
 </script>
 
 <template>
@@ -580,6 +638,22 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{{ introspectOpen ? 'Close' : 'Open' }} live tmux pane capture</TooltipContent>
+            </Tooltip>
+
+            <!-- Duplicate button -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs gap-1"
+                  @click="openDuplicate"
+                >
+                  <Copy class="size-3.5" />
+                  Duplicate
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clone this agent with its config into a new name</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -935,6 +1009,33 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
         </AlertDialogContent>
       </AlertDialog>
 
+      <!-- Duplicate dialog -->
+      <AlertDialog v-model:open="duplicateDialogOpen">
+        <AlertDialogContent class="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              Creates a copy of <span class="font-semibold text-foreground">{{ agentName }}</span> with its config. Enter a name for the new agent.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div class="py-2">
+            <Input v-model="duplicateName" placeholder="New agent name" class="h-8 text-sm" @keydown.enter.prevent="submitDuplicate" />
+            <p v-if="duplicateError" class="text-xs text-destructive mt-1.5">{{ duplicateError }}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel @click="duplicateError = ''">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              :disabled="!duplicateName.trim() || duplicating"
+              @click.prevent="submitDuplicate"
+            >
+              <Loader2 v-if="duplicating" class="size-4 animate-spin mr-1" />
+              <Copy v-else class="size-4 mr-1" />
+              Duplicate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Separator v-if="hasSections && agent.next_steps" class="opacity-50" />
 
 
@@ -966,6 +1067,51 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
             {{ doc.title }}
           </a>
         </nav>
+      </section>
+
+      <!-- AgentConfig -->
+      <section v-if="agentConfig !== null" aria-label="Agent configuration">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Config</h2>
+          <Button v-if="!configEditMode" variant="ghost" size="sm" class="h-6 px-1.5 text-xs gap-1" @click="startConfigEdit">
+            <Pencil class="size-3" /> Edit
+          </Button>
+        </div>
+
+        <!-- View mode -->
+        <div v-if="!configEditMode" class="space-y-1 text-xs">
+          <div v-if="agentConfig.work_dir" class="flex gap-2">
+            <span class="text-muted-foreground shrink-0 w-24">Work dir</span>
+            <span class="font-mono truncate">{{ agentConfig.work_dir }}</span>
+          </div>
+          <div v-if="agentConfig.initial_prompt" class="flex gap-2">
+            <span class="text-muted-foreground shrink-0 w-24">Initial prompt</span>
+            <span class="text-muted-foreground italic truncate">{{ agentConfig.initial_prompt.slice(0, 80) }}{{ agentConfig.initial_prompt.length > 80 ? '…' : '' }}</span>
+          </div>
+          <div v-if="!agentConfig.work_dir && !agentConfig.initial_prompt" class="text-muted-foreground/60 italic">
+            No config set — click Edit to add work dir or initial prompt.
+          </div>
+        </div>
+
+        <!-- Edit mode -->
+        <div v-else class="space-y-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-muted-foreground">Work Directory</label>
+            <Input v-model="editWorkDir" placeholder="/path/to/project" class="h-7 text-xs font-mono" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-muted-foreground">Initial Prompt</label>
+            <Textarea v-model="editInitialPrompt" placeholder="Instructions sent to the agent after spawn…" rows="4" class="text-xs" />
+          </div>
+          <div class="flex gap-2">
+            <Button size="sm" class="h-7 text-xs gap-1" :disabled="configSaving" @click="saveConfig">
+              <Loader2 v-if="configSaving" class="size-3 animate-spin" />
+              <Save v-else class="size-3" />
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" class="h-7 text-xs" @click="cancelConfigEdit">Cancel</Button>
+          </div>
+        </div>
       </section>
 
       <!-- Personas -->
