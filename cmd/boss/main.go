@@ -84,7 +84,11 @@ func serverURL() string {
 	if u := os.Getenv("BOSS_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	return "http://localhost:8899"
+	port := "8899"
+	if p := os.Getenv("COORDINATOR_PORT"); p != "" {
+		port = strings.TrimPrefix(p, ":")
+	}
+	return "http://localhost:" + port
 }
 
 func cmdServe(args []string) {
@@ -311,10 +315,10 @@ func cmdInit(args []string) {
 	}
 
 	// Step 2: register the MCP server with Claude.
+	// Remove any existing boss-mcp entry first so re-registration always succeeds.
 	mcpURL := baseURL + "/mcp"
-	mcpCmd := []string{"claude", "mcp", "add", "boss-mcp", "--transport", "http", mcpURL}
-	// Use os/exec to run the command.
-	if err := runMCPRegister(mcpCmd); err != nil {
+	runMCPRegister([]string{"claude", "mcp", "remove", "boss-mcp"}) //nolint:errcheck — ignore if not present
+	if err := runMCPRegister([]string{"claude", "mcp", "add", "boss-mcp", "--transport", "http", mcpURL}); err != nil {
 		fmt.Fprintf(os.Stderr, "boss init: MCP registration failed: %v\n", err)
 		fmt.Fprintf(os.Stderr, "  Run manually: claude mcp add boss-mcp --transport http %s\n", mcpURL)
 	} else {
