@@ -46,7 +46,8 @@ export interface AgentUpdate {
   next_steps?: string
   free_text?: string
   documents?: AgentDocument[]
-  tmux_session?: string
+  session_id?: string
+  backend_type?: string
   jira?: string
   repo_url?: string
   messages?: AgentMessage[]
@@ -93,8 +94,8 @@ export interface SpaceSummary {
   updated_at: string
 }
 
-// GET /spaces/{space}/api/tmux-status response values
-export interface TmuxAgentStatus {
+// GET /spaces/{space}/api/session-status response values
+export interface SessionAgentStatus {
   exists: boolean
   idle: boolean
   needs_approval: boolean
@@ -115,7 +116,7 @@ export interface StatusSnapshot {
 // GET /spaces/{space}/agent/{name}/introspect response
 export interface IntrospectResponse {
   agent: string
-  tmux_session?: string
+  session_id?: string
   session_exists: boolean
   idle: boolean
   needs_approval: boolean
@@ -251,7 +252,7 @@ export interface SSEAgentMessage {
   message: string
 }
 
-export interface SSETmuxLiveness {
+export interface SSESessionLiveness {
   agent: string
   session: string
   exists: boolean
@@ -290,20 +291,20 @@ export const STATUS_DISPLAY: Record<AgentStatus, { label: string; tooltip: strin
   error:   { label: 'Error',   tooltip: 'Agent encountered an unrecoverable error' },
 }
 
-// Tmux/Terminal Status display labels and tooltips.
-// These describe the observed state of the agent's tmux session.
-export type TmuxDisplayState = 'ready' | 'running' | 'approval' | 'offline' | 'no-session'
+// Session Status display labels and tooltips.
+// These describe the observed state of the agent's session.
+export type SessionDisplayState = 'ready' | 'running' | 'approval' | 'offline' | 'no-session'
 
-export const TMUX_STATUS_DISPLAY: Record<TmuxDisplayState, { label: string; tooltip: string }> = {
+export const SESSION_STATUS_DISPLAY: Record<SessionDisplayState, { label: string; tooltip: string }> = {
   ready:      { label: 'Ready',      tooltip: 'Terminal is at a prompt, ready for input' },
   running:    { label: 'Running',    tooltip: 'A process is actively running in the terminal' },
   approval:   { label: 'Approval',   tooltip: 'Agent is waiting for tool-use approval' },
-  offline:    { label: 'Offline',    tooltip: 'No tmux session found for this agent' },
-  'no-session': { label: 'No Session', tooltip: 'No tmux session registered for this agent' },
+  offline:    { label: 'Offline',    tooltip: 'No session found for this agent' },
+  'no-session': { label: 'No Session', tooltip: 'No session registered for this agent' },
 }
 
-/** Derive the TmuxDisplayState from a TmuxAgentStatus (or null). */
-export function getTmuxDisplayState(tmux: TmuxAgentStatus | null | undefined): TmuxDisplayState {
+/** Derive the SessionDisplayState from a SessionAgentStatus (or null). */
+export function getSessionDisplayState(tmux: SessionAgentStatus | null | undefined): SessionDisplayState {
   if (!tmux) return 'no-session'
   if (!tmux.exists) return 'offline'
   if (tmux.needs_approval) return 'approval'

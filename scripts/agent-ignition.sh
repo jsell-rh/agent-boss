@@ -68,7 +68,7 @@ register_agent() {
 }
 
 # Create tmux session for Claude Code
-create_tmux_session() {
+create_session() {
     log_info "Creating tmux session: ${TMUX_SESSION}"
     
     # Kill existing session if it exists
@@ -197,12 +197,12 @@ main() {
     log_info "Starting agent ignition for ${AGENT_NAME} (${AGENT_ROLE})"
     log_info "Workspace: ${WORKSPACE_NAME}"
     log_info "Source focus: ${SOURCE_FILES}"
-    log_info "Tmux session: ${TMUX_SESSION}"
-    
+    log_info "Session: ${TMUX_SESSION}"
+
     # Initialize agent
     wait_for_boss || exit 1
     register_agent || exit 1
-    create_tmux_session || exit 1
+    create_session || exit 1
     setup_git_hooks
     start_claude || exit 1
     send_ignition || exit 1

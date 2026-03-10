@@ -3,7 +3,7 @@ import type {
   SSEAgentUpdated,
   SSEAgentRemoved,
   SSEAgentMessage,
-  SSETmuxLiveness,
+  SSESessionLiveness,
   SSEBroadcastProgress,
   SSETaskUpdated,
 } from '@/types'
@@ -14,7 +14,7 @@ export type SSEEventType =
   | 'agent_removed'
   | 'space_deleted'
   | 'agent_message'
-  | 'tmux_liveness'
+  | 'session_liveness'
   | 'broadcast_complete'
   | 'broadcast_progress'
   | 'task_updated'
@@ -24,7 +24,7 @@ export type SSEEventMap = {
   agent_removed: SSEAgentRemoved
   space_deleted: string // space name
   agent_message: SSEAgentMessage
-  tmux_liveness: SSETmuxLiveness[]
+  session_liveness: SSESessionLiveness[]
   broadcast_complete: unknown
   broadcast_progress: SSEBroadcastProgress
   task_updated: SSETaskUpdated
@@ -98,7 +98,7 @@ export function useSSE() {
       'agent_removed',
       'space_deleted',
       'agent_message',
-      'tmux_liveness',
+      'session_liveness',
       'broadcast_complete',
       'broadcast_progress',
       'task_updated',

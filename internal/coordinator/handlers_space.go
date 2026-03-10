@@ -166,8 +166,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleSpaceAgentsJSON(w, r, spaceName)
 			case "events":
 				s.handleSpaceEventsJSON(w, r)
-			case "tmux-status":
-				s.handleSpaceTmuxStatus(w, r, spaceName)
+			case "session-status":
+				s.handleSpaceSessionStatus(w, r, spaceName)
 			default:
 				http.NotFound(w, r)
 			}

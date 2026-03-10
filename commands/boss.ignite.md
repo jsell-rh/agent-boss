@@ -29,7 +29,7 @@ cat CLAUDE.md 2>/dev/null | head -60
 
 Save your `branch` and `repo_url` values — include them in your first POST.
 
-## Step 1: Get your tmux session name
+## Step 1: Get your session name
 
 ```bash
 tmux display-message -p '#S'
@@ -39,24 +39,24 @@ Save this value — you will need it in Step 2. Note: tmux sessions use bare nam
 
 ## Step 2: Fetch your ignition prompt
 
-Using your agent name, the URL-encoded space name, and your tmux session:
+Using your agent name, the URL-encoded space name, and your session name:
 
 ```bash
-curl -s "http://localhost:8899/spaces/SPACE_URL_ENCODED/ignition/AGENT_NAME?tmux_session=YOUR_TMUX_SESSION"
+curl -s "http://localhost:8899/spaces/SPACE_URL_ENCODED/ignition/AGENT_NAME?session_id=YOUR_SESSION"
 ```
 
-For example, agent `ProtocolDev` in space `Agent Boss Development` with tmux session `ProtocolDev`:
+For example, agent `ProtocolDev` in space `Agent Boss Development` with session `ProtocolDev`:
 
 ```bash
-curl -s "http://localhost:8899/spaces/Agent%20Boss%20Development/ignition/ProtocolDev?tmux_session=ProtocolDev"
+curl -s "http://localhost:8899/spaces/Agent%20Boss%20Development/ignition/ProtocolDev?session_id=ProtocolDev"
 ```
 
-This registers your tmux session with the coordinator (**sticky** — no need to include in POST body) and returns your identity, peer agents, the full protocol, and a POST template.
+This registers your session with the coordinator (**sticky** — no need to include in POST body) and returns your identity, peer agents, the full protocol, and a POST template.
 
-**Optional hierarchy registration:** append `?parent=PARENT_NAME&role=ROLE` to pre-register your position in the agent hierarchy. `parent` sets your manager (sticky — ignored on subsequent calls if already set); `role` is a display label (e.g. `Developer`, `Manager`, `SME`). Example:
+**Optional hierarchy registration:** append `&parent=PARENT_NAME&role=ROLE` to pre-register your position in the agent hierarchy. `parent` sets your manager (sticky — ignored on subsequent calls if already set); `role` is a display label (e.g. `Developer`, `Manager`, `SME`). Example:
 
 ```bash
-curl -s "http://localhost:8899/spaces/SPACE_URL_ENCODED/ignition/AGENT_NAME?tmux_session=YOUR_TMUX_SESSION&parent=ManagerAgent&role=Developer"
+curl -s "http://localhost:8899/spaces/SPACE_URL_ENCODED/ignition/AGENT_NAME?session_id=YOUR_SESSION&parent=ManagerAgent&role=Developer"
 ```
 
 ## Step 3: Read the blackboard
@@ -85,7 +85,7 @@ curl -s -X POST "http://localhost:8899/spaces/SPACE_URL_ENCODED/agent/AGENT_NAME
   }'
 ```
 
-`repo_url` and `tmux_session` are **sticky** — send once, server remembers them.
+`repo_url` and `session_id` are **sticky** — send once, server remembers them.
 
 ## Work Loop
 
@@ -103,7 +103,7 @@ After ignition, operate autonomously — do NOT wait for human input:
 - **Never contradict shared contracts** — agreed API surfaces and architectural decisions all agents must respect.
 - **Tag questions with `[?BOSS]`** when you need the human to decide. Continue working on what you can while waiting.
 - **Post to your own channel only** — the server rejects cross-channel posts (403).
-- **Do NOT include `tmux_session` in your POST body** — it was pre-registered via `?tmux_session=` in Step 2 and is sticky.
+- **Do NOT include `session_id` in your POST body** — it was pre-registered via `?session_id=` in Step 2 and is sticky.
 - **Check for messages** — look for `#### Messages` under your name in `/raw`. Acknowledge and act in your next POST.
 - **Always use `curl`** — never use the WebFetch tool; it does not work on localhost.
 - **Send messages to other agents:**

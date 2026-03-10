@@ -1374,7 +1374,7 @@ func TestIgnitionEndpoint(t *testing.T) {
 	})
 
 	// GET ignition for a new agent
-	code, body := getBody(t, base+"/spaces/ignite-test/ignition/newagent?tmux_session=test_session_123")
+	code, body := getBody(t, base+"/spaces/ignite-test/ignition/newagent?session_id=test_session_123")
 	if code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", code)
 	}
@@ -1403,8 +1403,8 @@ func TestIgnitionEndpoint(t *testing.T) {
 	}
 	var agent AgentUpdate
 	json.Unmarshal([]byte(agentBody), &agent)
-	if agent.TmuxSession != "test_session_123" {
-		t.Errorf("tmux_session = %q, want %q", agent.TmuxSession, "test_session_123")
+	if agent.SessionID != "test_session_123" {
+		t.Errorf("session_id = %q, want %q", agent.SessionID, "test_session_123")
 	}
 }
 

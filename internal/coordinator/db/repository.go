@@ -71,7 +71,7 @@ func (r *Repository) UpsertAgent(a *Agent) error {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"status", "summary", "branch", "worktree", "pr", "phase",
 			"test_count", "items", "sections", "questions", "blockers",
-			"documents", "next_steps", "free_text", "tmux_session", "repo_url",
+			"documents", "next_steps", "free_text", "session_id", "backend_type", "repo_url",
 			"parent", "children", "role", "inferred_status", "stale",
 			"registration", "last_heartbeat", "heartbeat_stale", "updated_at",
 		}),

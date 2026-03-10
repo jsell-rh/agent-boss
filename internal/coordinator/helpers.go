@@ -73,6 +73,11 @@ func sanitizeAgentUpdate(u *AgentUpdate) {
 			u.Sections[si].Items[i] = sanitizeInput(item)
 		}
 	}
+	// ## TODO - REMOVE ME — migrate deprecated "tmux_session" JSON field to SessionID ## TODO
+	if u.DeprecatedTmuxSession != "" && u.SessionID == "" {
+		u.SessionID = u.DeprecatedTmuxSession
+	}
+	u.DeprecatedTmuxSession = ""
 }
 
 func truncateLine(s string, maxLen int) string {

@@ -140,10 +140,10 @@ func (c *Client) DeleteSpace() error {
 	return nil
 }
 
-func (c *Client) FetchIgnition(agentName string, tmuxSession string) (string, error) {
+func (c *Client) FetchIgnition(agentName string, sessionID string) (string, error) {
 	url := c.spacePrefix() + "/ignition/" + agentName
-	if tmuxSession != "" {
-		url += "?tmux_session=" + tmuxSession
+	if sessionID != "" {
+		url += "?session_id=" + sessionID
 	}
 	resp, err := c.httpClient.Get(url)
 	if err != nil {

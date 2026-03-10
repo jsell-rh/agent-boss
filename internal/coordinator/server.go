@@ -66,8 +66,10 @@ type Server struct {
 	// Keyed by registrationKey(space, agent). Guarded by regMu.
 	registrations map[string]*AgentRegistrationRecord
 	regMu         sync.RWMutex
-	journal       *EventJournal
-	repo          *bossdb.Repository // nil until Start() initialises the DB
+	journal        *EventJournal
+	repo           *bossdb.Repository // nil until Start() initialises the DB
+	backends       map[string]SessionBackend
+	defaultBackend string
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -94,6 +96,8 @@ func NewServer(port, dataDir string) *Server {
 		stalenessThreshold: thresh,
 		registrations:      make(map[string]*AgentRegistrationRecord),
 		journal:            NewEventJournal(dataDir),
+		backends:           map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
+		defaultBackend:     "tmux",
 	}
 }
 
@@ -113,6 +117,29 @@ func (s *Server) Running() bool {
 
 func (s *Server) Port() string {
 	return s.port
+}
+
+// backendByName returns the SessionBackend with the given name,
+// falling back to the default backend if not found.
+func (s *Server) backendByName(name string) SessionBackend {
+	if name != "" {
+		if b, ok := s.backends[name]; ok {
+			return b
+		}
+	}
+	return s.backends[s.defaultBackend]
+}
+
+// backendFor returns the SessionBackend for the given agent.
+// Dispatches based on the agent's BackendType field, falling back
+// to the default backend if empty or unknown.
+func (s *Server) backendFor(agent *AgentUpdate) SessionBackend {
+	if agent != nil && agent.BackendType != "" {
+		if b, ok := s.backends[agent.BackendType]; ok {
+			return b
+		}
+	}
+	return s.backends[s.defaultBackend]
 }
 
 func (s *Server) Start() error {

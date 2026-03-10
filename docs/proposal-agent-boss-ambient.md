@@ -63,7 +63,7 @@ graph TB
     end
 
     TM -->|detect approvals| IL
-    TM -->|SSE tmux_liveness| SSE
+    TM -->|SSE session_liveness| SSE
     SSE --> OV
     SSE --> IT
     BL -->|saveSpace| PR

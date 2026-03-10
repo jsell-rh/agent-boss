@@ -29,9 +29,6 @@ func (s *Server) livenessLoop() {
 }
 
 func (s *Server) checkAllSessionLiveness() {
-	if !tmuxAvailable() {
-		return
-	}
 	s.mu.RLock()
 	type probe struct {
 		space, agent, session string
@@ -39,12 +36,18 @@ func (s *Server) checkAllSessionLiveness() {
 	var probes []probe
 	for spaceName, ks := range s.spaces {
 		for name, agent := range ks.Agents {
-			if agent.TmuxSession != "" {
-				probes = append(probes, probe{spaceName, name, agent.TmuxSession})
+			if agent.SessionID != "" {
+				probes = append(probes, probe{spaceName, name, agent.SessionID})
 			}
 		}
 	}
 	s.mu.RUnlock()
+
+	// All agents currently use the default backend (tmux).
+	backend := s.backends[s.defaultBackend]
+	if !backend.Available() {
+		return
+	}
 
 	type statusEntry struct {
 		agent, session   string
@@ -55,11 +58,11 @@ func (s *Server) checkAllSessionLiveness() {
 	spaceResults := make(map[string][]statusEntry)
 	for _, p := range probes {
 		e := statusEntry{agent: p.agent, session: p.session}
-		e.exists = tmuxSessionExists(p.session)
+		e.exists = backend.SessionExists(p.session)
 		if e.exists {
-			e.idle = tmuxIsIdle(p.session)
+			e.idle = backend.IsIdle(p.session)
 			if !e.idle {
-				approval := tmuxCheckApproval(p.session)
+				approval := backend.CheckApproval(p.session)
 				e.needsApproval = approval.NeedsApproval
 				e.toolName = approval.ToolName
 				e.prompt = approval.PromptText
@@ -136,7 +139,7 @@ func (s *Server) checkAllSessionLiveness() {
 			}
 		}
 		data, _ := json.Marshal(payload)
-		s.broadcastSSE(space, "", "tmux_liveness", string(data))
+		s.broadcastSSE(space, "", "session_liveness", string(data))
 	}
 }
 

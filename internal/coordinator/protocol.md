@@ -35,10 +35,10 @@ Space: `{SPACE}`
 4. **Tag questions with `[?BOSS]`** — they render highlighted in the dashboard.
 5. **Concise summaries.** Always Use "{name}: {summary}" (required!).
 6. **Safe writes.** Write to a temp file first, then POST with `--data-binary @/tmp/file.md`.
-7. **Report your location and metrics.** Include `"branch"`, `"pr"`, `"jira"`, `"test_count"`, and `"repo_url"` in every POST. `"branch"` is the git branch you are working on. `"pr"` is the merge request number (e.g. `"#699"`). `"jira"` is the Jira issue key (e.g. `"OCPAPI-1234"`) — **every PR must have an associated Jira issue**. `"test_count"` is the number of passing tests. `"repo_url"` is the full HTTPS URL of your GitLab repository (e.g. `"https://gitlab.cee.redhat.com/ocm/platform"`). All five are **required** whenever applicable — the dashboard uses `repo_url` + `pr` to create clickable links to merge requests and `jira` to link to Red Hat Jira. `repo_url` is **sticky** like `tmux_session` — send it once and the server remembers it.
+7. **Report your location and metrics.** Include `"branch"`, `"pr"`, `"jira"`, `"test_count"`, and `"repo_url"` in every POST. `"branch"` is the git branch you are working on. `"pr"` is the merge request number (e.g. `"#699"`). `"jira"` is the Jira issue key (e.g. `"OCPAPI-1234"`) — **every PR must have an associated Jira issue**. `"test_count"` is the number of passing tests. `"repo_url"` is the full HTTPS URL of your GitLab repository (e.g. `"https://gitlab.cee.redhat.com/ocm/platform"`). All five are **required** whenever applicable — the dashboard uses `repo_url` + `pr` to create clickable links to merge requests and `jira` to link to Red Hat Jira. `repo_url` is **sticky** like `session_id` — send it once and the server remembers it.
 
 > **IMPORTANT: `repo_url` is REQUIRED in your first POST.** Without it, PR links in the dashboard are broken. Find it with `git remote get-url origin` and include it as `"repo_url": "https://..."`. You only need to send it once — the server remembers it.
-8. **Register your tmux session.** Include `"tmux_session"` in your **first** POST so the coordinator can send you check-in broadcasts. Find your session name with `tmux display-message -p '#S'`. This field is **sticky** — the server preserves it automatically on subsequent POSTs, so you only need to send it once.
+8. **Register your session.** Include `"session_id"` in your **first** POST so the coordinator can send you check-in broadcasts. Find your session name with `tmux display-message -p '#S'`. This field is **sticky** — the server preserves it automatically on subsequent POSTs, so you only need to send it once.
 9. **Check your messages efficiently.** Prefer `GET /agent/{name}/messages?since=<cursor>` over reading `/raw` — it returns only your new messages and a cursor for the next poll, avoiding context pollution. The `#### Messages` section in `/raw` is still available as a fallback.
 10. **Model economy.** Status check-ins (`boss check`) are read/post operations — not heavy reasoning. Use a lightweight model (e.g. Haiku) for check-ins, then switch back to your working model (e.g. Opus) for real work. The broadcast script handles this automatically via `/model` switching.
 
@@ -130,7 +130,7 @@ Respond with `200 OK` to acknowledge. On failure, the server logs the error and 
   "sections": [{"title": "Section Name", "items": ["detail"]}],
   "questions": ["tagged [?BOSS] automatically"],
   "blockers": ["highlighted automatically"],
-  "tmux_session": "my-tmux-session",
+  "session_id": "my-session",
   "next_steps": "What you're doing next"
 }
 ```

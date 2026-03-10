@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { AgentUpdate, TmuxAgentStatus, TmuxDisplayState, IntrospectResponse, Task } from '@/types'
-import { TMUX_STATUS_DISPLAY, getTmuxDisplayState } from '@/types'
+import type { AgentUpdate, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task } from '@/types'
+import { SESSION_STATUS_DISPLAY, getSessionDisplayState } from '@/types'
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -38,7 +38,7 @@ const props = defineProps<{
   agent: AgentUpdate
   agentName: string
   spaceName: string
-  tmuxStatus: TmuxAgentStatus | null
+  tmuxStatus: SessionAgentStatus | null
 }>()
 
 const emit = defineEmits<{
@@ -128,13 +128,13 @@ function confirmDismiss() {
   dismissDialogIndex.value = null
 }
 
-const tmuxState = computed<TmuxDisplayState>(() => {
+const tmuxState = computed<SessionDisplayState>(() => {
   // Distinguish "no session registered" from "session registered but offline"
-  if (!props.agent.tmux_session) return 'no-session'
-  return getTmuxDisplayState(props.tmuxStatus)
+  if (!props.agent.session_id) return 'no-session'
+  return getSessionDisplayState(props.tmuxStatus)
 })
 
-const tmuxDisplay = computed(() => TMUX_STATUS_DISPLAY[tmuxState.value])
+const tmuxDisplay = computed(() => SESSION_STATUS_DISPLAY[tmuxState.value])
 
 const tmuxLabelClass = computed(() => {
   switch (tmuxState.value) {
@@ -559,7 +559,7 @@ watch(() => props.agentName, loadAgentTasks)
       <div v-if="introspectOpen" class="rounded-lg border bg-muted/30 p-4 space-y-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pane — {{ agent.tmux_session || 'no session' }}</span>
+            <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pane — {{ agent.session_id || 'no session' }}</span>
             <!-- Live indicator -->
             <span v-if="introspectLive" class="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-500">
               <span class="inline-block size-1.5 rounded-full bg-green-500 animate-pulse shrink-0"></span>
@@ -915,10 +915,10 @@ watch(() => props.agentName, loadAgentTasks)
         </nav>
       </section>
 
-      <Separator v-if="agent.tmux_session" />
+      <Separator v-if="agent.session_id" />
 
       <!-- Tmux Controls — only shown when agent has a registered tmux session -->
-      <section v-if="agent.tmux_session" class="space-y-3" aria-label="Tmux session controls">
+      <section v-if="agent.session_id" class="space-y-3" aria-label="Tmux session controls">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controls</h2>
 
         <!-- Approval button -->

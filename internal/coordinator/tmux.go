@@ -41,33 +41,14 @@ func tmuxListSessions() ([]string, error) {
 	return sessions, nil
 }
 
-var tmuxSessionAliases = map[string]string{
-	"control-plane": "CP",
-	"boss-app":      "",
-}
-
-func parseTmuxAgentName(session string) string {
-	if !strings.HasPrefix(session, "agentdeck_") {
-		return ""
-	}
-	rest := strings.TrimPrefix(session, "agentdeck_")
-	idx := strings.LastIndex(rest, "_")
-	if idx <= 0 {
-		return ""
-	}
-	name := rest[:idx]
-	if alias, ok := tmuxSessionAliases[name]; ok {
-		return alias
-	}
-	return name
-}
-
 func (s *Server) TmuxAutoDiscover(spaceName string) int {
-	if !tmuxAvailable() {
+	backend := s.backends[s.defaultBackend]
+	if !backend.Available() {
 		return 0
 	}
-	sessions, err := tmuxListSessions()
-	if err != nil {
+
+	discovered, err := backend.DiscoverSessions()
+	if err != nil || len(discovered) == 0 {
 		return 0
 	}
 
@@ -79,20 +60,19 @@ func (s *Server) TmuxAutoDiscover(spaceName string) int {
 	matched := 0
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, session := range sessions {
-		name := parseTmuxAgentName(session)
+	for name, session := range discovered {
 		if name == "" {
 			continue
 		}
 		for agentName, agent := range ks.Agents {
-			if agent.TmuxSession != "" {
+			if agent.SessionID != "" {
 				continue
 			}
 			if strings.EqualFold(agentName, name) ||
 				strings.EqualFold(strings.ReplaceAll(agentName, "-", ""), strings.ReplaceAll(name, "-", "")) {
-				agent.TmuxSession = session
+				agent.SessionID = session
 				matched++
-				s.logEvent(fmt.Sprintf("[%s/%s] tmux session auto-discovered: %s", spaceName, agentName, session))
+				s.logEvent(fmt.Sprintf("[%s/%s] session auto-discovered: %s", spaceName, agentName, session))
 				break
 			}
 		}
@@ -148,19 +128,13 @@ func tmuxCapturePaneLastLine(session string) (string, error) {
 	return strings.TrimSpace(lines[0]), nil
 }
 
-type approvalInfo struct {
-	NeedsApproval bool   `json:"needs_approval"`
-	ToolName      string `json:"tool_name,omitempty"`
-	PromptText    string `json:"prompt_text,omitempty"`
-}
-
-func tmuxCheckApproval(session string) approvalInfo {
+func tmuxCheckApproval(session string) ApprovalInfo {
 	if tmuxIsIdle(session) {
-		return approvalInfo{}
+		return ApprovalInfo{}
 	}
 	lines, err := tmuxCapturePaneLines(session, 60)
 	if err != nil || len(lines) == 0 {
-		return approvalInfo{}
+		return ApprovalInfo{}
 	}
 	promptIdx := -1
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -171,7 +145,7 @@ func tmuxCheckApproval(session string) approvalInfo {
 		}
 	}
 	if promptIdx < 0 {
-		return approvalInfo{}
+		return ApprovalInfo{}
 	}
 	hasNumberedChoice := false
 	for i := promptIdx + 1; i < len(lines); i++ {
@@ -184,7 +158,7 @@ func tmuxCheckApproval(session string) approvalInfo {
 		}
 	}
 	if !hasNumberedChoice {
-		return approvalInfo{}
+		return ApprovalInfo{}
 	}
 	var toolName string
 	var contentLines []string
@@ -212,7 +186,7 @@ func tmuxCheckApproval(session string) approvalInfo {
 	if len(prompt) > 2000 {
 		prompt = prompt[:1997] + "..."
 	}
-	return approvalInfo{
+	return ApprovalInfo{
 		NeedsApproval: true,
 		ToolName:      toolName,
 		PromptText:    prompt,
@@ -435,7 +409,7 @@ func (s *Server) broadcastProgress(spaceName, msg string) {
 	s.broadcastSSE(spaceName, "", "broadcast_progress", string(data))
 }
 
-func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, workModel string, result *BroadcastResult) {
+func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend SessionBackend, checkModel, workModel string, result *BroadcastResult) {
 	progress := func(msg string) {
 		full := fmt.Sprintf("[%s/%s] %s", spaceName, canonical, msg)
 		s.logEvent(full)
@@ -443,16 +417,15 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 	}
 
 	// Model economy: switch to a lightweight model for check-ins if configured.
-	// If checkModel is empty, skip model switching entirely.
 	if checkModel != "" {
 		progress("switching to " + checkModel)
-		if err := tmuxSendKeys(tmuxSession, "/model "+checkModel); err != nil {
+		if err := backend.SendInput(sessionID, "/model "+checkModel); err != nil {
 			result.addError(canonical + ": model switch failed: " + err.Error())
 			return
 		}
 
 		progress("waiting for model switch...")
-		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+		if err := waitForIdleBackend(backend, sessionID, idlePollTimeout); err != nil {
 			result.addError(canonical + ": model switch did not complete: " + err.Error())
 			return
 		}
@@ -461,7 +434,7 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 	boardTimeBefore := s.agentUpdatedAt(spaceName, canonical)
 
 	progress("sending /boss.check prompt")
-	if err := tmuxSendKeys(tmuxSession, "/boss.check "+canonical+" "+spaceName); err != nil {
+	if err := backend.SendInput(sessionID, "/boss.check "+canonical+" "+spaceName); err != nil {
 		result.addError(canonical + ": check-in send failed: " + err.Error())
 		return
 	}
@@ -477,18 +450,18 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 	// Restore the working model if one was specified
 	if workModel != "" {
 		progress("waiting for idle before model restore...")
-		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+		if err := waitForIdleBackend(backend, sessionID, idlePollTimeout); err != nil {
 			result.addError(canonical + ": post-checkin idle wait failed: " + err.Error())
 		}
 
 		progress("restoring " + workModel)
-		if err := tmuxSendKeys(tmuxSession, "/model "+workModel); err != nil {
+		if err := backend.SendInput(sessionID, "/model "+workModel); err != nil {
 			result.addError(canonical + ": model restore failed: " + err.Error())
 			return
 		}
 
 		progress("waiting for model restore...")
-		if err := waitForIdle(tmuxSession, idlePollTimeout); err != nil {
+		if err := waitForIdleBackend(backend, sessionID, idlePollTimeout); err != nil {
 			result.addError(canonical + ": model restore did not complete: " + err.Error())
 		}
 	}
@@ -499,8 +472,9 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, 
 func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *BroadcastResult {
 	result := &BroadcastResult{}
 
-	if !tmuxAvailable() {
-		result.Errors = append(result.Errors, "tmux not found in PATH")
+	backend := s.backends[s.defaultBackend]
+	if !backend.Available() {
+		result.Errors = append(result.Errors, backend.Name()+" not found in PATH")
 		return result
 	}
 
@@ -514,22 +488,22 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 
 	s.mu.RLock()
 	type target struct {
-		agentName   string
-		tmuxSession string
+		agentName string
+		sessionID string
 	}
 	var targets []target
 	for name, agent := range ks.Agents {
-		if agent.TmuxSession != "" {
+		if agent.SessionID != "" {
 			targets = append(targets, target{
-				agentName:   name,
-				tmuxSession: agent.TmuxSession,
+				agentName: name,
+				sessionID: agent.SessionID,
 			})
 		}
 	}
 	s.mu.RUnlock()
 
 	if len(targets) == 0 {
-		result.Errors = append(result.Errors, "no agents have registered tmux sessions")
+		result.Errors = append(result.Errors, "no agents have registered sessions")
 		return result
 	}
 
@@ -537,21 +511,21 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 
 	var wg sync.WaitGroup
 	for i, t := range targets {
-		if !tmuxSessionExists(t.tmuxSession) {
-			result.addSkipped(t.agentName + " (session not found: " + t.tmuxSession + ")")
+		if !backend.SessionExists(t.sessionID) {
+			result.addSkipped(t.agentName + " (session not found: " + t.sessionID + ")")
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
-		if !tmuxIsIdle(t.tmuxSession) {
+		if !backend.IsIdle(t.sessionID) {
 			result.addSkipped(t.agentName + " (busy)")
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
 		wg.Add(1)
-		go func(agentName, tmuxSession string) {
+		go func(agentName, sessionID string) {
 			defer wg.Done()
-			s.runAgentCheckIn(spaceName, agentName, tmuxSession, checkModel, workModel, result)
-		}(t.agentName, t.tmuxSession)
+			s.runAgentCheckIn(spaceName, agentName, sessionID, backend, checkModel, workModel, result)
+		}(t.agentName, t.sessionID)
 		if i < len(targets)-1 {
 			time.Sleep(200 * time.Millisecond)
 		}
@@ -566,8 +540,9 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel string) *BroadcastResult {
 	result := &BroadcastResult{}
 
-	if !tmuxAvailable() {
-		result.Errors = append(result.Errors, "tmux not found in PATH")
+	backend := s.backends[s.defaultBackend]
+	if !backend.Available() {
+		result.Errors = append(result.Errors, backend.Name()+" not found in PATH")
 		return result
 	}
 
@@ -580,9 +555,9 @@ func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
 	agent, exists := ks.Agents[canonical]
-	var tmuxSession string
+	var sessionID string
 	if exists {
-		tmuxSession = agent.TmuxSession
+		sessionID = agent.SessionID
 	}
 	s.mu.RUnlock()
 
@@ -590,19 +565,19 @@ func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel 
 		result.Errors = append(result.Errors, "agent not found: "+agentName)
 		return result
 	}
-	if tmuxSession == "" {
-		result.Errors = append(result.Errors, canonical+": no tmux session registered")
+	if sessionID == "" {
+		result.Errors = append(result.Errors, canonical+": no session registered")
 		return result
 	}
-	if !tmuxSessionExists(tmuxSession) {
-		result.Skipped = append(result.Skipped, canonical+" (session not found: "+tmuxSession+")")
+	if !backend.SessionExists(sessionID) {
+		result.Skipped = append(result.Skipped, canonical+" (session not found: "+sessionID+")")
 		return result
 	}
-	if !tmuxIsIdle(tmuxSession) {
+	if !backend.IsIdle(sessionID) {
 		result.Skipped = append(result.Skipped, canonical+" (busy)")
 		return result
 	}
 
-	s.runAgentCheckIn(spaceName, canonical, tmuxSession, checkModel, workModel, result)
+	s.runAgentCheckIn(spaceName, canonical, sessionID, backend, checkModel, workModel, result)
 	return result
 }

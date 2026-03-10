@@ -70,7 +70,7 @@ curl -s -X POST "http://localhost:8899/spaces/SPACE_URL_ENCODED/agent/AGENT_NAME
 
 You MUST see `accepted for` in the response. If not, retry once.
 
-**Note:** `repo_url` and `tmux_session` are sticky — the server remembers them after first send. You only need to include them on first check-in or if they change.
+**Note:** `repo_url` and `session_id` are sticky — the server remembers them after first send. You only need to include them on first check-in or if they change.
 
 ## Step 3: Act on messages
 

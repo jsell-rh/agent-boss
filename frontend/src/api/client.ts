@@ -2,7 +2,7 @@ import type {
   SpaceSummary,
   KnowledgeSpace,
   AgentUpdate,
-  TmuxAgentStatus,
+  SessionAgentStatus,
   InterruptMetrics,
   Interrupt,
   StatusSnapshot,
@@ -105,11 +105,11 @@ class ApiClient {
     )
   }
 
-  // --------------- Tmux ---------------
+  // --------------- Session Status ---------------
 
-  fetchTmuxStatus(space: string): Promise<Record<string, TmuxAgentStatus>> {
-    return this.request<Record<string, TmuxAgentStatus>>(
-      `/spaces/${encodeURIComponent(space)}/api/tmux-status`,
+  fetchSessionStatus(space: string): Promise<Record<string, SessionAgentStatus>> {
+    return this.request<Record<string, SessionAgentStatus>>(
+      `/spaces/${encodeURIComponent(space)}/api/session-status`,
     )
   }
 
@@ -254,7 +254,7 @@ class ApiClient {
     })
   }
 
-  spawnAgent(space: string, agent: string, command?: string): Promise<{ ok: boolean; tmux_session: string }> {
+  spawnAgent(space: string, agent: string, command?: string): Promise<{ ok: boolean; session_id: string }> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/spawn`,
       {
@@ -272,7 +272,7 @@ class ApiClient {
     )
   }
 
-  restartAgent(space: string, agent: string): Promise<{ ok: boolean; tmux_session: string }> {
+  restartAgent(space: string, agent: string): Promise<{ ok: boolean; session_id: string }> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/restart`,
       { method: 'POST', headers: { 'X-Agent-Name': agent } },

@@ -32,7 +32,7 @@ type AgentRow struct {
 	DocumentsRaw   string // raw JSON
 	NextSteps      string
 	FreeText       string
-	TmuxSession    string
+	SessionID    string
 	RepoURL        string
 	Parent         string
 	Children       []string
@@ -58,7 +58,7 @@ func ToAgentRow(a *Agent) *AgentRow {
 		Phase:           a.Phase,
 		NextSteps:       a.NextSteps,
 		FreeText:        a.FreeText,
-		TmuxSession:     a.TmuxSession,
+		SessionID:     a.SessionID,
 		RepoURL:         a.RepoURL,
 		Parent:          a.Parent,
 		Role:            a.Role,
@@ -110,7 +110,7 @@ func FromAgentFields(
 		Documents:      documentsJSON,
 		NextSteps:      nextSteps,
 		FreeText:       freeText,
-		TmuxSession:    tmuxSession,
+		SessionID:    tmuxSession,
 		RepoURL:        repoURL,
 		Parent:         parent,
 		Children:       MarshalJSON(children),

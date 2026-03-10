@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { SpaceSummary, KnowledgeSpace, TmuxAgentStatus, AgentUpdate, HierarchyTree, HierarchyNode } from '@/types'
+import type { SpaceSummary, KnowledgeSpace, SessionAgentStatus, AgentUpdate, HierarchyTree, HierarchyNode } from '@/types'
 import { api } from '@/api/client'
 import { useSSE } from '@/composables/useSSE'
 
@@ -37,7 +37,7 @@ const router = useRouter()
 // ── State ──────────────────────────────────────────────────────────
 const spaces = ref<SpaceSummary[]>([])
 const currentSpace = ref<KnowledgeSpace | null>(null)
-const tmuxStatus = ref<Record<string, TmuxAgentStatus>>({})
+const tmuxStatus = ref<Record<string, SessionAgentStatus>>({})
 const hierarchyTree = ref<HierarchyTree | null>(null)
 
 const loading = ref(true)
@@ -96,7 +96,7 @@ const selectedAgentData = computed<AgentUpdate | null>(() => {
   return currentSpace.value.agents[selectedAgent.value] ?? null
 })
 
-const selectedAgentTmux = computed<TmuxAgentStatus | null>(() => {
+const selectedAgentTmux = computed<SessionAgentStatus | null>(() => {
   if (!selectedAgent.value) return null
   return tmuxStatus.value[selectedAgent.value] ?? null
 })
@@ -209,12 +209,12 @@ async function loadHierarchy(space: string) {
   }
 }
 
-async function loadTmuxStatus(space: string) {
+async function loadSessionStatus(space: string) {
   try {
-    const raw = await api.fetchTmuxStatus(space)
+    const raw = await api.fetchSessionStatus(space)
     // The server returns an array of {agent, ...} objects — normalize to a map
     if (Array.isArray(raw)) {
-      const map: Record<string, TmuxAgentStatus> = {}
+      const map: Record<string, SessionAgentStatus> = {}
       for (const item of raw as any[]) {
         if (item.agent) {
           map[item.agent] = item
@@ -246,7 +246,7 @@ watch(
       currentSpace.value = null  // clear stale data immediately
       hierarchyTree.value = null
       loadSpace(space, true)
-      loadTmuxStatus(space)
+      loadSessionStatus(space)
       loadHierarchy(space)
       // Reconnect SSE to this space
       sse.disconnect()
@@ -280,7 +280,7 @@ async function handleApproveAgent() {
   if (!selectedSpace.value || !selectedAgent.value) return
   try {
     await api.approveAgent(selectedSpace.value, selectedAgent.value)
-    await loadTmuxStatus(selectedSpace.value)
+    await loadSessionStatus(selectedSpace.value)
     showStatus(`Approved ${selectedAgent.value}`)
   } catch (err) {
     console.error('Approve failed:', err)
@@ -562,17 +562,17 @@ function setupSSE() {
     }
   })
 
-  sse.on('tmux_liveness', (data) => {
+  sse.on('session_liveness', (data) => {
     if (Array.isArray(data)) {
-      const map: Record<string, TmuxAgentStatus> = { ...tmuxStatus.value }
+      const map: Record<string, SessionAgentStatus> = { ...tmuxStatus.value }
       for (const item of data) {
         if (item.agent) {
-          map[item.agent] = item as TmuxAgentStatus
+          map[item.agent] = item as SessionAgentStatus
         }
       }
       tmuxStatus.value = map
     }
-    // tmux_liveness is high-frequency, don't spam the log
+    // session_liveness is high-frequency, don't spam the log
   })
 
   sse.on('agent_message', (data) => {
@@ -604,7 +604,7 @@ function startPolling() {
     if (document.hidden) return
     if (selectedSpace.value) {
       loadSpace(selectedSpace.value)
-      loadTmuxStatus(selectedSpace.value)
+      loadSessionStatus(selectedSpace.value)
     }
   }, POLL_INTERVAL_MS)
 }
@@ -758,7 +758,7 @@ onMounted(async () => {
   if (selectedSpace.value) {
     // Route already has a space — load its data and connect SSE
     loadSpace(selectedSpace.value, true)
-    loadTmuxStatus(selectedSpace.value)
+    loadSessionStatus(selectedSpace.value)
     sse.connect(selectedSpace.value)
   } else if (spaces.value.length > 0) {
     // No space in URL — redirect to first space

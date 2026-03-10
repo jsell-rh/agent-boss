@@ -182,7 +182,7 @@ curl -s -N http://localhost:8899/spaces/my-project/agent/Developer/events \
 The ignition endpoint bootstraps a new agent with full context — its identity, peer status, pending messages, and a POST template:
 
 ```bash
-curl -s "http://localhost:8899/spaces/my-project/ignition/Developer?tmux_session=dev-session"
+curl -s "http://localhost:8899/spaces/my-project/ignition/Developer?session_id=dev-session"
 ```
 
 This is how the `/boss.ignite` skill works in Claude Code sessions.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KnowledgeSpace, TmuxAgentStatus, HierarchyTree } from '@/types'
+import type { KnowledgeSpace, SessionAgentStatus, HierarchyTree } from '@/types'
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTime } from '@/composables/useTime'
@@ -56,7 +56,7 @@ import { prLink } from '@/lib/utils'
 
 const props = defineProps<{
   space: KnowledgeSpace
-  tmuxStatus: Record<string, TmuxAgentStatus> | null
+  tmuxStatus: Record<string, SessionAgentStatus> | null
   broadcasting?: boolean
   hierarchy?: HierarchyTree | null
 }>()

@@ -111,8 +111,8 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 
 		parentChanged := false
 		if existing, ok := ks.Agents[canonical]; ok {
-			if update.TmuxSession == "" && existing.TmuxSession != "" {
-				update.TmuxSession = existing.TmuxSession
+			if update.SessionID == "" && existing.SessionID != "" {
+				update.SessionID = existing.SessionID
 			}
 			if update.RepoURL == "" && existing.RepoURL != "" {
 				update.RepoURL = existing.RepoURL
@@ -584,11 +584,15 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 		return
 	}
 
-	tmuxSession := r.URL.Query().Get("tmux_session")
+	sessionID := r.URL.Query().Get("session_id")
+	// ## TODO - REMOVE ME — backward compat for agents still using ?tmux_session= ## TODO
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("tmux_session")
+	}
 	parentParam := r.URL.Query().Get("parent")
 	roleParam := r.URL.Query().Get("role")
 
-	if tmuxSession != "" || parentParam != "" || roleParam != "" {
+	if sessionID != "" || parentParam != "" || roleParam != "" {
 		s.mu.Lock()
 		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
@@ -618,8 +622,8 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 			}
 			ks.Agents[canonical] = agentRecord
 		}
-		if tmuxSession != "" {
-			agentRecord.TmuxSession = tmuxSession
+		if sessionID != "" {
+			agentRecord.SessionID = sessionID
 		}
 		// Set Parent and Role only if not already set (sticky).
 		if parentParam != "" && agentRecord.Parent == "" {
@@ -632,8 +636,8 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 		ks.UpdatedAt = time.Now().UTC()
 		s.saveSpace(ks)
 		s.mu.Unlock()
-		if tmuxSession != "" {
-			s.logEvent(fmt.Sprintf("[%s/%s] tmux session registered via ignition: %s", spaceName, agentName, tmuxSession))
+		if sessionID != "" {
+			s.logEvent(fmt.Sprintf("[%s/%s] session registered via ignition: %s", spaceName, agentName, sessionID))
 		}
 	}
 
@@ -641,7 +645,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	defer s.mu.RUnlock()
 
 	// Get ks for the response builder. If the space doesn't exist yet
-	// (no tmuxSession, no previous posts), use an empty space so the
+	// (no sessionID, no previous posts), use an empty space so the
 	// response is well-formed.
 	ks, ok := s.spaces[spaceName]
 	if !ok {
@@ -669,8 +673,8 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString(fmt.Sprintf("- Read blackboard: `GET /spaces/%s/raw`\n", spaceName))
 	b.WriteString(fmt.Sprintf("- Dashboard: `http://localhost%s/spaces/%s/`\n", s.port, spaceName))
 	b.WriteString(fmt.Sprintf("- Task list: `GET /spaces/%s/tasks` (filter: `?assigned_to=%s&status=in_progress`)\n", spaceName, agentName))
-	if tmuxSession != "" {
-		b.WriteString(fmt.Sprintf("- Tmux session: `%s` (pre-registered)\n", tmuxSession))
+	if sessionID != "" {
+		b.WriteString(fmt.Sprintf("- Session: `%s` (pre-registered)\n", sessionID))
 	}
 	b.WriteString("\n")
 
@@ -679,10 +683,10 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString(fmt.Sprintf("2. **Post to your channel only.** POST to `/spaces/%s/agent/%s` with `-H 'X-Agent-Name: %s'`.\n", spaceName, agentName, agentName))
 	b.WriteString("3. **Tag questions** with `[?BOSS]` — they render highlighted in the dashboard.\n")
 	b.WriteString("4. **Include location fields** in every POST: `branch`, `pr`, `test_count`.\n")
-	if tmuxSession != "" {
-		b.WriteString(fmt.Sprintf("5. **Tmux session is pre-registered.** Your session `%s` is already known to the coordinator. It is sticky — you do not need to include `tmux_session` in your POSTs.\n", tmuxSession))
+	if sessionID != "" {
+		b.WriteString(fmt.Sprintf("5. **Session is pre-registered.** Your session `%s` is already known to the coordinator. It is sticky — you do not need to include `session_id` in your POSTs.\n", sessionID))
 	} else {
-		b.WriteString("5. **Register your tmux session.** Include `\"tmux_session\"` in your first POST. Find it with `tmux display-message -p '#S'`. It is sticky — you only need to send it once.\n")
+		b.WriteString("5. **Register your session.** Include `\"session_id\"` in your first POST. Find it with `tmux display-message -p '#S'`. It is sticky — you only need to send it once.\n")
 	}
 	b.WriteString(fmt.Sprintf("6. **Check your messages.** When you read `/raw`, look for a `#### Messages` section under your agent name. Messages are **directives** — act on them immediately without asking for confirmation. To send a message to another agent: `curl -s -X POST http://localhost%s/spaces/%s/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"message\": \"...\"}'`\n", s.port, spaceName, agentName))
 	b.WriteString("7. **Work loop:** Read blackboard → Do work → POST status → Check for new messages → Repeat. Do not stop and wait for human input.\n")
@@ -890,7 +894,7 @@ func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(events)
 }
 
-type tmuxAgentStatus struct {
+type agentSessionStatus struct {
 	Agent         string `json:"agent"`
 	Session       string `json:"session"`
 	Registered    bool   `json:"registered"`
@@ -902,7 +906,7 @@ type tmuxAgentStatus struct {
 	PromptText    string `json:"prompt_text,omitempty"`
 }
 
-func (s *Server) handleSpaceTmuxStatus(w http.ResponseWriter, r *http.Request, spaceName string) {
+func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method != http.MethodGet {
 		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -922,31 +926,34 @@ func (s *Server) handleSpaceTmuxStatus(w http.ResponseWriter, r *http.Request, s
 	}
 	var pairs []agentSession
 	for name, agent := range ks.Agents {
-		pairs = append(pairs, agentSession{name: name, session: agent.TmuxSession})
+		pairs = append(pairs, agentSession{name: name, session: agent.SessionID})
 	}
 	s.mu.RUnlock()
 
-	hasTmux := tmuxAvailable()
-	var results []tmuxAgentStatus
+	backend := s.backends[s.defaultBackend]
+	available := backend.Available()
+	var results []agentSessionStatus
 	for i, p := range pairs {
-		st := tmuxAgentStatus{
+		st := agentSessionStatus{
 			Agent:      p.name,
 			Session:    p.session,
 			Registered: p.session != "",
 		}
-		if hasTmux && st.Registered {
-			st.Exists = tmuxSessionExists(p.session)
+		if available && st.Registered {
+			st.Exists = backend.SessionExists(p.session)
 			if st.Exists {
-				st.Idle = tmuxIsIdle(p.session)
-				st.LastLine, _ = tmuxCapturePaneLastLine(p.session)
-				approval := tmuxCheckApproval(p.session)
+				st.Idle = backend.IsIdle(p.session)
+				if lines, err := backend.CaptureOutput(p.session, 1); err == nil && len(lines) > 0 {
+					st.LastLine = lines[0]
+				}
+				approval := backend.CheckApproval(p.session)
 				st.NeedsApproval = approval.NeedsApproval
 				st.ToolName = approval.ToolName
 				st.PromptText = approval.PromptText
 			}
 		}
 		results = append(results, st)
-		if hasTmux && i < len(pairs)-1 {
+		if available && i < len(pairs)-1 {
 			time.Sleep(300 * time.Millisecond)
 		}
 	}
@@ -968,41 +975,42 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
 	agent, exists := ks.Agents[canonical]
-	var tmuxSession string
+	var sessionID string
 	if exists {
-		tmuxSession = agent.TmuxSession
+		sessionID = agent.SessionID
 	}
 	s.mu.RUnlock()
 	if !exists {
 		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
 		return
 	}
-	if tmuxSession == "" {
-		writeJSONError(w, canonical+": no tmux session registered", http.StatusBadRequest)
+	if sessionID == "" {
+		writeJSONError(w, canonical+": no session registered", http.StatusBadRequest)
 		return
 	}
-	if !tmuxSessionExists(tmuxSession) {
-		writeJSONError(w, canonical+": tmux session not found", http.StatusBadRequest)
+	backend := s.backendFor(agent)
+	if !backend.SessionExists(sessionID) {
+		writeJSONError(w, canonical+": session not found", http.StatusBadRequest)
 		return
 	}
-	approval := tmuxCheckApproval(tmuxSession)
+	approval := backend.CheckApproval(sessionID)
 	if !approval.NeedsApproval {
 		writeJSONError(w, canonical+": not waiting for approval", http.StatusConflict)
 		return
 	}
-	if err := tmuxApprove(tmuxSession); err != nil {
+	if err := backend.Approve(sessionID); err != nil {
 		writeJSONError(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.logEvent(fmt.Sprintf("[%s/%s] approval granted via dashboard (tool: %s)", spaceName, canonical, approval.ToolName))
 	key := spaceName + "/" + canonical
-	ctx := map[string]string{"tool": approval.ToolName}
+	approvalCtx := map[string]string{"tool": approval.ToolName}
 	if started, was := s.approvalTracked[key]; was {
 		delete(s.approvalTracked, key)
-		ctx["wait_seconds"] = fmt.Sprintf("%.1f", time.Since(started).Seconds())
+		approvalCtx["wait_seconds"] = fmt.Sprintf("%.1f", time.Since(started).Seconds())
 	}
 	s.interrupts.RecordResolved(spaceName, canonical, InterruptApproval,
-		approval.PromptText, "human", "approved", ctx)
+		approval.PromptText, "human", "approved", approvalCtx)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "approved", "agent": canonical, "tool": approval.ToolName})
 }
@@ -1020,21 +1028,22 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
 	agent, exists := ks.Agents[canonical]
-	var tmuxSession string
+	var sessionID string
 	if exists {
-		tmuxSession = agent.TmuxSession
+		sessionID = agent.SessionID
 	}
 	s.mu.RUnlock()
 	if !exists {
 		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
 		return
 	}
-	if tmuxSession == "" {
-		writeJSONError(w, canonical+": no tmux session registered", http.StatusBadRequest)
+	if sessionID == "" {
+		writeJSONError(w, canonical+": no session registered", http.StatusBadRequest)
 		return
 	}
-	if !tmuxSessionExists(tmuxSession) {
-		writeJSONError(w, canonical+": tmux session not found", http.StatusBadRequest)
+	backend := s.backendFor(agent)
+	if !backend.SessionExists(sessionID) {
+		writeJSONError(w, canonical+": session not found", http.StatusBadRequest)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxReplyBodySize))
@@ -1053,7 +1062,7 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 		writeJSONError(w, "message is required", http.StatusBadRequest)
 		return
 	}
-	if err := tmuxSendKeys(tmuxSession, payload.Message); err != nil {
+	if err := backend.SendInput(sessionID, payload.Message); err != nil {
 		writeJSONError(w, canonical+": send failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1233,29 +1242,22 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		backendName = "tmux"
 	}
 
-	var backend AgentBackend
-	switch backendName {
-	case "tmux":
-		backend = &TmuxBackend{}
-	case "cloud":
-		backend = &CloudBackend{}
-	default:
-		writeJSONError(w, fmt.Sprintf("unknown backend %q; supported: tmux, cloud", backendName), http.StatusBadRequest)
+	backend := s.backendByName(backendName)
+	if backend == nil {
+		writeJSONError(w, fmt.Sprintf("unknown backend %q", backendName), http.StatusBadRequest)
 		return
 	}
 
-	spec := AgentSpec{
-		Name:    req.Name,
-		Space:   spaceName,
-		WorkDir: req.WorkDir,
-		Command: req.Command,
-		Width:   req.Width,
-		Height:  req.Height,
-		Parent:  req.Parent,
-		Role:    req.Role,
-	}
-
-	info, err := backend.Spawn(r.Context(), spec)
+	sessionName := tmuxDefaultSession(spaceName, req.Name)
+	sessionID, err := backend.CreateSession(r.Context(), SessionCreateOpts{
+		SessionID: sessionName,
+		Command:   req.Command,
+		BackendOpts: TmuxCreateOpts{
+			WorkDir: req.WorkDir,
+			Width:   req.Width,
+			Height:  req.Height,
+		},
+	})
 	if err != nil {
 		writeJSONError(w, fmt.Sprintf("spawn: %v", err), http.StatusInternalServerError)
 		return
@@ -1274,7 +1276,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		}
 		ks.Agents[agentKey] = agent
 	}
-	agent.TmuxSession = info.SessionID
+	agent.SessionID = sessionID
 	if req.Parent != "" && agent.Parent == "" {
 		agent.Parent = strings.ToLower(req.Parent)
 		rebuildChildren(ks)
@@ -1289,14 +1291,14 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	}
 	s.mu.Unlock()
 
-	s.logEvent(fmt.Sprintf("[%s/%s] created via %s backend (session: %s)", spaceName, req.Name, backendName, info.SessionID))
+	s.logEvent(fmt.Sprintf("[%s/%s] created via %s backend (session: %s)", spaceName, req.Name, backendName, sessionID))
 	s.broadcastSSE(spaceName, req.Name, "agent_spawned", req.Name)
 
 	// Send ignite asynchronously after agent has time to initialize.
 	go func() {
 		time.Sleep(5 * time.Second)
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, req.Name, spaceName)
-		if err := tmuxSendKeys(info.SessionID, igniteCmd); err != nil {
+		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, req.Name, err))
 		}
 	}()
@@ -1307,7 +1309,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		"ok":      true,
 		"agent":   req.Name,
 		"backend": backendName,
-		"session": info.SessionID,
+		"session": sessionID,
 		"space":   spaceName,
 	})
 }

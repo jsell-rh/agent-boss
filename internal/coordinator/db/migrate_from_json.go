@@ -209,7 +209,7 @@ func (r *Repository) importAgent(spaceName, agentName string, ja *jsonAgent) err
 		Items:          MarshalJSON(ja.Items),
 		NextSteps:      ja.NextSteps,
 		FreeText:       ja.FreeText,
-		TmuxSession:    ja.TmuxSession,
+		SessionID:    ja.TmuxSession,
 		RepoURL:        ja.RepoURL,
 		Parent:         ja.Parent,
 		Children:       MarshalJSON(ja.Children),

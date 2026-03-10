@@ -61,7 +61,7 @@ Creates a tmux session, launches the agent command, and sends the `/boss.ignite`
 **Request body (optional JSON):**
 ```json
 {
-  "tmux_session": "MySession",          // defaults to agent name
+  "session_id": "MySession",          // defaults to agent name
   "command": "claude --dangerously-skip-permissions",  // default
   "width": 220,                          // default
   "height": 50                           // default
@@ -73,7 +73,7 @@ Creates a tmux session, launches the agent command, and sends the `/boss.ignite`
 {
   "ok": true,
   "agent": "AgentName",
-  "tmux_session": "MySession",
+  "session_id": "MySession",
   "space": "SpaceName"
 }
 ```
@@ -134,7 +134,7 @@ Kills the existing session (if any) and spawns a new one. Agent data is preserve
 {
   "ok": true,
   "agent": "canonical-name",
-  "tmux_session": "new-session-name"
+  "session_id": "new-session-name"
 }
 ```
 
@@ -162,7 +162,7 @@ Captures the agent's current tmux pane output and returns it with inferred state
 ```json
 {
   "agent": "canonical-name",
-  "tmux_session": "session-name",
+  "session_id": "session-name",
   "session_exists": true,
   "idle": false,
   "needs_approval": true,

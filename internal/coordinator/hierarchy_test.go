@@ -75,7 +75,7 @@ func TestSpawnSetsParentFromSpawner(t *testing.T) {
 	defer killTmuxSession(session)
 
 	resp := postSpawn(t, base, space, "Worker", map[string]interface{}{
-		"tmux_session": session,
+		"session_id": session,
 		"command":      "sleep 30",
 	}, "Manager")
 	defer resp.Body.Close()
@@ -118,7 +118,7 @@ func TestSpawnNoSpawnerNoParent(t *testing.T) {
 
 	// Spawn without X-Agent-Name header (spawnerName = "").
 	resp := postSpawn(t, base, space, "Orphan", map[string]interface{}{
-		"tmux_session": session,
+		"session_id": session,
 		"command":      "sleep 30",
 	}, "")
 	defer resp.Body.Close()
@@ -157,7 +157,7 @@ func TestSpawnSelfSpawnNoParent(t *testing.T) {
 
 	// X-Agent-Name == agentName → self-spawn, no parent should be set.
 	resp := postSpawn(t, base, space, "Solo", map[string]interface{}{
-		"tmux_session": session,
+		"session_id": session,
 		"command":      "sleep 30",
 	}, "Solo")
 	defer resp.Body.Close()
@@ -181,7 +181,7 @@ func TestSpawnSelfSpawnNoParent(t *testing.T) {
 	}
 }
 
-// TestIgnitionWithParentParam verifies that GET /ignition?tmux_session=X&parent=Y&role=Z
+// TestIgnitionWithParentParam verifies that GET /ignition?session_id=X&parent=Y&role=Z
 // sets the agent's Parent and Role fields.
 func TestIgnitionWithParentParam(t *testing.T) {
 	srv, cleanup := mustStartServer(t)
@@ -196,7 +196,7 @@ func TestIgnitionWithParentParam(t *testing.T) {
 	})
 
 	// Call ignition with ?parent=Boss&role=Worker.
-	url := base + "/spaces/" + space + "/ignition/Worker?tmux_session=fake-session&parent=Boss&role=Developer"
+	url := base + "/spaces/" + space + "/ignition/Worker?session_id=fake-session&parent=Boss&role=Developer"
 	code, body := getBody(t, url)
 	if code != http.StatusOK {
 		t.Fatalf("ignition: expected 200, got %d: %s", code, body)
@@ -236,14 +236,14 @@ func TestIgnitionParentStickyNotOverwritten(t *testing.T) {
 	}
 
 	// Set Child's parent to OriginalParent via ignition.
-	url1 := base + "/spaces/" + space + "/ignition/Child?tmux_session=s1&parent=OriginalParent"
+	url1 := base + "/spaces/" + space + "/ignition/Child?session_id=s1&parent=OriginalParent"
 	code, body := getBody(t, url1)
 	if code != http.StatusOK {
 		t.Fatalf("ignition 1: expected 200, got %d: %s", code, body)
 	}
 
 	// Try to overwrite parent to NewParent via second ignition call.
-	url2 := base + "/spaces/" + space + "/ignition/Child?tmux_session=s2&parent=NewParent"
+	url2 := base + "/spaces/" + space + "/ignition/Child?session_id=s2&parent=NewParent"
 	code, body = getBody(t, url2)
 	if code != http.StatusOK {
 		t.Fatalf("ignition 2: expected 200, got %d: %s", code, body)
@@ -273,7 +273,7 @@ func TestIgnitionSelfParentRejected(t *testing.T) {
 	base := serverBaseURL(srv)
 	space := "TestIgnitionSelfParent"
 
-	url := base + "/spaces/" + space + "/ignition/Agent1?tmux_session=s1&parent=Agent1"
+	url := base + "/spaces/" + space + "/ignition/Agent1?session_id=s1&parent=Agent1"
 	code, body := getBody(t, url)
 	if code != http.StatusBadRequest {
 		t.Errorf("expected 400 for self-parent, got %d: %s", code, body)
@@ -299,14 +299,14 @@ func TestIgnitionParentCycleRejected(t *testing.T) {
 	})
 
 	// Set Alpha's parent = Beta via ignition (no cycle yet).
-	url1 := base + "/spaces/" + space + "/ignition/Alpha?tmux_session=s1&parent=Beta"
+	url1 := base + "/spaces/" + space + "/ignition/Alpha?session_id=s1&parent=Beta"
 	code, body := getBody(t, url1)
 	if code != http.StatusOK {
 		t.Fatalf("first ignition: expected 200, got %d: %s", code, body)
 	}
 
 	// Now try to set Beta's parent = Alpha → creates cycle Alpha→Beta→Alpha.
-	url2 := base + "/spaces/" + space + "/ignition/Beta?tmux_session=s2&parent=Alpha"
+	url2 := base + "/spaces/" + space + "/ignition/Beta?session_id=s2&parent=Alpha"
 	code, body = getBody(t, url2)
 	if code != http.StatusBadRequest {
 		t.Errorf("expected 400 for cycle-creating parent, got %d: %s", code, body)
@@ -328,7 +328,7 @@ func TestIgnitionPostTemplateIncludesParent(t *testing.T) {
 	})
 
 	// Ignite Worker with parent=Boss and role=Developer.
-	url := base + "/spaces/" + space + "/ignition/Worker?tmux_session=s1&parent=Boss&role=Developer"
+	url := base + "/spaces/" + space + "/ignition/Worker?session_id=s1&parent=Boss&role=Developer"
 	code, body := getBody(t, url)
 	if code != http.StatusOK {
 		t.Fatalf("ignition: expected 200, got %d: %s", code, body)
@@ -368,7 +368,7 @@ func TestSpawnParentPropagatedToIgnition(t *testing.T) {
 
 	// Spawn Child with X-Agent-Name: Spawner.
 	resp := postSpawn(t, base, space, "Child", map[string]interface{}{
-		"tmux_session": session,
+		"session_id": session,
 		"command":      "sleep 30",
 	}, "Spawner")
 	defer resp.Body.Close()

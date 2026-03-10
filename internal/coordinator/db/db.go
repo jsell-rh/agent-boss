@@ -77,7 +77,7 @@ func migrate(db *gorm.DB) error {
 	if err := migrateTasksCompositeKey(db); err != nil {
 		return fmt.Errorf("migrate tasks composite key: %w", err)
 	}
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&Space{},
 		&Agent{},
 		&AgentMessage{},
@@ -86,7 +86,18 @@ func migrate(db *gorm.DB) error {
 		&TaskComment{},
 		&TaskEvent{},
 		&StatusSnapshot{},
-	)
+	); err != nil {
+		return err
+	}
+
+	// One-time migration: copy tmux_session → session_id for existing rows,
+	// then drop the obsolete column.
+	if db.Migrator().HasColumn(&Agent{}, "tmux_session") {
+		db.Exec(`UPDATE agents SET session_id = tmux_session WHERE (session_id IS NULL OR session_id = '') AND tmux_session != ''`)
+		db.Migrator().DropColumn(&Agent{}, "tmux_session")
+	}
+
+	return nil
 }
 
 // migrateTasksTable ensures the tasks table has:

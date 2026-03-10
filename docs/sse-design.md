@@ -54,7 +54,7 @@ Events currently broadcast (all with raw JSON data):
 - `agent_updated` — any POST to agent channel
 - `agent_removed`
 - `agent_message` — when a message is sent to an agent
-- `tmux_liveness` — every second per agent
+- `session_liveness` — every second per agent
 - `broadcast_complete`
 - `space_deleted`
 - `agent_spawned` / `agent_stopped` / `agent_restarted` (lifecycle)
@@ -105,7 +105,7 @@ An agent subscribing to `GET /spaces/{space}/agent/{name}/events` should receive
 
 Events NOT included (to prevent context pollution):
 - Other agents' `agent_updated` events
-- `tmux_liveness` for other agents
+- `session_liveness` for other agents
 - Space-wide broadcast noise
 
 ### 3.3 Agent Filtering Fix
@@ -296,7 +296,7 @@ data: {...}
 | No `Last-Event-ID` replay | Medium | Add per-agent event ring buffer |
 | No `X-Accel-Buffering: no` header | Medium | Add to SSE response headers |
 | Webhook fires even when SSE active | Low | Check `hasActiveSSE` before webhook |
-| `tmux_liveness` events in stream | Low | Exclude from per-agent stream |
+| `session_liveness` events in stream | Low | Exclude from per-agent stream |
 
 ---
 

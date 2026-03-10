@@ -162,7 +162,7 @@ function sseEventToBadge(sseType: string): string {
     agent_removed: 'removed',
     space_deleted: 'removed',
     agent_message: 'message',
-    tmux_liveness: 'tmux',
+    session_liveness: 'session',
     broadcast_complete: 'broadcast',
     broadcast_progress: 'broadcast',
   }

@@ -140,7 +140,7 @@ X-Agent-Name: {agent}
   "blockers": ["waiting for DataMgr to merge PR #7"],
   "parent": "ManagerAgent",
   "role": "Developer",
-  "tmux_session": "MyAgent"
+  "session_id": "MyAgent"
 }
 ```
 
@@ -162,9 +162,9 @@ X-Agent-Name: {agent}
 | `blockers` | array | no | Highlighted in dashboard |
 | `parent` | string | no | Manager agent name — sticky hierarchy link |
 | `role` | string | no | Display label e.g. `"Developer"`, `"SME"` |
-| `tmux_session` | string | no | Tmux session name (sticky — send once, server remembers) |
+| `session_id` | string | no | Session name (sticky — send once, server remembers) |
 
-**Sticky fields:** `branch`, `pr`, `repo_url`, `parent`, `role`, `tmux_session` are remembered by the server. Omitting them in a subsequent POST does not clear them.
+**Sticky fields:** `branch`, `pr`, `repo_url`, `parent`, `role`, `session_id` are remembered by the server. Omitting them in a subsequent POST does not clear them.
 
 **Response:** `202 Accepted` on success.
 
@@ -448,14 +448,14 @@ Acknowledged messages are marked `"read": true` and their `read_at` timestamp is
 **Bootstrap your agent identity, retrieve peer state, and get your protocol template.**
 
 ```
-GET /spaces/{space}/ignition/{agent}?tmux_session={session}&parent={parent}&role={role}
+GET /spaces/{space}/ignition/{agent}?session_id={session}&parent={parent}&role={role}
 ```
 
 **Query parameters:**
 
 | Parameter | Notes |
 |-----------|-------|
-| `tmux_session` | Tmux session name — registers sticky session mapping. Omit for non-tmux agents. |
+| `session_id` | Session name — registers sticky session mapping. Omit for non-session agents. |
 | `parent` | Manager agent name — sticky hierarchy link. |
 | `role` | Display label e.g. `"Developer"`, `"SME"`. |
 
@@ -483,7 +483,7 @@ GET /spaces/{space}/agent/{agent}/introspect
 ```json
 {
   "agent": "MyAgent",
-  "tmux_session": "MyAgent",
+  "session_id": "MyAgent",
   "pane_text": "...<last 50 lines of terminal output>...",
   "captured_at": "2026-03-07T01:13:30Z"
 }
@@ -494,13 +494,13 @@ GET /spaces/{space}/agent/{agent}/introspect
 ```json
 {
   "agent": "MyAgent",
-  "tmux_session": "",
+  "session_id": "",
   "pane_text": "",
   "captured_at": "2026-03-07T01:13:30Z"
 }
 ```
 
-Non-tmux agents return empty `pane_text` and `tmux_session` rather than an error. The `captured_at` timestamp reflects when the introspect was attempted.
+Non-tmux agents return empty `pane_text` and `session_id` rather than an error. The `captured_at` timestamp reflects when the introspect was attempted.
 
 ---
 
@@ -654,7 +654,7 @@ Sent every 15 seconds to prevent proxy timeouts. Not a named event — SSE comme
 
 **Events NOT delivered on the per-agent stream:**
 - Other agents' status updates
-- `tmux_liveness` signals from other agents
+- `session_liveness` signals from other agents
 - Space-wide broadcast noise
 
 The per-agent stream delivers only events relevant to your agent — this is the key scalability advantage over polling `/raw`.
@@ -681,7 +681,7 @@ Non-tmux agents (Docker, CI, remote, script) interact with the coordinator exact
 
 | Feature | Tmux Agent | Non-Tmux Agent |
 |---------|-----------|----------------|
-| Session registration | `?tmux_session=Name` on ignition | Omit; or set `"agent_type": "http"` in registration |
+| Session registration | `?session_id=Name` on ignition | Omit; or set `"agent_type": "http"` in registration |
 | Introspect | Returns live terminal output | Returns empty `pane_text` (no error) |
 | Spawn/stop/restart | Server sends tmux commands | No-op (returns `202 Accepted` but takes no action) |
 | Staleness detection | Auto-detected via tmux liveness | Manual via heartbeat if `heartbeat_interval_sec > 0` |

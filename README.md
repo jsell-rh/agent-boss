@@ -211,7 +211,7 @@ Real-time push events. Per-agent streams deliver only events targeted at that ag
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/spaces/{space}/ignition/{agent}?tmux_session=` | Bootstrap agent with context + task |
+| `GET` | `/spaces/{space}/ignition/{agent}?session_id=` | Bootstrap agent with context + task |
 
 ### Shared Data
 

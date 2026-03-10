@@ -34,7 +34,7 @@ class CoordinationClient:
                 'status': status,
                 'summary': summary,
                 'repo_url': 'git@gitlab.cee.redhat.com:ocm/agent-boss.git',
-                'tmux_session': os.getenv('TMUX_SESSION', ''),
+                'session_id': os.getenv('TMUX_SESSION', ''),
                 **kwargs
             }
             
@@ -56,7 +56,7 @@ class CoordinationClient:
         """Get agent ignition context from Agent Boss"""
         try:
             url = f"{self.boss_url}/spaces/{self.workspace}/ignition/{self.agent_name}"
-            params = {'tmux_session': os.getenv('TMUX_SESSION', '')}
+            params = {'session_id': os.getenv('TMUX_SESSION', '')}
             
             response = self.session.get(url, params=params, timeout=10)
             

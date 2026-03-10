@@ -405,7 +405,7 @@ data: {"space":"...","agent":"...","sender":"...","message":"..."}
 | `agent_restarted` | Agent tmux session restarted |
 | `space_deleted` | Space deleted |
 | `broadcast_complete` | Check-in broadcast finished |
-| `tmux_liveness` | Tmux session liveness probe (every second) |
+| `session_liveness` | Session liveness probe (every second) |
 
 ---
 
@@ -503,7 +503,7 @@ Ignition bootstraps an agent with its identity, peers, and task context.
 ### Get Ignition Prompt
 
 ```
-GET /spaces/{space}/ignition/{agent}?tmux_session={session}
+GET /spaces/{space}/ignition/{agent}?session_id={session}
 ```
 
 Returns a structured ignition document containing:
@@ -513,7 +513,7 @@ Returns a structured ignition document containing:
 - Pending messages
 - JSON POST template
 
-The `tmux_session` query parameter registers the agent's tmux session (sticky — remembered for future status updates).
+The `session_id` query parameter registers the agent's session (sticky — remembered for future status updates).
 
 ---
 

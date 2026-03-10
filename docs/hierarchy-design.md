@@ -134,7 +134,7 @@ This is O(N) where N = number of agents per space — acceptable for team-scale 
 
 ### Sticky `Parent` semantics
 
-`Parent` is **mutable and sticky** — identical to `TmuxSession`. A status POST that includes `parent` updates it. A status POST that omits `parent` does NOT clear it. To remove a parent, an agent must POST `"parent": ""` explicitly.
+`Parent` is **mutable and sticky** — identical to `SessionID`. A status POST that includes `parent` updates it. A status POST that omits `parent` does NOT clear it. To remove a parent, an agent must POST `"parent": ""` explicitly.
 
 ### Cycle Detection — must be atomic with write
 
@@ -417,7 +417,7 @@ Required test functions (10 minimum, all must pass `-race`):
 
 ## 12. Decisions (CTO, 2026-03-07)
 
-1. **Parent mutability**: Parent IS mutable — sticky pattern same as `TmuxSession`. Agents can re-declare parent on any status POST; omitting `parent` does not clear it.
+1. **Parent mutability**: Parent IS mutable — sticky pattern same as `SessionID`. Agents can re-declare parent on any status POST; omitting `parent` does not clear it.
 2. **Scope**: Hierarchy is **per-space**. No global hierarchy across spaces.
 3. **Fan-out delivery**: `scope=subtree` is **async** (fire-and-forget per recipient). Server returns 202 immediately. Each recipient's SSE stream fires independently via goroutine.
 4. **Dashboard**: Hierarchy tab exists **alongside** the flat Session Dashboard — it does not replace it.

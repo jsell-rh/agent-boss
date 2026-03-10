@@ -79,7 +79,8 @@ type Agent struct {
 	Documents      string `gorm:"type:text"` // JSON array
 	NextSteps      string `gorm:"type:text"`
 	FreeText       string `gorm:"type:text"`
-	TmuxSession    string
+	SessionID      string
+	BackendType    string
 	RepoURL        string
 	Parent         string
 	Children       string `gorm:"type:text"` // JSON array

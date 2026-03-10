@@ -101,8 +101,8 @@ get_container_name() {
     echo "paude-${WORKSPACE_NAME,,}-${agent_name,,}"
 }
 
-# Generate tmux session name for agent  
-get_tmux_session() {
+# Generate session name for agent
+get_session_id() {
     local agent_name="$1"
     echo "agentdeck_${agent_name}_$(date +%s)"
 }
@@ -115,7 +115,7 @@ start_agent() {
     IFS=':' read -r agent_name role source_files <<< "${agent_spec}"
     
     local container_name=$(get_container_name "${agent_name}")
-    local tmux_session=$(get_tmux_session "${agent_name}")
+    local session_id=$(get_session_id "${agent_name}")
     
     log_info "Starting agent: ${agent_name} (${role})"
     
@@ -139,7 +139,7 @@ start_agent() {
         -e WORKSPACE_NAME="${WORKSPACE_NAME}" \
         -e AGENT_ROLE="${role}" \
         -e SOURCE_FILES="${source_files}" \
-        -e TMUX_SESSION="${tmux_session}" \
+        -e TMUX_SESSION="${session_id}" \
         -e CLAUDE_ALLOW_DANGEROUS_TOOLS=1 \
         -e CLAUDE_AUTO_APPROVE=1 \
         -e COORDINATION_ENABLED=1 \
@@ -152,7 +152,7 @@ start_agent() {
     if podman ps --format "{{.Names}}" | grep -q "^${container_name}$"; then
         log_success "Agent ${agent_name} started successfully"
         log_info "  Container: ${container_name}"
-        log_info "  Tmux session: ${tmux_session}" 
+        log_info "  Session: ${session_id}"
         log_info "  Role: ${role}"
         log_info "  Source focus: ${source_files}"
     else
