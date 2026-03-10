@@ -30,7 +30,8 @@ and self-guiding.
 - **Zero-friction defaults**: a new user can create a working space and agent in under 2 minutes
 - **Reproducibility**: agent configuration is data, not shell state — it survives restarts
 - **Backend agnosticism**: every improvement works for both tmux and ambient backends
-- **No new external dependencies**: Go stdlib only in the server; MCP served locally
+- **One external Go dependency**: `mark3labs/mcp-go` for the MCP server (justified by protocol complexity)
+- **Security by default**: `--dangerously-skip-permissions` is a global server toggle (off by default); one deliberate operator decision applies to all agents
 
 ## Shared Contracts
 
@@ -38,17 +39,17 @@ and self-guiding.
 
 ```json
 {
-  "name": "LifecycleMgr",
-  "space": "AgentBossDevTeam",
   "work_dir": "/home/jsell/code/sandbox/agent-boss",
   "repo_url": "https://github.com/jsell-rh/agent-boss.git",
-  "initial_prompt": "/boss.ignite \"LifecycleMgr\" \"AgentBossDevTeam\"",
-  "persona_ids": ["senior-engineer"],
+  "initial_prompt": "You are LifecycleMgr. Read the blackboard and act on pending tasks.",
+  "personas": [{"id": "senior-engineer"}],
   "backend": "tmux",
-  "parent": "boss",
-  "role": "Manager"
+  "command": "claude"
 }
 ```
+
+Note: `command` defaults to `claude` (no `--dangerously-skip-permissions`). Users opt in
+via the "Skip permission prompts" checkbox in the agent create dialog.
 
 ### Persona (new top-level object)
 
@@ -61,8 +62,23 @@ and self-guiding.
 }
 ```
 
+## Resolved Design Decisions (from boss review)
+
+| Decision | Resolution |
+| -------- | ---------- |
+| Persona scope | **Global** (not space-scoped); UI shows which spaces/agents use each persona |
+| Persona version re-inject | No auto-re-inject; mark stale agents with badge + quick restart action |
+| Agent duplication spawn | **Auto-spawn** immediately on duplicate |
+| Initial prompt default | No slash command fallback — MCP bootstrap resource provides context |
+| Onboarding approach | **Inline empty states** (not wizard) |
+| `boss init` scope | Registers MCP server with Claude; no `./commands/` setup |
+| MCP transport | **HTTP streamable** (SSE deprecated); same port 8899 |
+| MCP library | **mark3labs/mcp-go** |
+| Boss identity | First-class dashboard user; not an agent record (optional only) |
+| Restart scope | Individual agent + **fleet restart** (restart all) |
+| `--dangerously-skip-permissions` | **Global server-wide toggle** (off by default); applies to all tmux agents uniformly |
+
 ## Non-Goals (this spec)
 
 - Actual implementation code (this is a design spec only)
-- Multi-space persona sharing (v2 concern)
 - Cloud backend persona support (tracked separately)
