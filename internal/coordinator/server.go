@@ -70,7 +70,7 @@ type Server struct {
 	repo           *bossdb.Repository // nil until Start() initialises the DB
 	backends       map[string]SessionBackend
 	defaultBackend string
-	logger         Logger
+	logger               Logger
 	// allowSkipPermissions, when true, appends --dangerously-skip-permissions to every
 	// tmux-backend agent launch command. Controlled by the BOSS_ALLOW_SKIP_PERMISSIONS
 	// environment variable (default off). This is a deliberate operator-level toggle —
@@ -225,6 +225,10 @@ func (s *Server) Start() error {
 		id = strings.TrimRight(id, "/")
 		s.handlePersonaDetail(w, r, id)
 	})
+	mux.HandleFunc("/settings", s.handleSettings)
+	mcpHandler := s.buildMCPHandler()
+	mux.Handle("/mcp", mcpHandler)
+	mux.Handle("/mcp/", mcpHandler)
 
 	listener, err := net.Listen("tcp", s.port)
 	if err != nil {
@@ -249,6 +253,12 @@ func (s *Server) Start() error {
 	s.startCompactionLoop(30 * time.Minute)
 
 	return nil
+}
+
+// localURL returns the base URL of this server (e.g. "http://localhost:8899").
+func (s *Server) localURL() string {
+	port := strings.TrimPrefix(s.port, ":")
+	return "http://localhost:" + port
 }
 
 func (s *Server) Stop() error {

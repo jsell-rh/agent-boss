@@ -665,8 +665,16 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	text := s.buildIgnitionText(spaceName, agentName, sessionID)
+	s.mu.RUnlock()
 
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, text)
+}
+
+// buildIgnitionText assembles the agent ignition/bootstrap text.
+// Must be called with s.mu.RLock held.
+func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) string {
 	// Get ks for the response builder. If the space doesn't exist yet
 	// (no sessionID, no previous posts), use an empty space so the
 	// response is well-formed.
@@ -871,8 +879,7 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	b.WriteString("  }'\n")
 	b.WriteString("```\n")
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprint(w, b.String())
+	return b.String()
 }
 
 func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request, spaceName string) {

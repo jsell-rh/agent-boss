@@ -195,9 +195,11 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 			SessionID: sessionName,
 			Command:   spawnCommand,
 			BackendOpts: TmuxCreateOpts{
-				Width:   req.Width,
-				Height:  req.Height,
-				WorkDir: spawnWorkDir,
+				Width:                req.Width,
+				Height:               req.Height,
+				WorkDir:              spawnWorkDir,
+				MCPServerURL:         s.localURL(),
+				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
 	}
@@ -509,6 +511,10 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		createOpts = SessionCreateOpts{
 			SessionID: newSession,
 			Command:   command,
+			BackendOpts: TmuxCreateOpts{
+				MCPServerURL:         s.localURL(),
+				AllowSkipPermissions: s.allowSkipPermissions,
+			},
 		}
 	}
 

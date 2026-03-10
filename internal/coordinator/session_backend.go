@@ -109,9 +109,11 @@ type SessionCreateOpts struct {
 
 // TmuxCreateOpts holds tmux-specific session creation options.
 type TmuxCreateOpts struct {
-	WorkDir string // working directory to cd into before launching
-	Width   int    // terminal width (default 220)
-	Height  int    // terminal height (default 50)
+	WorkDir              string // working directory to cd into before launching
+	Width                int    // terminal width (default 220)
+	Height               int    // terminal height (default 50)
+	MCPServerURL         string // if set, run "claude mcp add boss-mcp" before launching
+	AllowSkipPermissions bool   // if true, append --dangerously-skip-permissions to command
 }
 
 // AmbientCreateOpts holds Ambient-specific session creation options.
