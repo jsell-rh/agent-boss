@@ -90,9 +90,11 @@ func migrate(db *gorm.DB) error {
 		return err
 	}
 
-	// One-time migration: copy tmux_session → session_id for existing rows.
+	// One-time migration: copy tmux_session → session_id for existing rows,
+	// then drop the obsolete column.
 	if db.Migrator().HasColumn(&Agent{}, "tmux_session") {
 		db.Exec(`UPDATE agents SET session_id = tmux_session WHERE (session_id IS NULL OR session_id = '') AND tmux_session != ''`)
+		db.Migrator().DropColumn(&Agent{}, "tmux_session")
 	}
 
 	return nil
