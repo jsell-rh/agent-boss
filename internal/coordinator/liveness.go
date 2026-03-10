@@ -31,23 +31,17 @@ func (s *Server) livenessLoop() {
 func (s *Server) checkAllSessionLiveness() {
 	s.mu.RLock()
 	type probe struct {
-		space, agent, session string
+		space, agent, session, backendType string
 	}
 	var probes []probe
 	for spaceName, ks := range s.spaces {
 		for name, agent := range ks.Agents {
 			if agent.SessionID != "" {
-				probes = append(probes, probe{spaceName, name, agent.SessionID})
+				probes = append(probes, probe{spaceName, name, agent.SessionID, agent.BackendType})
 			}
 		}
 	}
 	s.mu.RUnlock()
-
-	// All agents currently use the default backend (tmux).
-	backend := s.backends[s.defaultBackend]
-	if !backend.Available() {
-		return
-	}
 
 	type statusEntry struct {
 		agent, session   string
@@ -57,6 +51,10 @@ func (s *Server) checkAllSessionLiveness() {
 	}
 	spaceResults := make(map[string][]statusEntry)
 	for _, p := range probes {
+		backend := s.backendByName(p.backendType)
+		if !backend.Available() {
+			continue
+		}
 		e := statusEntry{agent: p.agent, session: p.session}
 		e.exists = backend.SessionExists(p.session)
 		if e.exists {

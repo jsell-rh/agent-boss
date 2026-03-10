@@ -917,8 +917,8 @@ watch(() => props.agentName, loadAgentTasks)
 
       <Separator v-if="agent.session_id" />
 
-      <!-- Tmux Controls — only shown when agent has a registered tmux session -->
-      <section v-if="agent.session_id" class="space-y-3" aria-label="Tmux session controls">
+      <!-- Tmux Controls — only shown for tmux-backed agents with a session -->
+      <section v-if="agent.session_id && agent.backend_type !== 'ambient'" class="space-y-3" aria-label="Tmux session controls">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controls</h2>
 
         <!-- Approval button -->

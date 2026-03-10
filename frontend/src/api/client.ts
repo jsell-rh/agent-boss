@@ -240,11 +240,13 @@ class ApiClient {
       name: string
       work_dir?: string
       command?: string
-      backend?: 'tmux' | 'cloud'
+      backend?: 'tmux' | 'ambient'
       width?: number
       height?: number
       parent?: string
       role?: string
+      repos?: { url: string; branch?: string }[]
+      task?: string
     },
   ): Promise<{ ok: boolean; agent: string; backend: string; session: string; space: string }> {
     return this.request(`/spaces/${encodeURIComponent(space)}/agents`, {
