@@ -15,6 +15,21 @@ import type {
   AgentConfig,
 } from '@/types'
 
+/**
+ * PR #86 changed `KnowledgeSpace.agents` from `map[string]*AgentUpdate` to
+ * `map[string]*AgentRecord{status, config}`. Normalize the response so
+ * all frontend components can keep accessing agents as plain AgentUpdate objects.
+ */
+function normalizeSpace(space: KnowledgeSpace): KnowledgeSpace {
+  if (!space.agents) return space
+  const normalized: Record<string, import('@/types').AgentUpdate> = {}
+  for (const [name, record] of Object.entries(space.agents)) {
+    const r = record as unknown as { status: import('@/types').AgentUpdate }
+    normalized[name] = r.status ?? (record as unknown as import('@/types').AgentUpdate)
+  }
+  return { ...space, agents: normalized }
+}
+
 class ApiClient {
   private baseUrl: string
 
@@ -48,7 +63,7 @@ class ApiClient {
   fetchSpace(space: string): Promise<KnowledgeSpace> {
     return this.request<KnowledgeSpace>(`/spaces/${encodeURIComponent(space)}/`, {
       headers: { Accept: 'application/json' },
-    })
+    }).then(normalizeSpace)
   }
 
   deleteSpace(space: string): Promise<void> {
