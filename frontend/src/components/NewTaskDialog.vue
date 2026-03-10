@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { KnowledgeSpace, Task, TaskPriority, TaskStatus } from '@/types'
-import { TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from '@/types'
+import type { KnowledgeSpace, Task, TaskPriority } from '@/types'
+import { TASK_PRIORITY_LABELS } from '@/types'
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import {
@@ -29,7 +29,6 @@ const props = defineProps<{
   tasks?: Task[]
   parentTaskId?: string
   initialAssignee?: string
-  initialStatus?: TaskStatus
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +38,6 @@ const emit = defineEmits<{
 
 const title = ref('')
 const description = ref('')
-const status = ref<TaskStatus>(props.initialStatus ?? 'backlog')
 const priority = ref<TaskPriority>('medium')
 const assignedTo = ref(props.initialAssignee ?? '')
 const parentTask = ref(props.parentTaskId ?? '')
@@ -49,7 +47,6 @@ const submitting = ref(false)
 function reset() {
   title.value = ''
   description.value = ''
-  status.value = props.initialStatus ?? 'backlog'
   priority.value = 'medium'
   assignedTo.value = props.initialAssignee ?? ''
   parentTask.value = props.parentTaskId ?? ''
@@ -63,7 +60,6 @@ async function submit() {
     await api.createTask(props.space.name, {
       title: title.value.trim(),
       description: description.value.trim() || undefined,
-      status: status.value,
       priority: priority.value,
       assigned_to: assignedTo.value || undefined,
       parent_task: parentTask.value || undefined,
@@ -106,29 +102,6 @@ async function submit() {
             placeholder="Optional description (markdown supported)"
             class="text-sm min-h-[80px] resize-none"
           />
-        </div>
-
-        <!-- Status -->
-        <div class="flex flex-col gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <Button variant="outline" size="sm" class="w-full justify-between text-xs h-8">
-                {{ TASK_STATUS_LABELS[status] }}
-                <ChevronDown class="size-3 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                v-for="(label, s) in TASK_STATUS_LABELS"
-                :key="s"
-                :class="{ 'font-semibold': s === status }"
-                @click="status = s as TaskStatus"
-              >
-                {{ label }}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
 
         <!-- Priority + Assignee row -->

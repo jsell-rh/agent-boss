@@ -304,7 +304,6 @@ class ApiClient {
   createTask(space: string, task: {
     title: string
     description?: string
-    status?: TaskStatus
     priority?: TaskPriority
     assigned_to?: string
     labels?: string[]

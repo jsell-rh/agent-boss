@@ -89,7 +89,6 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 	var req struct {
 		Title        string       `json:"title"`
 		Description  string       `json:"description"`
-		Status       TaskStatus   `json:"status"`
 		Priority     TaskPriority `json:"priority"`
 		AssignedTo   string       `json:"assigned_to"`
 		Labels       []string     `json:"labels"`
@@ -112,16 +111,12 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 	ks.NextTaskSeq++
 	id := fmt.Sprintf("TASK-%03d", ks.NextTaskSeq)
 	now := time.Now().UTC()
-	initialStatus := TaskStatusBacklog
-	if req.Status.Valid() {
-		initialStatus = req.Status
-	}
 	task := &Task{
 		ID:           id,
 		Space:        spaceName,
 		Title:        strings.TrimSpace(req.Title),
 		Description:  req.Description,
-		Status:       initialStatus,
+		Status:       TaskStatusBacklog,
 		Priority:     req.Priority,
 		AssignedTo:   req.AssignedTo,
 		CreatedBy:    caller,

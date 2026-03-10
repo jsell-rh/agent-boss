@@ -119,9 +119,8 @@ func (s *Server) checkAllSessionLiveness() {
 			}
 			s.mu.Unlock()
 
-			// Fire nudge when agent is idle, OR immediately if the session is gone
-			// (agent may have restarted without re-registering a session).
-			if (e.exists && e.idle) || !e.exists {
+			// Check if this idle agent has a pending nudge
+			if e.exists && e.idle {
 				s.nudgeMu.Lock()
 				if _, pending := s.nudgePending[key]; pending {
 					if !s.nudgeInFlight[key] {
@@ -140,34 +139,6 @@ func (s *Server) checkAllSessionLiveness() {
 		data, _ := json.Marshal(payload)
 		s.broadcastSSE(space, "", "session_liveness", string(data))
 	}
-
-	// Sweep: fire nudges for agents with no registered session (not in probes).
-	probedKeys := make(map[string]struct{}, len(probes))
-	for _, p := range probes {
-		probedKeys[p.space+"/"+p.agent] = struct{}{}
-	}
-	s.nudgeMu.Lock()
-	var sessionlessNudges []struct{ space, agent string }
-	for key := range s.nudgePending {
-		if _, probed := probedKeys[key]; !probed {
-			last := len(key) - 1
-			for last >= 0 && key[last] != '/' {
-				last--
-			}
-			if last > 0 {
-				sessionlessNudges = append(sessionlessNudges, struct{ space, agent string }{key[:last], key[last+1:]})
-			}
-		}
-	}
-	for _, n := range sessionlessNudges {
-		key := n.space + "/" + n.agent
-		if !s.nudgeInFlight[key] {
-			s.nudgeInFlight[key] = true
-			delete(s.nudgePending, key)
-			go s.executeNudge(n.space, n.agent)
-		}
-	}
-	s.nudgeMu.Unlock()
 }
 
 // executeNudge triggers a single-agent check-in for an agent that has
