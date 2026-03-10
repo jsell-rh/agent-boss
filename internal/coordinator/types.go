@@ -259,15 +259,123 @@ type TaskEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// AgentConfig holds the durable configuration for an agent.
+// Unlike AgentUpdate (runtime state), config fields persist across restarts
+// and are never overwritten by agent status POSTs.
+type AgentConfig struct {
+	// Common fields (all backends)
+	WorkDir       string   `json:"work_dir,omitempty"`       // absolute path or "" for server cwd
+	InitialPrompt string   `json:"initial_prompt,omitempty"` // instructions sent to agent after session start
+	PersonaIDs    []string `json:"persona_ids,omitempty"`    // ordered list of global persona IDs to inject
+	Backend       string   `json:"backend,omitempty"`        // "tmux" | "ambient" (default "tmux")
+	Command       string   `json:"command,omitempty"`        // launch command (default: "claude")
+
+	// tmux-specific
+	RepoURL string `json:"repo_url,omitempty"` // primary git remote for display/linking
+
+	// ambient-specific
+	Repos []SessionRepo `json:"repos,omitempty"` // git repos to clone into the ambient session
+	Model string        `json:"model,omitempty"` // model override for ambient backend
+}
+
+// AgentRecord wraps an agent's runtime status and its durable config.
+// This is the canonical storage unit in KnowledgeSpace.Agents.
+type AgentRecord struct {
+	Config *AgentConfig `json:"config,omitempty"`
+	Status *AgentUpdate `json:"status"`
+}
+
+// agentRecordFromUpdate creates an AgentRecord from a bare AgentUpdate (migration helper).
+func agentRecordFromUpdate(u *AgentUpdate) *AgentRecord {
+	return &AgentRecord{Status: u}
+}
+
 type KnowledgeSpace struct {
 	Name            string                  `json:"name"`
-	Agents          map[string]*AgentUpdate `json:"agents"`
+	Agents          map[string]*AgentRecord `json:"agents"`
 	Tasks           map[string]*Task        `json:"tasks,omitempty"`
 	NextTaskSeq     int                     `json:"next_task_seq,omitempty"`
 	SharedContracts string                  `json:"shared_contracts,omitempty"`
 	Archive         string                  `json:"archive,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
 	UpdatedAt       time.Time               `json:"updated_at"`
+}
+
+// agentStatus returns the AgentUpdate (runtime state) for the named agent, or nil.
+func (ks *KnowledgeSpace) agentStatus(name string) *AgentUpdate {
+	if rec, ok := ks.Agents[name]; ok && rec != nil {
+		return rec.Status
+	}
+	return nil
+}
+
+// agentStatusOk returns the AgentUpdate and whether it exists for the named agent.
+func (ks *KnowledgeSpace) agentStatusOk(name string) (*AgentUpdate, bool) {
+	rec, ok := ks.Agents[name]
+	if !ok || rec == nil || rec.Status == nil {
+		return nil, false
+	}
+	return rec.Status, true
+}
+
+// setAgentStatus sets the runtime state for the named agent.
+// Creates an AgentRecord if one does not exist.
+func (ks *KnowledgeSpace) setAgentStatus(name string, status *AgentUpdate) {
+	if rec, ok := ks.Agents[name]; ok && rec != nil {
+		rec.Status = status
+	} else {
+		ks.Agents[name] = &AgentRecord{Status: status}
+	}
+}
+
+// agentConfig returns the AgentConfig for the named agent, or nil.
+func (ks *KnowledgeSpace) agentConfig(name string) *AgentConfig {
+	if rec, ok := ks.Agents[name]; ok && rec != nil {
+		return rec.Config
+	}
+	return nil
+}
+
+// UnmarshalJSON provides backward-compatible deserialization.
+// Existing JSON has agents as map[string]*AgentUpdate; new JSON uses map[string]*AgentRecord.
+func (ks *KnowledgeSpace) UnmarshalJSON(data []byte) error {
+	type rawKS struct {
+		Name            string                     `json:"name"`
+		Agents          map[string]json.RawMessage `json:"agents"`
+		Tasks           map[string]*Task           `json:"tasks,omitempty"`
+		NextTaskSeq     int                        `json:"next_task_seq,omitempty"`
+		SharedContracts string                     `json:"shared_contracts,omitempty"`
+		Archive         string                     `json:"archive,omitempty"`
+		CreatedAt       time.Time                  `json:"created_at"`
+		UpdatedAt       time.Time                  `json:"updated_at"`
+	}
+	var raw rawKS
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	ks.Name = raw.Name
+	ks.Tasks = raw.Tasks
+	ks.NextTaskSeq = raw.NextTaskSeq
+	ks.SharedContracts = raw.SharedContracts
+	ks.Archive = raw.Archive
+	ks.CreatedAt = raw.CreatedAt
+	ks.UpdatedAt = raw.UpdatedAt
+	ks.Agents = make(map[string]*AgentRecord, len(raw.Agents))
+	for name, rawAgent := range raw.Agents {
+		// Try to decode as AgentRecord first (new format has "status" key).
+		var rec AgentRecord
+		if err := json.Unmarshal(rawAgent, &rec); err == nil && rec.Status != nil {
+			ks.Agents[name] = &rec
+			continue
+		}
+		// Fall back to legacy AgentUpdate format.
+		var update AgentUpdate
+		if err := json.Unmarshal(rawAgent, &update); err != nil {
+			return fmt.Errorf("agent %q: %w", name, err)
+		}
+		ks.Agents[name] = agentRecordFromUpdate(&update)
+	}
+	return nil
 }
 
 // snapshot returns a deep copy of ks via JSON round-trip.
@@ -283,7 +391,7 @@ func NewKnowledgeSpace(name string) *KnowledgeSpace {
 	now := time.Now().UTC()
 	return &KnowledgeSpace{
 		Name:      name,
-		Agents:    make(map[string]*AgentUpdate),
+		Agents:    make(map[string]*AgentRecord),
 		Tasks:     make(map[string]*Task),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -308,7 +416,7 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 	sort.Strings(sortedNames)
 
 	for _, name := range sortedNames {
-		agent := ks.Agents[name]
+		agent := ks.Agents[name].Status
 		branch := agent.Branch
 		if branch == "" {
 			branch = "—"
@@ -330,7 +438,7 @@ func (ks *KnowledgeSpace) RenderMarkdown() string {
 
 	b.WriteString("## Agent Sections\n\n")
 	for _, name := range sortedNames {
-		agent := ks.Agents[name]
+		agent := ks.Agents[name].Status
 		b.WriteString("### ")
 		b.WriteString(name)
 		b.WriteString("\n\n")
@@ -483,7 +591,8 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 	}
 
 	// Build all nodes
-	for name, ag := range ks.Agents {
+	for name, rec := range ks.Agents {
+		ag := rec.Status
 		node := &HierarchyNode{
 			Agent:    name,
 			Parent:   ag.Parent,
@@ -613,6 +722,16 @@ type StatusSnapshot struct {
 	InferredStatus string      `json:"inferred_status,omitempty"`
 	Stale          bool        `json:"stale,omitempty"`
 	Timestamp      time.Time   `json:"timestamp"`
+}
+
+// TaskStalenessThreshold is how long an in_progress task must be un-updated
+// before it is flagged as stale.
+const TaskStalenessThreshold = 1 * time.Hour
+
+// computeTaskStaleness sets t.IsStale based on status and last update time.
+// Call this on a copy before returning a task in an API response.
+func computeTaskStaleness(t *Task) {
+	t.IsStale = t.Status == TaskStatusInProgress && time.Since(t.UpdatedAt) > TaskStalenessThreshold
 }
 
 func (u *AgentUpdate) Validate() error {
