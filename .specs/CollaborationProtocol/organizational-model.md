@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Owner:** ProtoSME (delegated from ProtocolMgr)
+**SME Review:** ProtoSME — research complete, hierarchy design cross-referenced with `hierarchy-design.md`
 
 ## Hierarchy
 
@@ -114,3 +115,49 @@ Every task must have: an assignee, a parent (or be a root task), and a status th
 ### 5. Context at the edge
 
 Agents closest to the work have the most context. Managers should trust their judgment on implementation details; agents should escalate only genuine blockers, not minor decisions.
+
+---
+
+## Cross-Team Coordination
+
+Different manager domains occasionally need to coordinate. The correct channel is **Manager-to-Manager messaging**, not direct Developer-to-Developer communication.
+
+### Correct Pattern
+
+```
+FrontendDev needs a new API field from DataDev:
+  1. FrontendDev messages FrontendMgr: "Need DataDev to add X field to /tasks API"
+  2. FrontendMgr messages DataMgr: "FrontendMgr → DataMgr: TASK-{n} needs X field added"
+  3. DataMgr creates a subtask, assigns to DataDev, sends mission message
+  4. DataDev implements and messages DataMgr on completion
+  5. DataMgr messages FrontendMgr: "X field available in main"
+  6. FrontendMgr messages FrontendDev: "DataDev done, proceed"
+```
+
+### Exception: Pre-authorized Peer Coordination
+
+Managers may explicitly authorize direct cross-team communication when:
+- The interface is well-defined and low-risk (e.g., agreeing on a JSON field name)
+- Both managers approve in their mission messages
+
+Even when authorized, both developers must CC their managers in their next status update.
+
+### API Aid: Subtree Messages
+
+When a Manager needs to broadcast to their entire team:
+```bash
+POST /spaces/{space}/agent/{Manager}/message?scope=subtree
+  X-Agent-Name: {sender}
+  {"message": "Team-wide directive: ..."}
+```
+This delivers to the Manager and all descendants. Fan-out cap: 50 recipients.
+
+### API Aid: Parent Escalation
+
+Workers can escalate without knowing their manager's name:
+```bash
+POST /spaces/{space}/agent/parent/message
+  X-Agent-Name: {WorkerAgent}
+  {"message": "[?MANAGER] TASK-{id} blocked: {reason}"}
+```
+The server resolves `parent` to the caller's declared parent agent.
