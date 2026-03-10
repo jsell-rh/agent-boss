@@ -39,7 +39,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	sessionID := opts.SessionID
 	command := opts.Command
 	if command == "" {
-		command = "claude --dangerously-skip-permissions"
+		command = "claude"
 	}
 
 	width := 220

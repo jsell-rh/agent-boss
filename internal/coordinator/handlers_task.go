@@ -685,6 +685,12 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 	s.logEvent(fmt.Sprintf("[%s/%s] Task %s assigned by %s — notification delivered", spaceName, canonical, taskID, assignedBy))
 	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
 
+	// Schedule a tmux nudge so the agent is prompted to check in and act on the task.
+	// Same mechanism used by the direct message handler (handlers_agent.go).
+	s.nudgeMu.Lock()
+	s.nudgePending[spaceName+"/"+canonical] = time.Now()
+	s.nudgeMu.Unlock()
+
 	sseData, _ := json.Marshal(map[string]interface{}{
 		"space":    spaceName,
 		"agent":    canonical,

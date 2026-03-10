@@ -71,6 +71,11 @@ type Server struct {
 	backends       map[string]SessionBackend
 	defaultBackend string
 	logger         Logger
+	// allowSkipPermissions, when true, appends --dangerously-skip-permissions to every
+	// tmux-backend agent launch command. Controlled by the BOSS_ALLOW_SKIP_PERMISSIONS
+	// environment variable (default off). This is a deliberate operator-level toggle —
+	// one decision applies to all agents uniformly.
+	allowSkipPermissions bool
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -97,9 +102,10 @@ func NewServer(port, dataDir string) *Server {
 		stalenessThreshold: thresh,
 		registrations:      make(map[string]*AgentRegistrationRecord),
 		journal:            NewEventJournal(dataDir),
-		backends:           map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
-		defaultBackend:     "tmux",
-		logger:             NewLogger(os.Stdout),
+		backends:             map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
+		defaultBackend:       "tmux",
+		logger:               NewLogger(os.Stdout),
+		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
 	}
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {

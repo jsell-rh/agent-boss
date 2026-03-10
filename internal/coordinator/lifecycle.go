@@ -96,7 +96,7 @@ func (s *Server) checkStaleness() {
 // spawnRequest is the optional body for POST /spaces/{space}/agent/{name}/spawn.
 type spawnRequest struct {
 	SessionID      string `json:"session_id,omitempty"`      // defaults to agent name
-	Command        string `json:"command,omitempty"`         // defaults to "claude --dangerously-skip-permissions"
+	Command        string `json:"command,omitempty"`         // defaults to "claude"; --dangerously-skip-permissions applied via global server toggle
 	Width          int    `json:"width,omitempty"`           // tmux window width, default 220
 	Height         int    `json:"height,omitempty"`          // tmux window height, default 50
 	Backend        string `json:"backend,omitempty"`         // "tmux" (default) or "ambient"
@@ -146,6 +146,13 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	}
 
 	ctx := context.Background()
+	// For tmux sessions, apply the global skip-permissions toggle when no explicit
+	// command was provided. This is the only place the flag is injected — individual
+	// agents cannot opt in or out independently.
+	spawnCommand := req.Command
+	if backend.Name() == "tmux" && s.allowSkipPermissions && spawnCommand == "" {
+		spawnCommand = "claude --dangerously-skip-permissions"
+	}
 	var createOpts SessionCreateOpts
 	if backend.Name() == "ambient" {
 		createOpts = SessionCreateOpts{
@@ -158,7 +165,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	} else {
 		createOpts = SessionCreateOpts{
 			SessionID: sessionName,
-			Command:   req.Command,
+			Command:   spawnCommand,
 			BackendOpts: TmuxCreateOpts{
 				Width:  req.Width,
 				Height: req.Height,
