@@ -60,8 +60,10 @@ func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 	summaries := make([]spaceSummary, 0, len(s.spaces))
 	for _, ks := range s.spaces {
 		attention := 0
-		for _, agent := range ks.Agents {
-			attention += len(agent.Questions) + len(agent.Blockers)
+		for _, rec := range ks.Agents {
+			if rec != nil && rec.Status != nil {
+				attention += len(rec.Status.Questions) + len(rec.Status.Blockers)
+			}
 		}
 		summaries = append(summaries, spaceSummary{
 			Name:           ks.Name,
@@ -152,6 +154,10 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleAgentIntrospect(w, r, spaceName, agentName)
 			case "history":
 				s.handleAgentHistory(w, r, spaceName, agentName)
+			case "config":
+				s.handleAgentConfig(w, r, spaceName, agentName)
+			case "duplicate":
+				s.handleAgentDuplicate(w, r, spaceName, agentName)
 			default:
 				// Handle document path: /spaces/{space}/agent/{agent}/{slug}
 				s.handleAgentDocument(w, r, spaceName, agentName, action)

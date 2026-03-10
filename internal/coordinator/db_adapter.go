@@ -46,7 +46,7 @@ func (s *Server) loadSpaceFromRepo(name string) (*KnowledgeSpace, error) {
 		NextTaskSeq:     sp.NextTaskSeq,
 		CreatedAt:       sp.CreatedAt,
 		UpdatedAt:       sp.UpdatedAt,
-		Agents:          make(map[string]*AgentUpdate),
+		Agents:          make(map[string]*AgentRecord),
 		Tasks:           make(map[string]*Task),
 	}
 	agents, err := s.repo.ListAgents(name)
@@ -54,7 +54,7 @@ func (s *Server) loadSpaceFromRepo(name string) (*KnowledgeSpace, error) {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}
 	for _, a := range agents {
-		au := dbAgentToUpdate(a)
+		rec := dbAgentToRecord(a)
 		msgs, loadErr := s.repo.GetMessages(name, a.AgentName, nil)
 		if loadErr != nil {
 			return nil, fmt.Errorf("load messages for %s: %w", a.AgentName, loadErr)
@@ -63,19 +63,19 @@ func (s *Server) loadSpaceFromRepo(name string) (*KnowledgeSpace, error) {
 		if len(msgs) > maxMessages {
 			msgs = msgs[len(msgs)-maxMessages:]
 		}
-		au.Messages = make([]AgentMessage, len(msgs))
+		rec.Status.Messages = make([]AgentMessage, len(msgs))
 		for i, m := range msgs {
-			au.Messages[i] = dbMessageToUpdate(m)
+			rec.Status.Messages[i] = dbMessageToUpdate(m)
 		}
 		notifs, loadErr := s.repo.GetNotifications(name, a.AgentName)
 		if loadErr != nil {
 			return nil, fmt.Errorf("load notifications for %s: %w", a.AgentName, loadErr)
 		}
-		au.Notifications = make([]AgentNotification, len(notifs))
+		rec.Status.Notifications = make([]AgentNotification, len(notifs))
 		for i, n := range notifs {
-			au.Notifications[i] = dbNotificationToUpdate(n)
+			rec.Status.Notifications[i] = dbNotificationToUpdate(n)
 		}
-		ks.Agents[a.AgentName] = au
+		ks.Agents[a.AgentName] = rec
 	}
 	tasks, err := s.repo.ListTasks(name, nil)
 	if err != nil {
@@ -110,8 +110,12 @@ func (s *Server) persistSpaceToDB(ks *KnowledgeSpace) {
 		s.logEvent(fmt.Sprintf("warning: db persist space %q: %v", ks.Name, err))
 		return
 	}
-	for agentName, au := range ks.Agents {
-		s.upsertAgentToDB(ks.Name, agentName, au)
+	for agentName, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil {
+			continue
+		}
+		au := rec.Status
+		s.upsertAgentToDB(ks.Name, agentName, au, rec.Config)
 		for i := range au.Messages {
 			s.saveMessageToDB(ks.Name, agentName, &au.Messages[i])
 		}
@@ -132,11 +136,15 @@ func (s *Server) persistSpaceToDB(ks *KnowledgeSpace) {
 
 // ---- Incremental write helpers ----------------------------------------------
 
-func (s *Server) upsertAgentToDB(spaceName, agentName string, au *AgentUpdate) {
+func (s *Server) upsertAgentToDB(spaceName, agentName string, au *AgentUpdate, cfg *AgentConfig) {
 	if s.repo == nil {
 		return
 	}
-	if err := s.repo.UpsertAgent(coordinatorAgentToDB(spaceName, agentName, au)); err != nil {
+	dbAgent := coordinatorAgentToDB(spaceName, agentName, au)
+	if cfg != nil {
+		dbAgent.Config = marshalRaw(cfg)
+	}
+	if err := s.repo.UpsertAgent(dbAgent); err != nil {
 		s.logEvent(fmt.Sprintf("warning: upsert agent %s/%s: %v", spaceName, agentName, err))
 	}
 }
@@ -494,4 +502,18 @@ func marshalRaw(v any) string {
 		return ""
 	}
 	return string(b)
+}
+
+// dbAgentToRecord converts a db Agent to an AgentRecord (including Config).
+func dbAgentToRecord(a *bossdb.Agent) *AgentRecord {
+	rec := &AgentRecord{
+		Status: dbAgentToUpdate(a),
+	}
+	if a.Config != "" && a.Config != "null" {
+		var cfg AgentConfig
+		if json.Unmarshal([]byte(a.Config), &cfg) == nil {
+			rec.Config = &cfg
+		}
+	}
+	return rec
 }

@@ -44,7 +44,7 @@ func (c *Client) FetchSpace() (*KnowledgeSpace, error) {
 		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var agents map[string]*AgentUpdate
+	var agents map[string]*AgentRecord
 	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
 		return nil, fmt.Errorf("decode agents: %w", err)
 	}

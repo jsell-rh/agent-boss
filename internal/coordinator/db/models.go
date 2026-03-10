@@ -88,6 +88,7 @@ type Agent struct {
 	InferredStatus string
 	Stale          bool
 	Registration   string    `gorm:"type:text"` // JSON object
+	Config         string    `gorm:"type:text"` // JSON AgentConfig
 	LastHeartbeat  time.Time
 	HeartbeatStale bool
 	UpdatedAt      time.Time
