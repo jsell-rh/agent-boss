@@ -217,6 +217,7 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request, spaceNam
 			}
 		}
 		cp := *t
+		computeTaskStaleness(&cp)
 		tasks = append(tasks, &cp)
 	}
 	s.mu.RUnlock()
@@ -245,6 +246,7 @@ func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request, spaceName
 		writeJSONError(w, fmt.Sprintf("task %q not found", taskID), http.StatusNotFound)
 		return
 	}
+	computeTaskStaleness(&cp)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cp)
 }

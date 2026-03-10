@@ -95,11 +95,12 @@ func (s *Server) checkStaleness() {
 
 // spawnRequest is the optional body for POST /spaces/{space}/agent/{name}/spawn.
 type spawnRequest struct {
-	SessionID string `json:"session_id,omitempty"` // defaults to agent name
-	Command   string `json:"command,omitempty"`    // defaults to "claude --dangerously-skip-permissions"
-	Width     int    `json:"width,omitempty"`      // tmux window width, default 220
-	Height    int    `json:"height,omitempty"`     // tmux window height, default 50
-	Backend   string `json:"backend,omitempty"`    // "tmux" (default) or "ambient"
+	SessionID      string `json:"session_id,omitempty"`      // defaults to agent name
+	Command        string `json:"command,omitempty"`         // defaults to "claude --dangerously-skip-permissions"
+	Width          int    `json:"width,omitempty"`           // tmux window width, default 220
+	Height         int    `json:"height,omitempty"`          // tmux window height, default 50
+	Backend        string `json:"backend,omitempty"`         // "tmux" (default) or "ambient"
+	InitialMessage string `json:"initial_message,omitempty"` // first message queued to the agent after spawn
 }
 
 // handleAgentSpawn handles POST /spaces/{space}/agent/{name}/spawn.
@@ -207,6 +208,13 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		Fields: map[string]string{"session_id": sessionID, "backend": backend.Name()}})
 	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
 
+	// Capture closure variables before goroutine.
+	initialMsg := req.InitialMessage
+	spawnerIdentity := r.Header.Get("X-Agent-Name")
+	if spawnerIdentity == "" {
+		spawnerIdentity = "boss"
+	}
+
 	// Send ignite asynchronously after agent has time to initialize
 	go func() {
 		if ab, ok := backend.(*AmbientSessionBackend); ok {
@@ -224,6 +232,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
 				Msg: fmt.Sprintf("spawn: ignite send failed: %v (ignite manually)", err)})
+		}
+		if initialMsg != "" {
+			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
 		}
 	}()
 

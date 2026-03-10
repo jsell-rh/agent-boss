@@ -237,6 +237,9 @@ type Task struct {
 	// Activity
 	Comments []TaskComment `json:"comments,omitempty"`
 	Events   []TaskEvent   `json:"events,omitempty"`
+
+	// Server-computed fields (not stored, computed at read time)
+	IsStale bool `json:"is_stale,omitempty"` // true when in_progress and not updated for >1h
 }
 
 // TaskComment is a human or agent note on a task.
@@ -620,4 +623,14 @@ func (u *AgentUpdate) Validate() error {
 		return fmt.Errorf("summary is required")
 	}
 	return nil
+}
+
+// TaskStalenessThreshold is how long an in_progress task must be un-updated
+// before it is flagged as stale.
+const TaskStalenessThreshold = 1 * time.Hour
+
+// computeTaskStaleness sets t.IsStale based on status and last update time.
+// Call this on a copy before returning a task in an API response.
+func computeTaskStaleness(t *Task) {
+	t.IsStale = t.Status == TaskStatusInProgress && time.Since(t.UpdatedAt) > TaskStalenessThreshold
 }

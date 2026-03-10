@@ -107,6 +107,56 @@ func truncateLine(s string, maxLen int) string {
 	return line
 }
 
+// deliverInternalMessage queues a message from senderName to agentName in spaceName.
+// Called internally (e.g. from spawn handler) without an HTTP request.
+// Must NOT be called while holding s.mu.
+func (s *Server) deliverInternalMessage(spaceName, agentName, senderName, message string) {
+	ks := s.getOrCreateSpace(spaceName)
+	now := time.Now().UTC()
+	msg := AgentMessage{
+		ID:        fmt.Sprintf("%d", now.UnixNano()),
+		Message:   message,
+		Sender:    senderName,
+		Priority:  PriorityInfo,
+		Timestamp: now,
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, agentName)
+	ag, exists := ks.Agents[canonical]
+	if !exists {
+		ag = &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   fmt.Sprintf("%s: pending message delivery", canonical),
+			Messages:  []AgentMessage{},
+			UpdatedAt: now,
+		}
+		ks.Agents[canonical] = ag
+	}
+	if ag.Messages == nil {
+		ag.Messages = []AgentMessage{}
+	}
+	ag.Messages = append(ag.Messages, msg)
+	notif := AgentNotification{
+		ID:        fmt.Sprintf("%s-%d", canonical, now.UnixNano()),
+		Type:      NotifTypeMessage,
+		Title:     fmt.Sprintf("New message from %s", senderName),
+		Body:      truncateLine(message, 120),
+		From:      senderName,
+		Timestamp: now,
+	}
+	ag.Notifications = append(ag.Notifications, notif)
+	pruneNotifications(ag)
+	ks.UpdatedAt = now
+	s.saveSpace(ks) //nolint:errcheck
+	s.mu.Unlock()
+
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgDelivered, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("internal message from %s delivered", senderName),
+		Fields: map[string]string{"sender": senderName}})
+	s.broadcastSSE(spaceName, canonical, "message", senderName)
+}
+
 // pruneNotifications keeps at most 20 notifications per agent.
 // Oldest read notifications are dropped first; if still over limit, oldest unread are dropped.
 func pruneNotifications(ag *AgentUpdate) {

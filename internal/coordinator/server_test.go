@@ -3402,3 +3402,138 @@ func TestSPAFallback(t *testing.T) {
 	}
 }
 
+
+// TestIgnitionCollaborationNorms verifies that the ignition response includes
+// the Collaboration Norms and Work Loop sections (TASK-066).
+func TestIgnitionCollaborationNorms(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	code, body := getBody(t, base+"/spaces/collab-norm-test/ignition/agent1?session_id=sess1")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+
+	checks := []string{
+		"## Collaboration Norms",
+		"**Communication**",
+		"**Team Formation**",
+		"**Task Discipline**",
+		"**Hierarchy & Escalation**",
+		"## Work Loop",
+		"Read messages:",
+		"POST status update",
+	}
+	for _, want := range checks {
+		if !strings.Contains(body, want) {
+			t.Errorf("ignition missing %q", want)
+		}
+	}
+}
+
+// TestSpawnInitialMessage verifies that spawn with initial_message queues
+// the message in the agent's inbox (TASK-068).
+func TestSpawnInitialMessage(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create agent first so we have an entry to spawn into (no real tmux in tests).
+	// We test the message delivery path via deliverInternalMessage directly.
+	space := "spawn-msg-test"
+	agentName := "bot1"
+
+	// Deliver an internal message (simulates what spawn does with initial_message).
+	srv.deliverInternalMessage(space, agentName, "manager", "Start working on TASK-100")
+
+	// Fetch messages to verify delivery.
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/"+agentName+"/messages")
+	if code != http.StatusOK {
+		t.Fatalf("GET messages: expected 200, got %d", code)
+	}
+	if !strings.Contains(body, "Start working on TASK-100") {
+		t.Errorf("initial_message not found in agent messages: %s", body)
+	}
+	if !strings.Contains(body, "manager") {
+		t.Errorf("sender not found in agent messages: %s", body)
+	}
+}
+
+// TestStaleTaskDetection verifies that is_stale is computed correctly (TASK-070).
+func TestStaleTaskDetection(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	space := "stale-task-test"
+
+	// Create an in_progress task with a recent update — should NOT be stale.
+	createResp := postJSON(t, base+"/spaces/"+space+"/tasks", map[string]any{
+		"title":       "Active task",
+		"status":      "in_progress",
+		"assigned_to": "worker",
+	})
+	createResp.Body.Close()
+
+	code, body := getBody(t, base+"/spaces/"+space+"/tasks")
+	if code != http.StatusOK {
+		t.Fatalf("list tasks: expected 200, got %d", code)
+	}
+	if strings.Contains(body, `"is_stale":true`) {
+		t.Error("recently updated in_progress task should not be stale")
+	}
+
+	// Manually inject a stale task (updated >1h ago) using the server internals.
+	srv.mu.Lock()
+	ks := srv.getOrCreateSpaceLocked(space)
+	staleTime := time.Now().UTC().Add(-2 * time.Hour)
+	ks.Tasks["TASK-STALE"] = &Task{
+		ID:        "TASK-STALE",
+		Space:     space,
+		Title:     "Stale task",
+		Status:    TaskStatusInProgress,
+		UpdatedAt: staleTime,
+		CreatedAt: staleTime,
+	}
+	srv.mu.Unlock()
+
+	// GET the stale task — should have is_stale:true.
+	code, body = getBody(t, base+"/spaces/"+space+"/tasks/TASK-STALE")
+	if code != http.StatusOK {
+		t.Fatalf("get stale task: expected 200, got %d", code)
+	}
+	if !strings.Contains(body, `"is_stale":true`) {
+		t.Errorf("task with >1h old in_progress update should be stale; body: %s", body)
+	}
+
+	// Also verify it appears in list results.
+	code, body = getBody(t, base+"/spaces/"+space+"/tasks")
+	if code != http.StatusOK {
+		t.Fatalf("list tasks: expected 200, got %d", code)
+	}
+	if !strings.Contains(body, `"is_stale":true`) {
+		t.Errorf("stale task should appear with is_stale:true in list results")
+	}
+
+	// Verify done tasks are never stale (even if old).
+	srv.mu.Lock()
+	doneTime := time.Now().UTC().Add(-3 * time.Hour)
+	ks.Tasks["TASK-DONE-OLD"] = &Task{
+		ID:        "TASK-DONE-OLD",
+		Space:     space,
+		Title:     "Old done task",
+		Status:    TaskStatusDone,
+		UpdatedAt: doneTime,
+		CreatedAt: doneTime,
+	}
+	srv.mu.Unlock()
+
+	code, body = getBody(t, base+"/spaces/"+space+"/tasks/TASK-DONE-OLD")
+	if code != http.StatusOK {
+		t.Fatalf("get done task: expected 200, got %d", code)
+	}
+	if strings.Contains(body, `"is_stale":true`) {
+		t.Error("done task should never be stale regardless of age")
+	}
+}
