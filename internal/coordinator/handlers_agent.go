@@ -191,6 +191,12 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
 		s.broadcastSSE(spaceName, canonical, "agent_updated", string(sseData))
+
+		// ?close_tasks=true: when agent posts done, cascade to their in_progress tasks.
+		if update.Status == StatusDone && r.URL.Query().Get("close_tasks") == "true" {
+			s.closeAgentTasks(spaceName, canonical)
+		}
+
 		w.WriteHeader(http.StatusAccepted)
 		fmt.Fprintf(w, "accepted for [%s] in space %q", canonical, spaceName)
 

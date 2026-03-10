@@ -808,3 +808,80 @@ func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(taskCopy)
 }
+
+// assignTaskToAgent sets assigned_to on the given task to agentName and notifies the agent.
+// Used by handleAgentSpawn when task_id is provided in the spawn request body.
+func (s *Server) assignTaskToAgent(spaceName, taskID, agentName, caller string) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		s.logEvent(fmt.Sprintf("[%s] assignTaskToAgent: space not found for task %s", spaceName, taskID))
+		return
+	}
+
+	s.mu.Lock()
+	task, exists := ks.Tasks[taskID]
+	if !exists {
+		s.mu.Unlock()
+		s.logEvent(fmt.Sprintf("[%s] assignTaskToAgent: task %s not found", spaceName, taskID))
+		return
+	}
+	prevAssignee := task.AssignedTo
+	task.AssignedTo = agentName
+	now := time.Now().UTC()
+	task.UpdatedAt = now
+	appendTaskEvent(task, "assigned", caller, fmt.Sprintf("Assigned to %s by %s (via spawn)", agentName, caller), now)
+	taskCopy := *task
+	snap := ks.snapshot()
+	s.mu.Unlock()
+
+	s.saveSpace(snap)
+	s.journal.Append(spaceName, EventTaskAssigned, "", map[string]string{
+		"id": taskID, "from_agent": prevAssignee, "assigned_to": agentName, "by": caller,
+	})
+	if sseData, err := json.Marshal(map[string]any{
+		"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
+	}); err == nil {
+		s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
+	}
+	if !strings.EqualFold(agentName, prevAssignee) {
+		s.notifyTaskAssigned(spaceName, taskID, taskCopy.Title, agentName, caller)
+	}
+}
+
+// closeAgentTasks marks all in_progress tasks assigned to agentName as done.
+// Called when an agent POSTs status "done" with ?close_tasks=true.
+func (s *Server) closeAgentTasks(spaceName, agentName string) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		return
+	}
+
+	s.mu.Lock()
+	now := time.Now().UTC()
+	var closed []string
+	for _, task := range ks.Tasks {
+		if strings.EqualFold(task.AssignedTo, agentName) && task.Status == TaskStatusInProgress {
+			task.Status = TaskStatusDone
+			task.UpdatedAt = now
+			appendTaskEvent(task, "updated", agentName, "Closed: agent posted done with close_tasks=true", now)
+			closed = append(closed, task.ID)
+		}
+	}
+	if len(closed) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	ks.UpdatedAt = now
+	snap := ks.snapshot()
+	s.mu.Unlock()
+
+	s.saveSpace(snap)
+	for _, taskID := range closed {
+		s.logEvent(fmt.Sprintf("[%s/%s] task %s closed (agent done)", spaceName, agentName, taskID))
+		if sseData, err := json.Marshal(map[string]any{
+			"id": taskID, "space": spaceName, "status": string(TaskStatusDone), "assigned_to": agentName,
+		}); err == nil {
+			s.broadcastSSE(spaceName, "", "task_updated", string(sseData))
+		}
+	}
+}

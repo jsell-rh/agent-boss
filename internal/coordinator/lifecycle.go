@@ -105,6 +105,7 @@ type spawnRequest struct {
 	Height         int    `json:"height,omitempty"`          // tmux window height, default 50
 	Backend        string `json:"backend,omitempty"`         // "tmux" (default) or "ambient"
 	InitialMessage string `json:"initial_message,omitempty"` // first message queued to the agent after spawn
+	TaskID         string `json:"task_id,omitempty"`         // optional: set assigned_to on this task to the spawned agent
 }
 
 // handleAgentSpawn handles POST /spaces/{space}/agent/{name}/spawn.
@@ -253,6 +254,15 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	spawnerIdentity := r.Header.Get("X-Agent-Name")
 	if spawnerIdentity == "" {
 		spawnerIdentity = "boss"
+	}
+
+	// If task_id was provided, set assigned_to on that task to the spawned agent.
+	if req.TaskID != "" {
+		caller := r.Header.Get("X-Agent-Name")
+		if caller == "" {
+			caller = "boss"
+		}
+		s.assignTaskToAgent(spaceName, req.TaskID, canonical, caller)
 	}
 
 	// Send ignite asynchronously after agent has time to initialize

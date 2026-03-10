@@ -35,6 +35,8 @@ func main() {
 		cmdIgnite(os.Args[2:])
 	case "broadcast":
 		cmdBroadcast(os.Args[2:])
+	case "init":
+		cmdInit(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -49,6 +51,7 @@ func printUsage() {
 
 Commands:
   serve                     Start the coordinator server
+  init [space-name]         Create space and register MCP server with Claude
   post                      Post an agent status update
   get                       Get agent state or space markdown
   spaces                    List all spaces
@@ -58,6 +61,8 @@ Commands:
 
 Examples:
   boss serve
+  boss init MyProject
+  boss init MyProject --open
   boss post --space my-feature --agent api --status done --summary "shipped"
   boss get --space my-feature --agent api
   boss get --space my-feature --raw
@@ -277,4 +282,116 @@ func cmdDelete(args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("deleted space %q\n", *space)
+}
+
+func cmdInit(args []string) {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	openBrowser := fs.Bool("open", false, "Open the space URL in your browser")
+	fs.Parse(args)
+
+	positional := fs.Args()
+	spaceName := "default"
+	if len(positional) > 0 {
+		spaceName = positional[0]
+	}
+
+	baseURL := serverURL()
+	client := coordinator.NewClient(baseURL, spaceName)
+
+	// Step 1: create space if it doesn't exist.
+	created, err := client.EnsureSpace()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boss init: %v\n", err)
+		os.Exit(1)
+	}
+	if created {
+		fmt.Printf("Space %q created.\n", spaceName)
+	} else {
+		fmt.Printf("Space %q already exists.\n", spaceName)
+	}
+
+	// Step 2: register the MCP server with Claude.
+	mcpURL := baseURL + "/mcp"
+	mcpCmd := []string{"claude", "mcp", "add", "boss-mcp", "--transport", "http", mcpURL}
+	// Use os/exec to run the command.
+	if err := runMCPRegister(mcpCmd); err != nil {
+		fmt.Fprintf(os.Stderr, "boss init: MCP registration failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  Run manually: claude mcp add boss-mcp --transport http %s\n", mcpURL)
+	} else {
+		fmt.Printf("MCP server registered: boss-mcp → %s\n", mcpURL)
+	}
+
+	// Step 3: print the dashboard URL.
+	dashURL := baseURL + "/spaces/" + spaceName + "/"
+	fmt.Printf("Open %s to manage your agents.\n", dashURL)
+
+	// Step 4: optionally open in browser.
+	if *openBrowser {
+		if err := openURL(dashURL); err != nil {
+			fmt.Fprintf(os.Stderr, "boss init: could not open browser: %v\n", err)
+		}
+	}
+}
+
+func runMCPRegister(args []string) error {
+	// os/exec is only imported here; avoid importing at top level if not needed.
+	// We use the shell to exec since exec.Command is not in scope without importing os/exec.
+	// Instead, exec via os.StartProcess for stdlib-only compliance.
+	if len(args) == 0 {
+		return fmt.Errorf("empty command")
+	}
+	// Find the binary using PATH lookup via os.StartProcess.
+	// os.StartProcess requires an absolute path, so use the PATH lookup trick.
+	pa := &os.ProcAttr{
+		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+	}
+	// Resolve the binary path manually using PATH.
+	bin, err := lookPath(args[0])
+	if err != nil {
+		return fmt.Errorf("command %q not found: %w", args[0], err)
+	}
+	proc, err := os.StartProcess(bin, args, pa)
+	if err != nil {
+		return err
+	}
+	state, err := proc.Wait()
+	if err != nil {
+		return err
+	}
+	if !state.Success() {
+		return fmt.Errorf("exited with %s", state)
+	}
+	return nil
+}
+
+// lookPath looks up an executable in PATH directories (stdlib-only alternative to exec.LookPath).
+func lookPath(name string) (string, error) {
+	pathEnv := os.Getenv("PATH")
+	for _, dir := range filepath.SplitList(pathEnv) {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("%q: executable file not found in $PATH", name)
+}
+
+// openURL opens a URL in the default system browser.
+func openURL(url string) error {
+	// Try common browser launchers.
+	for _, launcher := range []string{"xdg-open", "open", "start"} {
+		bin, err := lookPath(launcher)
+		if err != nil {
+			continue
+		}
+		proc, err := os.StartProcess(bin, []string{launcher, url}, &os.ProcAttr{
+			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+		})
+		if err != nil {
+			continue
+		}
+		proc.Wait() //nolint:errcheck
+		return nil
+	}
+	return fmt.Errorf("no browser launcher found (xdg-open/open/start)")
 }

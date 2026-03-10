@@ -3586,3 +3586,99 @@ func TestTaskAssignNudgesAgent(t *testing.T) {
 		t.Error("expected nudge to be queued for Worker after task assignment, but nudgePending was empty")
 	}
 }
+
+// TestSpawnWithTaskID verifies that providing task_id in a spawn request sets
+// assigned_to on that task to the spawned agent (TASK-087 / CollabProtocol GAP-4).
+func TestSpawnWithTaskID(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "spawnwithtaskspace"
+
+	// Create a task first.
+	resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title": "Unassigned work",
+	}, "Boss")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create task: status %d", resp.StatusCode)
+	}
+	var task Task
+	if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
+		t.Fatalf("decode task: %v", err)
+	}
+
+	// assignTaskToAgent is called by handleAgentSpawn but we can test it directly.
+	srv.assignTaskToAgent(space, task.ID, "Builder", "boss")
+
+	// Verify the task is now assigned to Builder.
+	ks, ok := srv.getSpace(space)
+	if !ok {
+		t.Fatal("space not found")
+	}
+	srv.mu.RLock()
+	updated := ks.Tasks[task.ID]
+	srv.mu.RUnlock()
+	if updated == nil {
+		t.Fatal("task not found")
+	}
+	if !strings.EqualFold(updated.AssignedTo, "Builder") {
+		t.Errorf("expected assigned_to=Builder, got %q", updated.AssignedTo)
+	}
+}
+
+// TestCloseTasksOnDone verifies that posting status=done with ?close_tasks=true
+// marks all in_progress tasks assigned to that agent as done (TASK-088 / CollabProtocol GAP-6).
+func TestCloseTasksOnDone(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "closetasksspace"
+	agent := "Closer"
+
+	// Create two in_progress tasks assigned to the agent.
+	for _, title := range []string{"Task A", "Task B"} {
+		resp := postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+			"title": title, "assigned_to": agent, "status": "in_progress",
+		}, "Boss")
+		resp.Body.Close()
+	}
+	// Create one task assigned to a different agent (should not be closed).
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title": "Other task", "assigned_to": "Other", "status": "in_progress",
+	}, "Boss").Body.Close()
+
+	// Post done with close_tasks=true.
+	agentPostURL := base + "/spaces/" + space + "/agent/" + agent + "?close_tasks=true"
+	data, _ := json.Marshal(map[string]any{"status": "done", "summary": agent + ": finished"})
+	req, _ := http.NewRequest(http.MethodPost, agentPostURL, strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", agent)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST agent: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+
+	// Verify agent's tasks are done.
+	ks, ok := srv.getSpace(space)
+	if !ok {
+		t.Fatal("space not found")
+	}
+	srv.mu.RLock()
+	defer srv.mu.RUnlock()
+	for _, task := range ks.Tasks {
+		if strings.EqualFold(task.AssignedTo, agent) {
+			if task.Status != TaskStatusDone {
+				t.Errorf("task %q (%s): expected done, got %s", task.Title, task.ID, task.Status)
+			}
+		} else if strings.EqualFold(task.AssignedTo, "Other") {
+			if task.Status != TaskStatusInProgress {
+				t.Errorf("other agent's task should remain in_progress, got %s", task.Status)
+			}
+		}
+	}
+}
