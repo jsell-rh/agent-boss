@@ -61,8 +61,22 @@ and self-guiding.
 }
 ```
 
+## Resolved Design Decisions (from boss review)
+
+| Decision | Resolution |
+| -------- | ---------- |
+| Persona scope | **Global** (not space-scoped); UI shows which spaces/agents use each persona |
+| Persona version re-inject | No auto-re-inject; mark stale agents with badge + quick restart action |
+| Agent duplication spawn | **Auto-spawn** immediately on duplicate |
+| Initial prompt default | No slash command fallback — MCP bootstrap resource provides context |
+| Onboarding approach | **Inline empty states** (not wizard) |
+| `boss init` scope | Registers MCP server with Claude; no `./commands/` setup |
+| MCP transport | **HTTP streamable** (SSE deprecated); same port 8899 |
+| MCP library | **mark3labs/mcp-go** |
+| Boss identity | First-class dashboard user; not an agent record (optional only) |
+| Restart scope | Individual agent + **fleet restart** (restart all) |
+
 ## Non-Goals (this spec)
 
 - Actual implementation code (this is a design spec only)
-- Multi-space persona sharing (v2 concern)
 - Cloud backend persona support (tracked separately)

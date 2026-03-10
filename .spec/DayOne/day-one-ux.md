@@ -107,9 +107,12 @@ This is a multi-step modal:
 
 The wizard state is stored in `localStorage`. Users can skip it at any step.
 
-### 4. Restart Button
+### 4. Restart Controls
 
-The current stop/restart flow requires CLI commands. Add a "Restart" button to agent cards:
+The current stop/restart flow requires CLI commands. The dashboard gains restart
+controls at both the individual and fleet level.
+
+#### Individual Agent Restart
 
 - Located in the agent card action menu (three-dot menu)
 - Calls `POST /spaces/{space}/agent/{name}/restart`
@@ -117,7 +120,17 @@ The current stop/restart flow requires CLI commands. Add a "Restart" button to a
 - SSE-driven: card updates when the agent re-connects
 - Uses stored `AgentConfig` — no need to remember the work_dir or command
 
-This makes session recovery a dashboard operation, not a terminal operation.
+#### Restart All Agents (Fleet Restart)
+
+A "Restart all" button in the space header action bar:
+
+- Calls `POST /spaces/{space}/restart-all` (new bulk endpoint)
+- Restarts all agents with status `active`, `idle`, or `done` that have a registered session
+- Sequenced with a 2s delay between each restart to avoid overwhelming the system
+- Progress shown in a banner: "Restarting 4 agents... (2/4 complete)"
+- Useful after a coordinator restart or major configuration change
+
+The bulk endpoint is also useful for applying updated personas to all agents at once.
 
 ### 5. Setup Checklist (persistent, dismissible)
 
@@ -144,15 +157,40 @@ boss init [space-name]
 
 This command:
 1. Creates the space (if it does not exist)
-2. Creates a "boss" agent (the human operator's channel)
+2. Registers the boss MCP server with Claude (`claude mcp add boss-mcp ...`)
 3. Prints the URL to open in a browser
 4. Offers to open it automatically (`--open` flag)
 
 Output:
 ```
 Space "MyProject" created.
+MCP server registered: boss-mcp → http://localhost:8899/mcp
 Open http://localhost:8899/spaces/MyProject/ to manage your agents.
 ```
+
+Note: `boss init` does **not** create a "boss" agent — the human operator is a first-class
+citizen in the system, not an agent record. The dashboard already has a dedicated human
+interface. A "boss" agent entry is only needed if the human wants a named channel on the
+blackboard, which is optional and not part of init.
+
+### 7. Boss as First-Class Citizen
+
+The human operator ("boss") is not an agent — they are the dashboard user. The system
+distinguishes between:
+
+- **Agents**: AI sessions that POST status updates, receive messages, and act on tasks
+- **Boss (human)**: the person viewing the dashboard, assigning tasks, reviewing escalations,
+  sending messages, and making decisions
+
+The boss does not need a tmux session or a spawned AI. Their "presence" in the system is:
+- The dashboard UI itself (the boss IS the dashboard)
+- The `created_by: "boss"` field on tasks and comments
+- The `resolved_by: "boss"` field on escalations
+- Messages sent via the dashboard message composer (which identifies them as "boss")
+
+If a team wants a dedicated human-readable blackboard entry for coordination notes, they
+can create a space with a static agent called "boss" that only receives messages — but
+this is optional and not enforced by `boss init`.
 
 ---
 
@@ -180,9 +218,9 @@ which is out of scope for this spec.
 
 ## Open Questions
 
-- **[?BOSS] Wizard vs. inline guidance**: Should onboarding be a modal wizard or
-  inline empty-state cards? Wizard is faster to implement; inline is less intrusive.
-  Proposal: inline empty states first (simpler), wizard as a follow-up.
+- **Wizard vs. inline guidance**: Boss resolved: inline empty states preferred.
+  Spec updated — wizard is optional/secondary, inline empty states are primary.
 
-- **[?BOSS] `boss init` scope**: Should `boss init` also write an MCP config file and
-  set up the commands directory? Proposal: yes, as part of the "zero-manual-steps" goal.
+- **`boss init` scope**: Boss resolved: get away from slash command dependency entirely.
+  `boss init` now registers the MCP server with Claude (`claude mcp add`) instead of
+  setting up the `./commands/` directory.
