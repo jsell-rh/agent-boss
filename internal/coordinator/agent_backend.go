@@ -82,6 +82,10 @@ func (b *TmuxBackend) Spawn(ctx context.Context, spec AgentSpec) (AgentInfo, err
 		return AgentInfo{}, fmt.Errorf("create tmux session: %w", err)
 	}
 
+	// Wait for the shell to initialize before sending keys.
+	// Without this sleep, send-keys races the shell startup and the cd is silently dropped.
+	time.Sleep(300 * time.Millisecond)
+
 	// Change directory if specified.
 	if spec.WorkDir != "" {
 		if err := tmuxSendKeys(sessionName, "cd "+shellQuote(spec.WorkDir)); err != nil {
