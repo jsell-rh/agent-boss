@@ -59,6 +59,9 @@ export default defineConfig({
       '/api': 'http://localhost:8899',
       '/raw': 'http://localhost:8899',
       '/agent': 'http://localhost:8899',
+      '/personas': 'http://localhost:8899',
+      '/mcp': 'http://localhost:8899',
+      '/settings': 'http://localhost:8899',
     },
   },
 })
