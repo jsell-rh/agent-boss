@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -175,7 +175,7 @@ const attentionSectionClass = computed(() => {
 })
 
 // --------------- Lifecycle ---------------
-const lifecycleLoading = ref<'spawn' | 'stop' | 'restart' | null>(null)
+const lifecycleLoading = ref<'spawn' | 'stop' | 'interrupt' | 'restart' | null>(null)
 const lifecycleToast = ref<{ type: 'success' | 'error'; message: string } | null>(null)
 const stopConfirmOpen = ref(false)
 
@@ -203,7 +203,19 @@ async function handleStop() {
   lifecycleLoading.value = 'stop'
   try {
     await api.stopAgent(props.spaceName, props.agentName)
-    showToast('success', `${props.agentName} stopped`)
+    showToast('success', `${props.agentName} killed`)
+  } catch (e) {
+    showToast('error', e instanceof Error ? e.message : String(e))
+  } finally {
+    lifecycleLoading.value = null
+  }
+}
+
+async function handleInterrupt() {
+  lifecycleLoading.value = 'interrupt'
+  try {
+    await api.interruptAgent(props.spaceName, props.agentName)
+    showToast('success', `Ctrl+C sent to ${props.agentName}`)
   } catch (e) {
     showToast('error', e instanceof Error ? e.message : String(e))
   } finally {
@@ -500,13 +512,28 @@ watch(() => props.agentName, loadAgentTasks)
                 <TooltipTrigger as-child>
                   <Button
                     variant="ghost" size="sm"
+                    class="h-7 px-2 text-xs gap-1 text-amber-600/70 hover:text-amber-600 hover:bg-amber-500/10"
+                    :disabled="lifecycleLoading !== null"
+                    @click="handleInterrupt"
+                  >
+                    <Loader2 v-if="lifecycleLoading === 'interrupt'" class="size-3 animate-spin" />
+                    <OctagonX v-else class="size-3" />
+                    Interrupt
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Send Ctrl+C to the agent (interrupt current task)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost" size="sm"
                     class="h-7 px-2 text-xs gap-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                     :disabled="lifecycleLoading !== null"
                     @click="stopConfirmOpen = true"
                   >
                     <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3 animate-spin" />
                     <Square v-else class="size-3" />
-                    Stop
+                    Kill
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Kill the agent's tmux session</TooltipContent>
@@ -846,19 +873,19 @@ watch(() => props.agentName, loadAgentTasks)
         </AlertDialogContent>
       </AlertDialog>
 
-      <!-- Stop agent confirmation AlertDialog -->
+      <!-- Kill agent confirmation AlertDialog -->
       <AlertDialog v-model:open="stopConfirmOpen">
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Stop agent?</AlertDialogTitle>
+            <AlertDialogTitle>Kill agent?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will kill the tmux session for <span class="font-semibold text-foreground">{{ agentName }}</span>. Any in-progress work will be interrupted. You can respawn the agent afterwards.
+              This will kill the tmux session for <span class="font-semibold text-foreground">{{ agentName }}</span>. Any in-progress work will be lost. You can respawn the agent afterwards.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="handleStop">
-              <Square class="size-4" /> Stop
+              <Square class="size-4" /> Kill
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

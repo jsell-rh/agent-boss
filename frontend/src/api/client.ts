@@ -272,6 +272,13 @@ class ApiClient {
     )
   }
 
+  interruptAgent(space: string, agent: string): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/interrupt`,
+      { method: 'POST', headers: { 'X-Agent-Name': agent } },
+    )
+  }
+
   restartAgent(space: string, agent: string): Promise<{ ok: boolean; tmux_session: string }> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/restart`,
