@@ -121,11 +121,18 @@ watch(selectedKey, key => {
   if (key) readKeys.value.add(key)
 })
 
+// Resolve the best conversation key for a given agent name:
+// prefer an existing conversation involving that agent; fall back to boss↔agent.
+function resolveConversationKey(agent: string): string {
+  const existing = conversations.value.find(c => c.participants.includes(agent))
+  if (existing) return existing.key
+  return [agent, 'boss'].sort().join('\u2194')
+}
+
 // Pre-select from preselectAgent prop (set by App.vue from router param or when starting new conv)
 onMounted(() => {
   if (props.preselectAgent) {
-    const sorted = [props.preselectAgent, 'boss'].sort()
-    selectedKey.value = sorted.join('\u2194')
+    selectedKey.value = resolveConversationKey(props.preselectAgent)
   }
   scrollThreadToBottom()
 })
@@ -133,8 +140,7 @@ onMounted(() => {
 // Also react to preselectAgent prop changes (e.g. navigating between conversation routes)
 watch(() => props.preselectAgent, agent => {
   if (agent) {
-    const sorted = [agent, 'boss'].sort()
-    selectedKey.value = sorted.join('\u2194')
+    selectedKey.value = resolveConversationKey(agent)
   }
 })
 

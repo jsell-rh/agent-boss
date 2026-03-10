@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
-import { XCircle, ArrowDown } from 'lucide-vue-next'
+import { XCircle, ArrowDown, MessageSquare } from 'lucide-vue-next'
 
 export interface EventLogEntry {
   id: number
@@ -52,6 +52,24 @@ function handleLogClick(e: MouseEvent) {
   const target = (e.target as HTMLElement).closest('[data-agent]') as HTMLElement | null
   if (target?.dataset.agent && props.spaceName) {
     router.push(`/${encodeURIComponent(props.spaceName)}/${encodeURIComponent(target.dataset.agent)}`)
+  }
+}
+
+// For message-type entries, extract the sender so we can navigate to the conversation.
+// SSE format:    "[RECIPIENT] message from SENDER"
+// Server format: "[SPACE/RECIPIENT] message from SENDER delivered"
+function parseMsgSender(msg: string): string | null {
+  const m = msg.match(/message from ([^\s]+)/)
+  return m ? m[1]! : null
+}
+
+function openConversation(entry: EventLogEntry) {
+  if (entry.type !== 'message' || !props.spaceName) return
+  const sender = parseMsgSender(entry.message)
+  if (sender) {
+    router.push(`/${encodeURIComponent(props.spaceName)}/conversations/${encodeURIComponent(sender)}`)
+  } else {
+    router.push(`/${encodeURIComponent(props.spaceName)}/conversations`)
   }
 }
 
@@ -641,14 +659,33 @@ defineExpose({ pushSSEEvent, clearLog })
                 v-if="expandedId === entry.id"
                 class="py-1.5 whitespace-pre-wrap break-words leading-relaxed text-foreground/90 overflow-x-auto"
               >
-                <div class="text-muted-foreground text-[9px] mb-1 uppercase tracking-wider">
+                <div class="text-muted-foreground text-[9px] mb-1 uppercase tracking-wider flex items-center gap-2">
                   {{ entry.timestamp }} · {{ entry.source }}
+                  <button
+                    v-if="entry.type === 'message'"
+                    class="inline-flex items-center gap-0.5 text-primary hover:underline text-[9px] font-medium"
+                    title="Open conversation"
+                    @click.stop="openConversation(entry)"
+                  >
+                    <MessageSquare class="size-2.5" />
+                    open conversation
+                  </button>
                 </div>
                 <!-- eslint-disable-next-line vue/no-v-html -->
                 <span v-html="linkifyMessage(entry.message)" />
               </div>
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div v-else class="truncate" v-html="linkifyMessage(entry.message)" />
+              <div v-else class="flex items-center gap-1 min-w-0">
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <span class="truncate" v-html="linkifyMessage(entry.message)" />
+                <button
+                  v-if="entry.type === 'message'"
+                  class="shrink-0 text-primary/60 hover:text-primary transition-colors"
+                  title="Open conversation"
+                  @click.stop="openConversation(entry)"
+                >
+                  <MessageSquare class="size-3" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
