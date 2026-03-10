@@ -1476,8 +1476,8 @@ func (s *Server) handleAgentConfig(w http.ResponseWriter, r *http.Request, space
 		if patch.InitialPrompt != "" {
 			cfg.InitialPrompt = patch.InitialPrompt
 		}
-		if patch.PersonaIDs != nil {
-			cfg.PersonaIDs = patch.PersonaIDs
+		if patch.Personas != nil {
+			cfg.Personas = s.resolvePersonaRefs(patch.Personas)
 		}
 		if patch.Backend != "" {
 			cfg.Backend = patch.Backend
@@ -1549,9 +1549,9 @@ func (s *Server) handleAgentDuplicate(w http.ResponseWriter, r *http.Request, sp
 	var newCfg AgentConfig
 	if srcCfg := ks.agentConfig(srcCanonical); srcCfg != nil {
 		newCfg = *srcCfg
-		if srcCfg.PersonaIDs != nil {
-			newCfg.PersonaIDs = make([]string, len(srcCfg.PersonaIDs))
-			copy(newCfg.PersonaIDs, srcCfg.PersonaIDs)
+		if srcCfg.Personas != nil {
+			newCfg.Personas = make([]PersonaRef, len(srcCfg.Personas))
+			copy(newCfg.Personas, srcCfg.Personas)
 		}
 		if srcCfg.Repos != nil {
 			newCfg.Repos = make([]SessionRepo, len(srcCfg.Repos))
@@ -1566,8 +1566,8 @@ func (s *Server) handleAgentDuplicate(w http.ResponseWriter, r *http.Request, sp
 	if req.OverrideConfig.InitialPrompt != "" {
 		newCfg.InitialPrompt = req.OverrideConfig.InitialPrompt
 	}
-	if req.OverrideConfig.PersonaIDs != nil {
-		newCfg.PersonaIDs = req.OverrideConfig.PersonaIDs
+	if req.OverrideConfig.Personas != nil {
+		newCfg.Personas = req.OverrideConfig.Personas
 	}
 	if req.OverrideConfig.Backend != "" {
 		newCfg.Backend = req.OverrideConfig.Backend

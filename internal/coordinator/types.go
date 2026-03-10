@@ -266,7 +266,7 @@ type AgentConfig struct {
 	// Common fields (all backends)
 	WorkDir       string   `json:"work_dir,omitempty"`       // absolute path or "" for server cwd
 	InitialPrompt string   `json:"initial_prompt,omitempty"` // instructions sent to agent after session start
-	PersonaIDs    []string `json:"persona_ids,omitempty"`    // ordered list of global persona IDs to inject
+	Personas      []PersonaRef `json:"personas,omitempty"`      // ordered list of personas to inject
 	Backend       string   `json:"backend,omitempty"`        // "tmux" | "ambient" (default "tmux")
 	Command       string   `json:"command,omitempty"`        // launch command (default: "claude")
 
@@ -760,4 +760,24 @@ func (ks *KnowledgeSpace) setAgentConfig(name string, cfg *AgentConfig) {
 		ks.Agents[name] = rec
 	}
 	rec.Config = cfg
+}
+
+// PersonaRef is a reference from an agent's config to a global persona.
+// PinnedVersion records the persona's version at assignment time; if the
+// persona has been updated since, the agent's persona is stale.
+type PersonaRef struct {
+	ID            string `json:"id"`
+	PinnedVersion int    `json:"pinned_version,omitempty"`
+}
+
+// Persona is a global, reusable prompt fragment that can be assigned to agents.
+// Personas are stored in DATA_DIR/personas.json and are independent of spaces.
+type Persona struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Prompt      string    `json:"prompt"`
+	Version     int       `json:"version"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

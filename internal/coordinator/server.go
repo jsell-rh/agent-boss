@@ -76,6 +76,7 @@ type Server struct {
 	// environment variable (default off). This is a deliberate operator-level toggle —
 	// one decision applies to all agents uniformly.
 	allowSkipPermissions bool
+	personas             *PersonaStore
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -101,11 +102,12 @@ func NewServer(port, dataDir string) *Server {
 		nudgeInFlight:      make(map[string]bool),
 		stalenessThreshold: thresh,
 		registrations:      make(map[string]*AgentRegistrationRecord),
-		journal:            NewEventJournal(dataDir),
+		journal:              NewEventJournal(dataDir),
 		backends:             map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
 		defaultBackend:       "tmux",
 		logger:               NewLogger(os.Stdout),
 		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
+		personas:             newPersonaStore(dataDir),
 	}
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {
@@ -216,6 +218,12 @@ func (s *Server) Start() error {
 	})
 	mux.HandleFunc("/api/agents", func(w http.ResponseWriter, r *http.Request) {
 		s.handleSpaceAgentsJSON(w, r, DefaultSpaceName)
+	})
+	mux.HandleFunc("/personas", s.handlePersonaList)
+	mux.HandleFunc("/personas/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/personas/")
+		id = strings.TrimRight(id, "/")
+		s.handlePersonaDetail(w, r, id)
 	})
 
 	listener, err := net.Listen("tcp", s.port)

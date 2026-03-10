@@ -127,6 +127,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	var spawnWorkDir string
 	var spawnRepos []SessionRepo
 	var spawnInitialPrompt string
+	var spawnPersonas []PersonaRef
 	if existingKS, hasKS := s.getSpace(spaceName); hasKS {
 		s.mu.RLock()
 		cfgCanonical := resolveAgentName(existingKS, agentName)
@@ -140,6 +141,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 			spawnWorkDir = cfg.WorkDir
 			spawnRepos = cfg.Repos
 			spawnInitialPrompt = cfg.InitialPrompt
+			spawnPersonas = cfg.Personas
 		}
 		s.mu.RUnlock()
 	}
@@ -245,6 +247,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	// Capture closure variables before goroutine.
 	initialMsg := req.InitialMessage
 	cfgInitialPrompt := spawnInitialPrompt
+	cfgPersonaPrompt := s.assemblePersonaPrompt(spawnPersonas)
 	spawnerIdentity := r.Header.Get("X-Agent-Name")
 	if spawnerIdentity == "" {
 		spawnerIdentity = "boss"
@@ -267,6 +270,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
 				Msg: fmt.Sprintf("spawn: ignite send failed: %v (ignite manually)", err)})
+		}
+		if cfgPersonaPrompt != "" {
+			s.deliverInternalMessage(spaceName, agentName, "boss", cfgPersonaPrompt)
 		}
 		if initialMsg != "" {
 			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
