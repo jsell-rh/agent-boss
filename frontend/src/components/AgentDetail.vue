@@ -215,7 +215,7 @@ async function handleInterrupt() {
   lifecycleLoading.value = 'interrupt'
   try {
     await api.interruptAgent(props.spaceName, props.agentName)
-    showToast('success', `Ctrl+C sent to ${props.agentName}`)
+    showToast('success', `Escape sent to ${props.agentName}`)
   } catch (e) {
     showToast('error', e instanceof Error ? e.message : String(e))
   } finally {
@@ -521,7 +521,7 @@ watch(() => props.agentName, loadAgentTasks)
                     Interrupt
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Send Ctrl+C to the agent (interrupt current task)</TooltipContent>
+                <TooltipContent>Send Escape to the agent (interrupt current task)</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger as-child>

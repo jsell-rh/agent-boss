@@ -329,12 +329,12 @@ func (s *Server) handleAgentInterrupt(w http.ResponseWriter, r *http.Request, sp
 
 	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", sessionName, "C-c", "").Run(); err != nil {
+	if err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", sessionName, "Escape", "").Run(); err != nil {
 		http.Error(w, fmt.Sprintf("send interrupt: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	s.logEvent(fmt.Sprintf("[%s/%s] interrupted (Ctrl+C sent to session %q)", spaceName, canonical, sessionName))
+	s.logEvent(fmt.Sprintf("[%s/%s] interrupted (Escape sent to session %q)", spaceName, canonical, sessionName))
 	s.broadcastSSE(spaceName, canonical, "agent_interrupted", canonical)
 
 	w.Header().Set("Content-Type", "application/json")
