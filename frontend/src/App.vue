@@ -25,6 +25,7 @@ import AgentDetail from '@/components/AgentDetail.vue'
 import EventLog from '@/components/EventLog.vue'
 import ConversationsView from '@/components/ConversationsView.vue'
 import KanbanView from '@/components/KanbanView.vue'
+import PersonasView from '@/components/PersonasView.vue'
 import { Keyboard } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 
@@ -90,9 +91,10 @@ const showConversations = computed(() =>
 )
 
 const showKanban = computed(() => route.name === 'kanban')
+const showPersonas = computed(() => route.name === 'personas')
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {
-  if (!currentSpace.value || !selectedAgent.value || showConversations.value || showKanban.value) return null
+  if (!currentSpace.value || !selectedAgent.value || showConversations.value || showKanban.value || showPersonas.value) return null
   return currentSpace.value.agents[selectedAgent.value] ?? null
 })
 
@@ -982,6 +984,9 @@ onUnmounted(() => {
             @reply-to-blocker="handleReplyToBlocker"
             @select-agent="handleSelectAgent"
           />
+
+          <!-- Personas management view -->
+          <PersonasView v-else-if="showPersonas" />
 
           <!-- Space overview -->
           <SpaceOverview

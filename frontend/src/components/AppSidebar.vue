@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown, Archive } from 'lucide-vue-next'
+import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown, Archive, User } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
@@ -435,6 +435,20 @@ function submitNewSpace() {
               </SidebarMenu>
             </CollapsibleContent>
           </Collapsible>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <!-- Global nav — always visible -->
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton @click="router.push('/personas')">
+                <User class="size-4" />
+                <span>Personas</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
 

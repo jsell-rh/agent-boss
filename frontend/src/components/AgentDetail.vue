@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentUpdate, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task } from '@/types'
+import type { AgentUpdate, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task, AgentConfig, Persona } from '@/types'
 import { SESSION_STATUS_DISPLAY, getSessionDisplayState } from '@/types'
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
@@ -330,6 +330,32 @@ async function loadAgentTasks() {
 
 onMounted(loadAgentTasks)
 watch(() => props.agentName, loadAgentTasks)
+
+// --------------- Personas ---------------
+const agentConfig = ref<AgentConfig | null>(null)
+const allPersonas = ref<Persona[]>([])
+
+const agentPersonas = computed(() => {
+  const ids = agentConfig.value?.persona_ids ?? []
+  if (ids.length === 0 || allPersonas.value.length === 0) return []
+  return ids.map(id => allPersonas.value.find(p => p.id === id)).filter(Boolean) as Persona[]
+})
+
+async function loadPersonaData() {
+  try {
+    const [cfg, personas] = await Promise.all([
+      api.getAgentConfig(props.spaceName, props.agentName),
+      allPersonas.value.length === 0 ? api.fetchPersonas() : Promise.resolve(allPersonas.value),
+    ])
+    agentConfig.value = cfg
+    if (allPersonas.value.length === 0) allPersonas.value = personas
+  } catch {
+    // personas endpoint may not exist yet — silently ignore
+  }
+}
+
+onMounted(loadPersonaData)
+watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData() })
 </script>
 
 <template>
@@ -940,6 +966,22 @@ watch(() => props.agentName, loadAgentTasks)
             {{ doc.title }}
           </a>
         </nav>
+      </section>
+
+      <!-- Personas -->
+      <section v-if="agentPersonas.length > 0" aria-label="Agent personas">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Personas</h2>
+        <div class="flex flex-wrap gap-1.5">
+          <Tooltip v-for="persona in agentPersonas" :key="persona.id">
+            <TooltipTrigger as-child>
+              <Badge variant="outline" class="text-xs cursor-default">{{ persona.name }}</Badge>
+            </TooltipTrigger>
+            <TooltipContent class="max-w-xs">
+              <p v-if="persona.description" class="text-xs text-muted-foreground mb-1">{{ persona.description }}</p>
+              <p class="text-xs font-mono whitespace-pre-wrap line-clamp-4">{{ persona.prompt }}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </section>
 
       <Separator v-if="agent.session_id" />

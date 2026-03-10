@@ -11,6 +11,8 @@ import type {
   Task,
   TaskStatus,
   TaskPriority,
+  Persona,
+  AgentConfig,
 } from '@/types'
 
 class ApiClient {
@@ -400,6 +402,55 @@ class ApiClient {
         body: JSON.stringify(task),
       },
     )
+  }
+
+  // --------------- Agent Config ---------------
+
+  getAgentConfig(space: string, agent: string): Promise<AgentConfig> {
+    return this.request<AgentConfig>(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
+    )
+  }
+
+  updateAgentConfig(space: string, agent: string, patch: Partial<AgentConfig>): Promise<AgentConfig> {
+    return this.request<AgentConfig>(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      },
+    )
+  }
+
+  // --------------- Personas ---------------
+
+  fetchPersonas(): Promise<Persona[]> {
+    return this.request<Persona[]>('/personas')
+  }
+
+  createPersona(persona: { name: string; description: string; prompt: string }): Promise<Persona> {
+    return this.request<Persona>('/personas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(persona),
+    })
+  }
+
+  getPersona(id: string): Promise<Persona> {
+    return this.request<Persona>(`/personas/${encodeURIComponent(id)}`)
+  }
+
+  updatePersona(id: string, patch: Partial<{ name: string; description: string; prompt: string }>): Promise<Persona> {
+    return this.request<Persona>(`/personas/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  }
+
+  deletePersona(id: string): Promise<void> {
+    return this.requestVoid(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 }
 

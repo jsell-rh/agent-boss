@@ -38,6 +38,11 @@ const router = createRouter({
       name: 'agent',
       component: Empty,
     },
+    {
+      path: '/personas',
+      name: 'personas',
+      component: Empty,
+    },
   ],
 })
 

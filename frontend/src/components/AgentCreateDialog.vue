@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import type { Persona } from '@/types'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '@/api/client'
 import {
   Dialog,
@@ -31,8 +32,21 @@ const backend = ref<'tmux' | 'ambient'>('tmux')
 const submitting = ref(false)
 const errorMsg = ref('')
 
+// Persona selection
+const personas = ref<Persona[]>([])
+const selectedPersonaIds = ref<string[]>([])
+
 const isTmux = computed(() => backend.value === 'tmux')
 const isAmbient = computed(() => backend.value === 'ambient')
+
+function togglePersona(id: string) {
+  const idx = selectedPersonaIds.value.indexOf(id)
+  if (idx >= 0) {
+    selectedPersonaIds.value.splice(idx, 1)
+  } else {
+    selectedPersonaIds.value.push(id)
+  }
+}
 
 function reset() {
   agentName.value = ''
@@ -40,8 +54,17 @@ function reset() {
   reposText.value = ''
   taskPrompt.value = ''
   backend.value = 'tmux'
+  selectedPersonaIds.value = []
   errorMsg.value = ''
 }
+
+onMounted(async () => {
+  try {
+    personas.value = await api.fetchPersonas()
+  } catch {
+    // personas unavailable — selector simply hidden
+  }
+})
 
 function parseRepos(text: string): { url: string; branch?: string }[] {
   return text
@@ -71,6 +94,9 @@ async function submit() {
       repos: repos && repos.length > 0 ? repos : undefined,
       task,
     })
+    if (selectedPersonaIds.value.length > 0) {
+      await api.updateAgentConfig(props.space, name, { persona_ids: [...selectedPersonaIds.value] })
+    }
     const created = name
     reset()
     emit('created', created)
@@ -188,6 +214,31 @@ async function submit() {
           <p class="text-xs text-muted-foreground">
             One repo per line. Optionally append a branch after a space.
           </p>
+        </div>
+
+        <!-- Persona selector (shown only when personas exist) -->
+        <div v-if="personas.length > 0" class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Personas (optional)
+          </label>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="persona in personas"
+              :key="persona.id"
+              type="button"
+              :title="persona.description || persona.name"
+              :class="[
+                'rounded border px-2 py-1 text-xs transition-colors',
+                selectedPersonaIds.includes(persona.id)
+                  ? 'border-primary bg-primary/10 text-primary font-medium'
+                  : 'border-border bg-background hover:bg-muted/50',
+              ]"
+              @click="togglePersona(persona.id)"
+            >
+              {{ persona.name }}
+            </button>
+          </div>
+          <p class="text-xs text-muted-foreground">Prompt fragments injected into the agent on spawn.</p>
         </div>
 
         <p v-if="errorMsg" class="text-xs text-destructive">{{ errorMsg }}</p>

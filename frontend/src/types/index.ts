@@ -60,6 +60,34 @@ export interface AgentUpdate {
   role?: string
 }
 
+// GET /personas and GET /personas/{id}
+export interface Persona {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PersonaRef {
+  id: string
+  pinned_version?: number
+}
+
+// GET/PATCH /spaces/{space}/agent/{name}/config
+export interface AgentConfig {
+  work_dir?: string
+  initial_prompt?: string
+  persona_ids?: string[]
+  backend?: string
+  command?: string
+  repo_url?: string
+  repos?: { url: string; branch?: string }[]
+  model?: string
+}
+
 // GET /spaces/{space}/hierarchy response
 export interface HierarchyNode {
   agent: string
