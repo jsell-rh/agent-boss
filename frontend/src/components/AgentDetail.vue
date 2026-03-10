@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -331,9 +331,18 @@ async function loadAgentTasks() {
 onMounted(loadAgentTasks)
 watch(() => props.agentName, loadAgentTasks)
 
-// --------------- Personas ---------------
+// --------------- Personas + Agent Config ---------------
 const agentConfig = ref<AgentConfig | null>(null)
 const allPersonas = ref<Persona[]>([])
+const configLoading = ref(false)
+const configEditMode = ref(false)
+const configSaving = ref(false)
+const editWorkDir = ref('')
+const editInitialPrompt = ref('')
+const duplicateDialogOpen = ref(false)
+const duplicateNewName = ref('')
+const duplicating = ref(false)
+const duplicateError = ref('')
 
 const agentPersonas = computed(() => {
   const ids = agentConfig.value?.persona_ids ?? []
@@ -342,6 +351,7 @@ const agentPersonas = computed(() => {
 })
 
 async function loadPersonaData() {
+  configLoading.value = true
   try {
     const [cfg, personas] = await Promise.all([
       api.getAgentConfig(props.spaceName, props.agentName),
@@ -350,12 +360,55 @@ async function loadPersonaData() {
     agentConfig.value = cfg
     if (allPersonas.value.length === 0) allPersonas.value = personas
   } catch {
-    // personas endpoint may not exist yet — silently ignore
+    // config/personas endpoint may not exist yet — silently ignore
+  } finally {
+    configLoading.value = false
+  }
+}
+
+function startEditConfig() {
+  editWorkDir.value = agentConfig.value?.work_dir ?? ''
+  editInitialPrompt.value = agentConfig.value?.initial_prompt ?? ''
+  configEditMode.value = true
+}
+
+async function saveConfig() {
+  configSaving.value = true
+  try {
+    agentConfig.value = await api.updateAgentConfig(props.spaceName, props.agentName, {
+      work_dir: editWorkDir.value.trim() || undefined,
+      initial_prompt: editInitialPrompt.value.trim() || undefined,
+    })
+    configEditMode.value = false
+  } catch (e) {
+    console.error('config save failed', e)
+  } finally {
+    configSaving.value = false
+  }
+}
+
+async function submitDuplicate() {
+  const newName = duplicateNewName.value.trim()
+  if (!newName) return
+  duplicating.value = true
+  duplicateError.value = ''
+  try {
+    await api.duplicateAgent(props.spaceName, props.agentName, newName)
+    duplicateDialogOpen.value = false
+    duplicateNewName.value = ''
+  } catch (e) {
+    duplicateError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    duplicating.value = false
   }
 }
 
 onMounted(loadPersonaData)
-watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData() })
+watch(() => props.agentName, () => {
+  agentConfig.value = null
+  configEditMode.value = false
+  loadPersonaData()
+})
 </script>
 
 <template>
@@ -580,6 +633,22 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{{ introspectOpen ? 'Close' : 'Open' }} live tmux pane capture</TooltipContent>
+            </Tooltip>
+
+            <!-- Duplicate button -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs gap-1"
+                  @click="duplicateNewName = agentName + '-copy'; duplicateDialogOpen = true"
+                >
+                  <Copy class="size-3.5" />
+                  Duplicate
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clone this agent with its config to a new agent</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -917,6 +986,31 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
         </AlertDialogContent>
       </AlertDialog>
 
+      <!-- Duplicate agent Dialog -->
+      <AlertDialog v-model:open="duplicateDialogOpen">
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              Creates a new agent with the same config as <span class="font-semibold text-foreground">{{ agentName }}</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div class="px-0 pb-2">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">New Agent Name</label>
+            <Input v-model="duplicateNewName" placeholder="e.g. MyAgent-copy" class="h-8 text-sm" />
+            <p v-if="duplicateError" class="text-xs text-destructive mt-1">{{ duplicateError }}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel @click="duplicateError = ''">Cancel</AlertDialogCancel>
+            <AlertDialogAction :disabled="!duplicateNewName.trim() || duplicating" @click.prevent="submitDuplicate">
+              <Loader2 v-if="duplicating" class="size-4 animate-spin" />
+              <Copy v-else class="size-4" />
+              Duplicate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <!-- Delete agent AlertDialog -->
       <AlertDialog v-model:open="deleteDialogOpen">
         <AlertDialogContent>
@@ -981,6 +1075,55 @@ watch(() => props.agentName, () => { agentConfig.value = null; loadPersonaData()
               <p class="text-xs font-mono whitespace-pre-wrap line-clamp-4">{{ persona.prompt }}</p>
             </TooltipContent>
           </Tooltip>
+        </div>
+      </section>
+
+      <!-- Agent Config section -->
+      <section v-if="agentConfig !== null || configLoading" aria-label="Agent configuration">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Config</h2>
+          <button
+            v-if="!configEditMode"
+            class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            @click="startEditConfig"
+          >
+            <Pencil class="size-3" /> Edit
+          </button>
+        </div>
+
+        <!-- View mode -->
+        <div v-if="!configEditMode" class="space-y-2 text-sm">
+          <div v-if="agentConfig?.work_dir" class="flex flex-col gap-0.5">
+            <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Working Directory</span>
+            <code class="text-xs bg-muted/50 px-2 py-1 rounded font-mono">{{ agentConfig.work_dir }}</code>
+          </div>
+          <div v-if="agentConfig?.initial_prompt" class="flex flex-col gap-0.5">
+            <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Initial Prompt</span>
+            <p class="text-xs bg-muted/50 px-2 py-1 rounded whitespace-pre-wrap font-mono">{{ agentConfig.initial_prompt }}</p>
+          </div>
+          <p v-if="!agentConfig?.work_dir && !agentConfig?.initial_prompt" class="text-xs text-muted-foreground italic">
+            No config saved — click Edit to set working directory or initial prompt.
+          </p>
+        </div>
+
+        <!-- Edit mode -->
+        <div v-else class="space-y-3">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Working Directory</label>
+            <Input v-model="editWorkDir" placeholder="/home/user/project" class="font-mono text-xs h-8" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Initial Prompt</label>
+            <Textarea v-model="editInitialPrompt" placeholder="e.g. You are a backend engineer. Focus on…" rows="4" class="text-xs" />
+          </div>
+          <div class="flex items-center gap-2">
+            <Button size="sm" class="h-7 text-xs gap-1" :disabled="configSaving" @click="saveConfig">
+              <Loader2 v-if="configSaving" class="size-3 animate-spin" />
+              <Save v-else class="size-3" />
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" class="h-7 text-xs" @click="configEditMode = false">Cancel</Button>
+          </div>
         </div>
       </section>
 

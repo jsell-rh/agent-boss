@@ -2,6 +2,7 @@ import type {
   SpaceSummary,
   KnowledgeSpace,
   AgentUpdate,
+  AgentConfig,
   SessionAgentStatus,
   InterruptMetrics,
   Interrupt,
@@ -12,7 +13,6 @@ import type {
   TaskStatus,
   TaskPriority,
   Persona,
-  AgentConfig,
 } from '@/types'
 
 /**
@@ -264,6 +264,7 @@ class ApiClient {
       role?: string
       repos?: { url: string; branch?: string }[]
       task?: string
+      initial_message?: string
     },
   ): Promise<{ ok: boolean; agent: string; backend: string; session: string; space: string }> {
     return this.request(`/spaces/${encodeURIComponent(space)}/agents`, {
@@ -308,6 +309,34 @@ class ApiClient {
   introspectAgent(space: string, agent: string): Promise<IntrospectResponse> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/introspect`,
+    )
+  }
+
+  getAgentConfig(space: string, agent: string): Promise<AgentConfig> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
+    )
+  }
+
+  updateAgentConfig(space: string, agent: string, config: Partial<AgentConfig>): Promise<AgentConfig> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      },
+    )
+  }
+
+  duplicateAgent(space: string, agent: string, newName: string): Promise<{ ok: boolean; agent: string }> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/duplicate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_name: newName }),
+      },
     )
   }
 
@@ -419,24 +448,7 @@ class ApiClient {
     )
   }
 
-  // --------------- Agent Config ---------------
 
-  getAgentConfig(space: string, agent: string): Promise<AgentConfig> {
-    return this.request<AgentConfig>(
-      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
-    )
-  }
-
-  updateAgentConfig(space: string, agent: string, patch: Partial<AgentConfig>): Promise<AgentConfig> {
-    return this.request<AgentConfig>(
-      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      },
-    )
-  }
 
   // --------------- Personas ---------------
 
