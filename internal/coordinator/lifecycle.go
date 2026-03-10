@@ -278,10 +278,19 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentName, spaceName)
-		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
+		// Bootstrap the agent by sending a plain-text prompt that fetches
+		// the ignition context from the coordinator. This replaces the old
+		// /boss.ignite slash command which relied on symlinked command files.
+		ignitePrompt := fmt.Sprintf(
+			"You are %s, an autonomous AI agent in workspace %s.\n"+
+				"Fetch your ignition context and begin work immediately:\n"+
+				"curl -s %s/spaces/%s/ignition/%s\n"+
+				"Read the output and start your work loop.",
+			agentName, spaceName, s.localURL(), spaceName, agentName,
+		)
+		if err := backend.SendInput(sessionID, ignitePrompt); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
-				Msg: fmt.Sprintf("spawn: ignite send failed: %v (ignite manually)", err)})
+				Msg: fmt.Sprintf("spawn: ignite send failed: %v (fetch manually: curl %s/spaces/%s/ignition/%s)", err, s.localURL(), spaceName, agentName)})
 		}
 		if cfgPersonaPrompt != "" {
 			s.deliverInternalMessage(spaceName, agentName, "boss", cfgPersonaPrompt)
