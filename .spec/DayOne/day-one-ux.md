@@ -73,11 +73,9 @@ exposes all `AgentConfig` fields in a single form, grouped by section:
   - Shows assembled preview below the textarea (persona prompts + initial_prompt)
 
 **Advanced**
-- Launch command (default: `claude`; user types the full command if they want flags)
-- "Skip permission prompts" checkbox — when checked, appends `--dangerously-skip-permissions`
-  to the launch command. **Unchecked by default.** Displays a warning:
-  > "This allows the agent to run tools without asking for confirmation. Only enable if you
-  > trust this agent's behavior."
+- Launch command (default: `claude`; leave blank unless overriding a specific flag)
+  - Note: `--dangerously-skip-permissions` is controlled globally, not per-agent
+    (see server settings)
 
 **Actions** (at bottom)
 - [Create] — creates agent record, does not spawn

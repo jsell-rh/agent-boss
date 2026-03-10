@@ -34,7 +34,7 @@ type AgentConfig struct {
     InitialPrompt string        `json:"initial_prompt,omitempty"` // instructions sent to agent after session start (no slash commands)
     PersonaIDs    []string      `json:"persona_ids,omitempty"`    // ordered list of global persona IDs to inject
     Backend       string        `json:"backend,omitempty"`        // "tmux" | "ambient" (default "tmux")
-    Command       string        `json:"command,omitempty"`        // launch command (default: "claude"); user opts into --dangerously-skip-permissions explicitly
+    Command       string        `json:"command,omitempty"`        // launch command (default: "claude"); --dangerously-skip-permissions is injected by global server toggle, not set here
 
     // tmux-specific
     RepoURL       string        `json:"repo_url,omitempty"`       // primary git remote for display/linking
@@ -169,3 +169,42 @@ The server can detect these cases and either auto-spawn (if configured) or surfa
 | Duplicate name collision | 409 Conflict — user must choose a different name |
 | Source has no AgentConfig | Duplicate inherits empty config (still useful to copy parent/role) |
 | Source is actively running | Allowed — only config is copied, not session state |
+
+---
+
+## Global Server Setting: Permission Mode
+
+The `--dangerously-skip-permissions` flag for tmux-backend agents is controlled by a
+single server-wide toggle, not a per-agent option. This prevents individual agents from
+silently acquiring elevated permissions and makes the risk surface explicit.
+
+### Server Configuration
+
+```
+BOSS_ALLOW_SKIP_PERMISSIONS=true  # env var; default false
+```
+
+Or via the admin settings API:
+
+```bash
+PATCH /settings
+{
+  "tmux_skip_permissions": true
+}
+```
+
+When `tmux_skip_permissions` is `true`, the coordinator appends `--dangerously-skip-permissions`
+to the effective launch command for every tmux-backend agent spawn/restart.
+
+When `false` (default), agents run as plain `claude` and must confirm tool use interactively.
+
+### Dashboard Settings Page
+
+A settings page (accessible from the nav bar) exposes this toggle with:
+- Current state (on/off)
+- A toggle switch
+- A warning banner when enabled:
+  > "Permission skip is ON — all tmux agents can run tools without confirmation.
+  > Disable this before running untrusted agents."
+
+The toggle state is persisted in the server's data directory (`settings.json`).

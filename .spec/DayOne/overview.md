@@ -31,7 +31,7 @@ and self-guiding.
 - **Reproducibility**: agent configuration is data, not shell state — it survives restarts
 - **Backend agnosticism**: every improvement works for both tmux and ambient backends
 - **One external Go dependency**: `mark3labs/mcp-go` for the MCP server (justified by protocol complexity)
-- **Security by default**: `--dangerously-skip-permissions` is opt-in, not the default
+- **Security by default**: `--dangerously-skip-permissions` is a global server toggle (off by default); one deliberate operator decision applies to all agents
 
 ## Shared Contracts
 
@@ -76,7 +76,7 @@ via the "Skip permission prompts" checkbox in the agent create dialog.
 | MCP library | **mark3labs/mcp-go** |
 | Boss identity | First-class dashboard user; not an agent record (optional only) |
 | Restart scope | Individual agent + **fleet restart** (restart all) |
-| `--dangerously-skip-permissions` | **Not the default** — opt-in checkbox in create dialog with warning |
+| `--dangerously-skip-permissions` | **Global server-wide toggle** (off by default); applies to all tmux agents uniformly |
 
 ## Non-Goals (this spec)
 

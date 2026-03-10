@@ -98,11 +98,14 @@ The tmux backend workflow:
 4. Send the configured launch command (from `AgentConfig.Command`, default `claude`) + Enter
 5. Claude initializes, reads `boss://bootstrap/{space}/{agent}`, and begins work
 
-`--dangerously-skip-permissions` is **not** the default. It must be explicitly set by the
-user in `AgentConfig.Command` (e.g. `claude --dangerously-skip-permissions`). The agent
-create dialog shows a checkbox "Skip permission prompts" that, when enabled, appends the
-flag to the command. The checkbox is unchecked by default and displays a warning about
-what it means.
+`--dangerously-skip-permissions` is controlled by a **global server-wide toggle**
+(not a per-agent setting). When the toggle is on, the flag is appended to the launch
+command for all tmux-backend agents. When off (the default), agents run as `claude`
+without the flag.
+
+This keeps per-agent configuration simple and makes the risk surface explicit: a server
+operator makes one deliberate decision that applies uniformly, rather than each agent
+having its own hidden permission state.
 
 The server checks `claude mcp list` output to detect if `boss-mcp` is already registered
 before running `claude mcp add` (avoids duplicates).
