@@ -80,10 +80,10 @@ Managers do **not** poll `/raw` to observe agent status narratively.
 
 ```
 Agent blocked → message Manager → Manager unresponsive 30m → agent messages CTO
-CTO blocked   → message Boss    → Boss tags [?BOSS] resolved → CTO unblocks work
+CTO blocked   → message Boss    → Boss responds via message → CTO unblocks work
 ```
 
-Escalations are always via messages, never via status fields.
+Escalations are always via **messages**, not via status field tags or special markers.
 
 ## Decision Authority
 
@@ -165,6 +165,7 @@ Workers can escalate without knowing their manager's name:
 ```bash
 POST /spaces/{space}/agent/parent/message
   X-Agent-Name: {WorkerAgent}
-  {"message": "[?MANAGER] TASK-{id} blocked: {reason}"}
+  {"message": "TASK-{id} blocked: {reason}. Waiting on your decision."}
 ```
-The server resolves `parent` to the caller's declared parent agent.
+The server resolves `parent` to the caller's declared parent agent. No special tag syntax needed —
+the message content communicates the blocker.
