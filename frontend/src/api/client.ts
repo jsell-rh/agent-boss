@@ -245,6 +245,8 @@ class ApiClient {
       height?: number
       parent?: string
       role?: string
+      repos?: { url: string; branch?: string }[]
+      task?: string
     },
   ): Promise<{ ok: boolean; agent: string; backend: string; session: string; space: string }> {
     return this.request(`/spaces/${encodeURIComponent(space)}/agents`, {

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 const props = defineProps<{
   open: boolean
@@ -24,17 +25,35 @@ const emit = defineEmits<{
 
 const agentName = ref('')
 const workDir = ref('')
+const reposText = ref('')
+const taskPrompt = ref('')
 const backend = ref<'tmux' | 'ambient'>('tmux')
 const submitting = ref(false)
 const errorMsg = ref('')
 
 const isTmux = computed(() => backend.value === 'tmux')
+const isAmbient = computed(() => backend.value === 'ambient')
 
 function reset() {
   agentName.value = ''
   workDir.value = ''
+  reposText.value = ''
+  taskPrompt.value = ''
   backend.value = 'tmux'
   errorMsg.value = ''
+}
+
+function parseRepos(text: string): { url: string; branch?: string }[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const parts = line.split(/\s+/)
+      const repo: { url: string; branch?: string } = { url: parts[0]! }
+      if (parts.length > 1) repo.branch = parts[1]!
+      return repo
+    })
 }
 
 async function submit() {
@@ -43,10 +62,14 @@ async function submit() {
   submitting.value = true
   errorMsg.value = ''
   try {
+    const repos = isAmbient.value ? parseRepos(reposText.value) : undefined
+    const task = isAmbient.value ? (taskPrompt.value.trim() || undefined) : undefined
     await api.createAgent(props.space, {
       name,
       work_dir: isTmux.value ? (workDir.value.trim() || undefined) : undefined,
       backend: backend.value,
+      repos: repos && repos.length > 0 ? repos : undefined,
+      task,
     })
     const created = name
     reset()
@@ -132,6 +155,38 @@ async function submit() {
           />
           <p class="text-xs text-muted-foreground">
             The agent's tmux session will <code>cd</code> to this directory before starting.
+          </p>
+        </div>
+
+        <!-- Initial Prompt (ambient only) -->
+        <div v-if="isAmbient" class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Initial Prompt (optional)
+          </label>
+          <Textarea
+            v-model="taskPrompt"
+            placeholder="e.g. You are an agent. Implement the login page."
+            rows="3"
+            class="text-sm"
+          />
+          <p class="text-xs text-muted-foreground">
+            The task prompt sent to the ACP session on creation.
+          </p>
+        </div>
+
+        <!-- Repos (ambient only) -->
+        <div v-if="isAmbient" class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Repos (optional)
+          </label>
+          <Textarea
+            v-model="reposText"
+            placeholder="https://github.com/org/repo&#10;https://github.com/org/other-repo feat/branch"
+            rows="3"
+            class="font-mono text-sm"
+          />
+          <p class="text-xs text-muted-foreground">
+            One repo per line. Optionally append a branch after a space.
           </p>
         </div>
 

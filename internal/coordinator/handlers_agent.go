@@ -201,6 +201,12 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.Lock()
 		canonical := resolveAgentName(ks, agentName)
+		// Capture session info before removing the agent so we can cascade-delete.
+		var sessionID, backendType string
+		if agent, exists := ks.Agents[canonical]; exists && agent != nil {
+			sessionID = agent.SessionID
+			backendType = agent.BackendType
+		}
 		delete(ks.Agents, canonical)
 		rebuildChildren(ks) // keep children lists consistent after removal
 		ks.UpdatedAt = time.Now().UTC()
@@ -211,6 +217,21 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.Unlock()
 		s.deleteAgentFromDB(spaceName, canonical)
+
+		// Cascade: kill the backing session if one exists.
+		if sessionID != "" {
+			backend := s.backendByName(backendType)
+			if backend != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := backend.KillSession(ctx, sessionID); err != nil {
+					s.logEvent(fmt.Sprintf("[%s/%s] warning: cascade delete session %s: %v", spaceName, canonical, sessionID, err))
+				} else {
+					s.logEvent(fmt.Sprintf("[%s/%s] cascade-deleted session %s (%s)", spaceName, canonical, sessionID, backend.Name()))
+				}
+				cancel()
+			}
+		}
+
 		s.logEvent(fmt.Sprintf("[%s/%s] agent removed", spaceName, canonical))
 		s.journal.Append(spaceName, EventAgentRemoved, canonical, nil)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
@@ -1215,11 +1236,14 @@ type createAgentRequest struct {
 	Name    string `json:"name"`
 	WorkDir string `json:"work_dir,omitempty"`
 	Command string `json:"command,omitempty"`
-	Backend string `json:"backend,omitempty"` // "tmux" (default) or "cloud"
+	Backend string `json:"backend,omitempty"` // "tmux" (default) or "ambient"
 	Width   int    `json:"width,omitempty"`
 	Height  int    `json:"height,omitempty"`
 	Parent  string `json:"parent,omitempty"`
 	Role    string `json:"role,omitempty"`
+	// Ambient-specific fields
+	Repos []SessionRepo `json:"repos,omitempty"`
+	Task  string        `json:"task,omitempty"` // initial prompt for ambient sessions
 }
 
 // handleCreateAgents handles POST /spaces/{space}/agents.
@@ -1253,10 +1277,17 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 
 	var createOpts SessionCreateOpts
 	if backend.Name() == "ambient" {
+		command := req.Task
+		if command == "" {
+			command = req.Command
+		}
+		sessionName := tmuxDefaultSession(spaceName, req.Name)
 		createOpts = SessionCreateOpts{
-			Command: req.Command,
+			SessionID: sessionName,
+			Command:   command,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: req.Name,
+				Repos:       req.Repos,
 			},
 		}
 	} else {
