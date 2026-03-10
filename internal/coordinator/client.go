@@ -123,6 +123,37 @@ func (c *Client) DeleteAgent(name string) error {
 	return nil
 }
 
+// EnsureSpace creates the space if it does not already exist.
+// Returns true if the space was newly created, false if it already existed.
+func (c *Client) EnsureSpace() (created bool, err error) {
+	// Try GET first — if the space exists, we're done.
+	req, e := http.NewRequest(http.MethodGet, c.spacePrefix(), nil)
+	if e != nil {
+		return false, fmt.Errorf("create request: %w", e)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, e := c.httpClient.Do(req)
+	if e != nil {
+		return false, fmt.Errorf("get space: %w", e)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return false, nil // already exists
+	}
+
+	// Space does not exist — POST to contracts creates it lazily.
+	postResp, e := c.httpClient.Post(c.spacePrefix()+"/contracts", "text/plain", strings.NewReader(""))
+	if e != nil {
+		return false, fmt.Errorf("create space: %w", e)
+	}
+	defer postResp.Body.Close()
+	if postResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(postResp.Body)
+		return false, fmt.Errorf("create space: status %d: %s", postResp.StatusCode, string(body))
+	}
+	return true, nil
+}
+
 func (c *Client) DeleteSpace() error {
 	req, err := http.NewRequest(http.MethodDelete, c.spacePrefix()+"/", nil)
 	if err != nil {
