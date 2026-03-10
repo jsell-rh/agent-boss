@@ -84,7 +84,7 @@ func serverURL() string {
 	if u := os.Getenv("BOSS_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	return "http://localhost:7777"
+	return "http://localhost:8899"
 }
 
 func cmdServe(args []string) {
