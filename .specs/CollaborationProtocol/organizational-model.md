@@ -18,6 +18,12 @@ Boss (human)
 
 The hierarchy is registered in the coordinator via `parent=` in ignition. Dashboard renders it visually.
 
+> **Note:** This diagram reflects one common pattern (software development teams), not a
+> required template. Agent Boss supports any workflow. Roles and team shapes are defined by
+> the spawning agent and the use case — not by the platform. The org structure also changes
+> over time; agents should treat their ignition hierarchy as a starting point, not a permanent
+> arrangement.
+
 ## Leadership Responsibilities
 
 A **leader** (Manager or CTO) is responsible for:
@@ -134,13 +140,14 @@ FrontendDev needs a new API field from DataDev:
   6. FrontendMgr messages FrontendDev: "DataDev done, proceed"
 ```
 
-### Exception: Pre-authorized Peer Coordination
+### Intra-Team Peer Coordination
 
-Managers may explicitly authorize direct cross-team communication when:
-- The interface is well-defined and low-risk (e.g., agreeing on a JSON field name)
-- Both managers approve in their mission messages
+Agents on the same team may message each other directly without manager authorization —
+peer communication is the default. A manager can explicitly forbid a specific interaction
+if needed, but this is the exception, not the rule.
 
-Even when authorized, both developers must CC their managers in their next status update.
+Peer exchanges that affect shared deliverables should be summarized in the next status update
+so managers have visibility.
 
 ### API Aid: Subtree Messages
 
