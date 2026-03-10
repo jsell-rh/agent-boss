@@ -35,7 +35,9 @@ func (s *Server) checkAllSessionLiveness() {
 	}
 	var probes []probe
 	for spaceName, ks := range s.spaces {
-		for name, agent := range ks.Agents {
+		for name, rec := range ks.Agents {
+			if rec == nil || rec.Status == nil { continue }
+			agent := rec.Status
 			if agent.SessionID != "" {
 				probes = append(probes, probe{spaceName, name, agent.SessionID, agent.BackendType})
 			}
@@ -114,7 +116,7 @@ func (s *Server) checkAllSessionLiveness() {
 			s.mu.Lock()
 			if ks, ok := s.spaces[space]; ok {
 				if agentRec, ok := ks.Agents[e.agent]; ok {
-					agentRec.InferredStatus = inferred
+					if agentRec.Status != nil { agentRec.Status.InferredStatus = inferred }
 				}
 			}
 			s.mu.Unlock()

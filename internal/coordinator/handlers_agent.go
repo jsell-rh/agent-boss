@@ -29,7 +29,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.RLock()
 		canonical := resolveAgentName(ks, agentName)
-		agent, exists := ks.Agents[canonical]
+		agent, exists := ks.agentStatusOk(canonical)
 		s.mu.RUnlock()
 		if !exists {
 			w.Header().Set("Content-Type", "application/json")
@@ -111,7 +111,8 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 
 		parentChanged := false
-		if existing, ok := ks.Agents[canonical]; ok {
+		if existingRec, ok := ks.Agents[canonical]; ok {
+			existing := existingRec.Status
 			if update.SessionID == "" && existing.SessionID != "" {
 				update.SessionID = existing.SessionID
 			}
@@ -154,7 +155,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		} else {
 			parentChanged = incomingParent != ""
 		}
-		ks.Agents[canonical] = &update
+		ks.setAgentStatus(canonical, &update)
 		ks.UpdatedAt = time.Now().UTC()
 		// Rebuild children whenever the parent relationship may have changed.
 		if parentChanged {
@@ -203,7 +204,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		canonical := resolveAgentName(ks, agentName)
 		// Capture session info before removing the agent so we can cascade-delete.
 		var sessionID, backendType string
-		if agent, exists := ks.Agents[canonical]; exists && agent != nil {
+		if agent, exists := ks.agentStatusOk(canonical); exists && agent != nil {
 			sessionID = agent.SessionID
 			backendType = agent.BackendType
 		}
@@ -269,7 +270,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		}
 		s.mu.RLock()
 		senderCanonical := resolveAgentName(ks, senderName)
-		sender, senderExists := ks.Agents[senderCanonical]
+		sender, senderExists := ks.agentStatusOk(senderCanonical)
 		s.mu.RUnlock()
 		if !senderExists || sender.Parent == "" {
 			writeJSONError(w, "agent has no declared parent", http.StatusBadRequest)
@@ -312,7 +313,7 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		// Create space if it doesn't exist for messages
 		ks = &KnowledgeSpace{
 			Name:      spaceName,
-			Agents:    make(map[string]*AgentUpdate),
+			Agents:    make(map[string]*AgentRecord),
 			UpdatedAt: time.Now().UTC(),
 		}
 		s.mu.Lock()
@@ -342,15 +343,15 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 
 	// Deliver message to all recipients in one critical section, one save.
 	for _, r := range recipients {
-		ag, exists := ks.Agents[r]
-		if !exists {
+		ag := ks.agentStatus(r)
+		if ag == nil {
 			ag = &AgentUpdate{
 				Status:    StatusIdle,
 				Summary:   fmt.Sprintf("%s: pending message delivery", r),
 				Messages:  []AgentMessage{},
 				UpdatedAt: time.Now().UTC(),
 			}
-			ks.Agents[r] = ag
+			ks.setAgentStatus(r, ag)
 		}
 		if ag.Messages == nil {
 			ag.Messages = []AgentMessage{}
@@ -519,15 +520,15 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		s.mu.Lock()
 		ks := s.getOrCreateSpaceLocked(spaceName)
 		canonical := resolveAgentName(ks, agentName)
-		if ks.Agents[canonical] == nil {
-			ks.Agents[canonical] = &AgentUpdate{
+		if ks.agentStatus(canonical) == nil {
+			ks.setAgentStatus(canonical, &AgentUpdate{
 				Status:    StatusActive,
 				Summary:   "Document uploaded",
 				UpdatedAt: time.Now().UTC(),
-			}
+			})
 		}
 
-		agent := ks.Agents[canonical]
+		agent := ks.agentStatus(canonical)
 
 		// Add or update document in the list
 		found := false
@@ -575,7 +576,7 @@ func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spa
 		if ok {
 			s.mu.Lock()
 			canonical := resolveAgentName(ks, agentName)
-			if agent := ks.Agents[canonical]; agent != nil {
+			if agent := ks.agentStatus(canonical); agent != nil {
 				for i, doc := range agent.Documents {
 					if doc.Slug == documentSlug {
 						agent.Documents = append(agent.Documents[:i], agent.Documents[i+1:]...)
@@ -635,16 +636,14 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 			}
 		}
 
-		var agentRecord *AgentUpdate
-		if existing, ok := ks.Agents[canonical]; ok {
-			agentRecord = existing
-		} else {
+		agentRecord := ks.agentStatus(canonical)
+		if agentRecord == nil {
 			agentRecord = &AgentUpdate{
 				Status:    StatusIdle,
 				Summary:   canonical + ": awaiting ignition",
 				UpdatedAt: time.Now().UTC(),
 			}
-			ks.Agents[canonical] = agentRecord
+			ks.setAgentStatus(canonical, agentRecord)
 		}
 		if sessionID != "" {
 			agentRecord.SessionID = sessionID
@@ -752,14 +751,15 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 	} else {
 		b.WriteString("| Agent | Status | Summary |\n")
 		b.WriteString("| ----- | ------ | ------- |\n")
-		for name, agent := range ks.Agents {
-			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, agent.Status, agent.Summary))
+		for name, rec := range ks.Agents {
+			if rec == nil || rec.Status == nil { continue }
+			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, rec.Status.Status, rec.Status.Summary))
 		}
 		b.WriteString("\n")
 	}
 
 	canonical := resolveAgentName(ks, agentName)
-	existing, hasExisting := ks.Agents[canonical]
+	existing, hasExisting := ks.agentStatusOk(canonical)
 	if hasExisting {
 		b.WriteString("## Your Last State\n\n")
 		b.WriteString(fmt.Sprintf("- Status: %s\n", existing.Status))
@@ -1005,8 +1005,9 @@ func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request
 		backendType string
 	}
 	var pairs []agentSession
-	for name, agent := range ks.Agents {
-		pairs = append(pairs, agentSession{name: name, session: agent.SessionID, backendType: agent.BackendType})
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil { continue }
+		pairs = append(pairs, agentSession{name: name, session: rec.Status.SessionID, backendType: rec.Status.BackendType})
 	}
 	s.mu.RUnlock()
 
@@ -1055,7 +1056,7 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 	}
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var sessionID string
 	if exists {
 		sessionID = agent.SessionID
@@ -1108,7 +1109,7 @@ func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var sessionID string
 	if exists {
 		sessionID = agent.SessionID
@@ -1178,7 +1179,7 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request, s
 
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	if !exists {
 		s.mu.Unlock()
 		writeJSONError(w, "agent not found: "+agentName, http.StatusNotFound)
@@ -1246,7 +1247,7 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	s.mu.Lock()
 	// resolveAgentName iterates ks.Agents — must hold s.mu to avoid data race.
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	if !exists {
 		s.mu.Unlock()
 		writeJSONError(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
@@ -1372,14 +1373,14 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	ks := s.getOrCreateSpace(spaceName)
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, req.Name)
-	agent, exists := ks.Agents[canonical]
-	if !exists {
+	agent := ks.agentStatus(canonical)
+	if agent == nil {
 		agent = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: spawned via %s backend", req.Name, backendName),
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[canonical] = agent
+		ks.setAgentStatus(canonical, agent)
 	}
 	agent.SessionID = sessionID
 	agent.BackendType = backend.Name()
@@ -1426,5 +1427,187 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		"backend": backendName,
 		"session": sessionID,
 		"space":   spaceName,
+	})
+}
+
+// handleAgentConfig handles GET and PATCH /spaces/{space}/agent/{name}/config.
+// GET returns the current AgentConfig (or empty object if none).
+// PATCH performs a partial update of AgentConfig fields.
+func (s *Server) handleAgentConfig(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		s.mu.RLock()
+		canonical := resolveAgentName(ks, agentName)
+		cfg := ks.agentConfig(canonical)
+		s.mu.RUnlock()
+		if cfg == nil {
+			cfg = &AgentConfig{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cfg)
+
+	case http.MethodPatch:
+		callerName := r.Header.Get("X-Agent-Name")
+		if callerName == "" {
+			writeJSONError(w, "missing X-Agent-Name header", http.StatusBadRequest)
+			return
+		}
+		var patch AgentConfig
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+			writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		canonical := resolveAgentName(ks, agentName)
+		cfg := ks.agentConfig(canonical)
+		if cfg == nil {
+			cfg = &AgentConfig{}
+		}
+		// Merge non-zero patch fields
+		if patch.WorkDir != "" {
+			cfg.WorkDir = patch.WorkDir
+		}
+		if patch.InitialPrompt != "" {
+			cfg.InitialPrompt = patch.InitialPrompt
+		}
+		if patch.PersonaIDs != nil {
+			cfg.PersonaIDs = patch.PersonaIDs
+		}
+		if patch.Backend != "" {
+			cfg.Backend = patch.Backend
+		}
+		if patch.Command != "" {
+			cfg.Command = patch.Command
+		}
+		if patch.RepoURL != "" {
+			cfg.RepoURL = patch.RepoURL
+		}
+		if patch.Repos != nil {
+			cfg.Repos = patch.Repos
+		}
+		if patch.Model != "" {
+			cfg.Model = patch.Model
+		}
+		ks.setAgentConfig(canonical, cfg)
+		ks.UpdatedAt = time.Now().UTC()
+		snap := ks.snapshot()
+		s.mu.Unlock()
+		s.saveSpace(snap)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cfg)
+
+	default:
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleAgentDuplicate handles POST /spaces/{space}/agent/{name}/duplicate.
+// Creates a new agent by copying the source agent's config, then auto-spawns it.
+func (s *Server) handleAgentDuplicate(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		NewName        string      `json:"new_name"`
+		OverrideConfig AgentConfig `json:"override_config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.NewName) == "" {
+		writeJSONError(w, "new_name is required", http.StatusBadRequest)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	s.mu.Lock()
+	srcCanonical := resolveAgentName(ks, agentName)
+	newCanonical := resolveAgentName(ks, req.NewName)
+
+	// Check for name collision
+	if _, exists := ks.Agents[newCanonical]; exists {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("agent %q already exists", req.NewName), http.StatusConflict)
+		return
+	}
+
+	// Deep-copy source config
+	var newCfg AgentConfig
+	if srcCfg := ks.agentConfig(srcCanonical); srcCfg != nil {
+		newCfg = *srcCfg
+		if srcCfg.PersonaIDs != nil {
+			newCfg.PersonaIDs = make([]string, len(srcCfg.PersonaIDs))
+			copy(newCfg.PersonaIDs, srcCfg.PersonaIDs)
+		}
+		if srcCfg.Repos != nil {
+			newCfg.Repos = make([]SessionRepo, len(srcCfg.Repos))
+			copy(newCfg.Repos, srcCfg.Repos)
+		}
+	}
+
+	// Apply override_config fields
+	if req.OverrideConfig.WorkDir != "" {
+		newCfg.WorkDir = req.OverrideConfig.WorkDir
+	}
+	if req.OverrideConfig.InitialPrompt != "" {
+		newCfg.InitialPrompt = req.OverrideConfig.InitialPrompt
+	}
+	if req.OverrideConfig.PersonaIDs != nil {
+		newCfg.PersonaIDs = req.OverrideConfig.PersonaIDs
+	}
+	if req.OverrideConfig.Backend != "" {
+		newCfg.Backend = req.OverrideConfig.Backend
+	}
+	if req.OverrideConfig.Command != "" {
+		newCfg.Command = req.OverrideConfig.Command
+	}
+	if req.OverrideConfig.RepoURL != "" {
+		newCfg.RepoURL = req.OverrideConfig.RepoURL
+	}
+	if req.OverrideConfig.Repos != nil {
+		newCfg.Repos = req.OverrideConfig.Repos
+	}
+	if req.OverrideConfig.Model != "" {
+		newCfg.Model = req.OverrideConfig.Model
+	}
+
+	// Create new AgentRecord with copied config and fresh idle status
+	now := time.Now().UTC()
+	newStatus := &AgentUpdate{
+		Status:    StatusIdle,
+		Summary:   fmt.Sprintf("%s: duplicated from %s", req.NewName, agentName),
+		UpdatedAt: now,
+	}
+	newRec := &AgentRecord{
+		Config: &newCfg,
+		Status: newStatus,
+	}
+	ks.Agents[newCanonical] = newRec
+	ks.UpdatedAt = now
+	snap := ks.snapshot()
+	s.mu.Unlock()
+
+	s.saveSpace(snap)
+	s.logEvent(fmt.Sprintf("[%s/%s] duplicated from %s", spaceName, req.NewName, agentName))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"agent":  req.NewName,
+		"config": newCfg,
 	})
 }

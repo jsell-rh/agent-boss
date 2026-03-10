@@ -49,7 +49,7 @@ func TestCheckStaleness(t *testing.T) {
 	srv.mu.Lock()
 	ks, _ := srv.spaces[space]
 	canonical := resolveAgentName(ks, "Alpha")
-	ks.Agents[canonical].UpdatedAt = time.Now().UTC().Add(-(StalenessThreshold + 5*time.Minute))
+	ks.agentStatus(canonical).UpdatedAt = time.Now().UTC().Add(-(StalenessThreshold + 5*time.Minute))
 	srv.mu.Unlock()
 
 	// Run the staleness check
@@ -57,7 +57,7 @@ func TestCheckStaleness(t *testing.T) {
 
 	// Agent should be marked stale
 	srv.mu.RLock()
-	stale := ks.Agents[canonical].Stale
+	stale := ks.agentStatus(canonical).Stale
 	srv.mu.RUnlock()
 
 	if !stale {
@@ -73,7 +73,7 @@ func TestCheckStaleness(t *testing.T) {
 	srv.checkStaleness()
 
 	srv.mu.RLock()
-	stale = ks.Agents[canonical].Stale
+	stale = ks.agentStatus(canonical).Stale
 	srv.mu.RUnlock()
 
 	if stale {
@@ -100,7 +100,9 @@ func TestStalenessNotMarkedForIdleDone(t *testing.T) {
 	// Set UpdatedAt to far past
 	srv.mu.Lock()
 	ks, _ := srv.spaces[space]
-	for _, a := range ks.Agents {
+	for _, rec := range ks.Agents {
+		a := rec.Status
+		if a == nil { continue }
 		a.UpdatedAt = time.Now().UTC().Add(-(StalenessThreshold + time.Hour))
 	}
 	srv.mu.Unlock()
@@ -109,7 +111,9 @@ func TestStalenessNotMarkedForIdleDone(t *testing.T) {
 
 	srv.mu.RLock()
 	defer srv.mu.RUnlock()
-	for name, a := range ks.Agents {
+	for name, rec := range ks.Agents {
+		a := rec.Status
+		if a == nil { continue }
 		if a.Stale {
 			t.Errorf("agent %q with status %q should not be stale", name, a.Status)
 		}
@@ -323,7 +327,7 @@ func TestMessagePriority(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	canonical := resolveAgentName(ks, "Target")
-	messages := ks.Agents[canonical].Messages
+	messages := ks.agentStatus(canonical).Messages
 	srv.mu.RUnlock()
 
 	if len(messages) == 0 {

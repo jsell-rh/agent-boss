@@ -88,7 +88,7 @@ func TestSpawnSetsParentFromSpawner(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	workerCanonical := resolveAgentName(ks, "Worker")
-	worker := ks.Agents[workerCanonical]
+	worker := ks.agentStatus(workerCanonical)
 	srv.mu.RUnlock()
 
 	if worker == nil {
@@ -131,7 +131,7 @@ func TestSpawnNoSpawnerNoParent(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	orphanCanonical := resolveAgentName(ks, "Orphan")
-	orphan := ks.Agents[orphanCanonical]
+	orphan := ks.agentStatus(orphanCanonical)
 	srv.mu.RUnlock()
 
 	if orphan == nil {
@@ -170,7 +170,7 @@ func TestSpawnSelfSpawnNoParent(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	canonical := resolveAgentName(ks, "Solo")
-	solo := ks.Agents[canonical]
+	solo := ks.agentStatus(canonical)
 	srv.mu.RUnlock()
 
 	if solo == nil {
@@ -205,7 +205,7 @@ func TestIgnitionWithParentParam(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	canonical := resolveAgentName(ks, "Worker")
-	worker := ks.Agents[canonical]
+	worker := ks.agentStatus(canonical)
 	srv.mu.RUnlock()
 
 	if worker == nil {
@@ -252,7 +252,7 @@ func TestIgnitionParentStickyNotOverwritten(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	canonical := resolveAgentName(ks, "Child")
-	child := ks.Agents[canonical]
+	child := ks.agentStatus(canonical)
 	srv.mu.RUnlock()
 
 	if child == nil {
@@ -382,7 +382,7 @@ func TestSpawnParentPropagatedToIgnition(t *testing.T) {
 	srv.mu.RLock()
 	ks := srv.spaces[space]
 	childCanonical := resolveAgentName(ks, "Child")
-	child := ks.Agents[childCanonical]
+	child := ks.agentStatus(childCanonical)
 	srv.mu.RUnlock()
 
 	if child == nil {

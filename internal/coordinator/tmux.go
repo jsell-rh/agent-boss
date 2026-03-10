@@ -64,7 +64,9 @@ func (s *Server) TmuxAutoDiscover(spaceName string) int {
 		if name == "" {
 			continue
 		}
-		for agentName, agent := range ks.Agents {
+		for agentName, rec := range ks.Agents {
+			if rec == nil || rec.Status == nil { continue }
+			agent := rec.Status
 			if agent.SessionID != "" {
 				continue
 			}
@@ -360,7 +362,7 @@ func (s *Server) agentUpdatedAt(spaceName, agentName string) time.Time {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	agent, exists := ks.Agents[agentName]
+	agent, exists := ks.agentStatusOk(agentName)
 	if !exists {
 		return time.Time{}
 	}
@@ -490,7 +492,9 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 		backendType string
 	}
 	var targets []target
-	for name, agent := range ks.Agents {
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil { continue }
+		agent := rec.Status
 		if agent.SessionID != "" {
 			targets = append(targets, target{
 				agentName:   name,
@@ -561,7 +565,9 @@ func (s *Server) AutoDiscoverAll(spaceName string) {
 			if name == "" {
 				continue
 			}
-			for agentName, agent := range ks.Agents {
+			for agentName, rec := range ks.Agents {
+				if rec == nil || rec.Status == nil { continue }
+				agent := rec.Status
 				if agent.SessionID != "" {
 					continue
 				}
@@ -590,7 +596,7 @@ func (s *Server) SingleAgentCheckIn(spaceName, agentName, checkModel, workModel 
 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var sessionID string
 	if exists {
 		sessionID = agent.SessionID

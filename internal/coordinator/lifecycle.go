@@ -57,7 +57,9 @@ func (s *Server) checkStaleness() {
 	now := time.Now().UTC()
 	for spaceName, ks := range s.spaces {
 		changed := false
-		for name, agent := range ks.Agents {
+		for name, rec := range ks.Agents {
+			if rec == nil || rec.Status == nil { continue }
+			agent := rec.Status
 			// Only mark active/blocked agents as stale — done/idle are expected to be quiet.
 			if agent.Status == StatusDone || agent.Status == StatusIdle {
 				if agent.Stale {
@@ -84,7 +86,9 @@ func (s *Server) checkStaleness() {
 			s.saveSpace(ks) //nolint:errcheck
 		}
 		// Record a periodic snapshot for all agents so history captures liveness ticks.
-		for name, agent := range ks.Agents {
+		for name, rec := range ks.Agents {
+			if rec == nil || rec.Status == nil { continue }
+			agent := rec.Status
 			snap := snapshotFromAgent(spaceName, name, agent)
 			if err := s.appendSnapshot(snap); err != nil {
 				s.logEvent(fmt.Sprintf("[%s/%s] warning: failed to append liveness snapshot: %v", spaceName, name, err))
@@ -119,6 +123,27 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		}
 	}
 
+	// Apply AgentConfig defaults (unless overridden in req body).
+	var spawnWorkDir string
+	var spawnRepos []SessionRepo
+	var spawnInitialPrompt string
+	if existingKS, hasKS := s.getSpace(spaceName); hasKS {
+		s.mu.RLock()
+		cfgCanonical := resolveAgentName(existingKS, agentName)
+		if cfg := existingKS.agentConfig(cfgCanonical); cfg != nil {
+			if req.Backend == "" && cfg.Backend != "" {
+				req.Backend = cfg.Backend
+			}
+			if req.Command == "" && cfg.Command != "" {
+				req.Command = cfg.Command
+			}
+			spawnWorkDir = cfg.WorkDir
+			spawnRepos = cfg.Repos
+			spawnInitialPrompt = cfg.InitialPrompt
+		}
+		s.mu.RUnlock()
+	}
+
 	backendName := req.Backend
 	backend := s.backendByName(backendName)
 
@@ -131,7 +156,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	if existingKS, ok := s.getSpace(spaceName); ok {
 		s.mu.RLock()
 		canonical := resolveAgentName(existingKS, agentName)
-		existingAgent := existingKS.Agents[canonical]
+		existingAgent := existingKS.agentStatus(canonical)
 		s.mu.RUnlock()
 		if isNonSessionAgent(existingAgent) {
 			nonSessionLifecycleError(w, existingAgent.Registration.AgentType)
@@ -160,6 +185,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 			Command:   req.Command,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: agentName,
+				Repos:       spawnRepos,
 			},
 		}
 	} else {
@@ -167,8 +193,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 			SessionID: sessionName,
 			Command:   spawnCommand,
 			BackendOpts: TmuxCreateOpts{
-				Width:  req.Width,
-				Height: req.Height,
+				Width:   req.Width,
+				Height:  req.Height,
+				WorkDir: spawnWorkDir,
 			},
 		}
 	}
@@ -183,14 +210,14 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	ks := s.getOrCreateSpace(spaceName)
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
-	if !exists {
+	agent := ks.agentStatus(canonical)
+	if agent == nil {
 		agent = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: spawned", agentName),
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[canonical] = agent
+		ks.setAgentStatus(canonical, agent)
 	}
 	agent.SessionID = sessionID
 	agent.BackendType = backend.Name()
@@ -217,6 +244,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 
 	// Capture closure variables before goroutine.
 	initialMsg := req.InitialMessage
+	cfgInitialPrompt := spawnInitialPrompt
 	spawnerIdentity := r.Header.Get("X-Agent-Name")
 	if spawnerIdentity == "" {
 		spawnerIdentity = "boss"
@@ -242,6 +270,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		if initialMsg != "" {
 			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
+		}
+		if cfgInitialPrompt != "" {
+			s.deliverInternalMessage(spaceName, agentName, "boss", cfgInitialPrompt)
 		}
 	}()
 
@@ -272,7 +303,7 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var sessionName string
 	if exists {
 		sessionName = agent.SessionID
@@ -414,7 +445,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var oldSession string
 	if exists {
 		oldSession = agent.SessionID
@@ -554,7 +585,7 @@ func (s *Server) handleAgentIntrospect(w http.ResponseWriter, r *http.Request, s
 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agent, exists := ks.agentStatusOk(canonical)
 	var sessionName string
 	if exists {
 		sessionName = agent.SessionID

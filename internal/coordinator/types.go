@@ -592,6 +592,9 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 
 	// Build all nodes
 	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil {
+			continue
+		}
 		ag := rec.Status
 		node := &HierarchyNode{
 			Agent:    name,
@@ -641,22 +644,26 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 // Must be called inside s.mu.Lock().
 func rebuildChildren(ks *KnowledgeSpace) {
 	// Reset all children slices
-	for _, ag := range ks.Agents {
-		ag.Children = nil
+	for _, rec := range ks.Agents {
+		if rec != nil && rec.Status != nil {
+			rec.Status.Children = nil
+		}
 	}
 	// Populate from Parent fields
-	for name, ag := range ks.Agents {
-		if ag.Parent == "" {
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil || rec.Status.Parent == "" {
 			continue
 		}
-		canonicalParent := resolveAgentName(ks, ag.Parent)
-		if parent, ok := ks.Agents[canonicalParent]; ok {
-			parent.Children = append(parent.Children, name)
+		canonicalParent := resolveAgentName(ks, rec.Status.Parent)
+		if parentRec, ok := ks.Agents[canonicalParent]; ok && parentRec != nil && parentRec.Status != nil {
+			parentRec.Status.Children = append(parentRec.Status.Children, name)
 		}
 	}
 	// Sort children for stable output
-	for _, ag := range ks.Agents {
-		sort.Strings(ag.Children)
+	for _, rec := range ks.Agents {
+		if rec != nil && rec.Status != nil {
+			sort.Strings(rec.Status.Children)
+		}
 	}
 }
 
@@ -678,11 +685,11 @@ func hasCycle(ks *KnowledgeSpace, agentName, proposedParent string) bool {
 		}
 		visited[current] = true
 		canonical := resolveAgentName(ks, current)
-		ag, ok := ks.Agents[canonical]
-		if !ok {
+		rec, ok := ks.Agents[canonical]
+		if !ok || rec == nil || rec.Status == nil {
 			break // dangling reference — no cycle through here
 		}
-		current = strings.ToLower(ag.Parent)
+		current = strings.ToLower(rec.Status.Parent)
 	}
 	return false
 }
@@ -698,11 +705,11 @@ func collectSubtree(ks *KnowledgeSpace, agentName string) []string {
 		current := queue[0]
 		queue = queue[1:]
 		result = append(result, current)
-		ag, ok := ks.Agents[current]
-		if !ok {
+		rec, ok := ks.Agents[current]
+		if !ok || rec == nil || rec.Status == nil {
 			continue
 		}
-		for _, child := range ag.Children {
+		for _, child := range rec.Status.Children {
 			if !visited[child] {
 				visited[child] = true
 				queue = append(queue, child)
@@ -744,12 +751,13 @@ func (u *AgentUpdate) Validate() error {
 	return nil
 }
 
-// TaskStalenessThreshold is how long an in_progress task must be un-updated
-// before it is flagged as stale.
-const TaskStalenessThreshold = 1 * time.Hour
-
-// computeTaskStaleness sets t.IsStale based on status and last update time.
-// Call this on a copy before returning a task in an API response.
-func computeTaskStaleness(t *Task) {
-	t.IsStale = t.Status == TaskStatusInProgress && time.Since(t.UpdatedAt) > TaskStalenessThreshold
+// setAgentConfig sets the durable config for the named agent.
+// Creates an AgentRecord if one does not exist.
+func (ks *KnowledgeSpace) setAgentConfig(name string, cfg *AgentConfig) {
+	rec := ks.Agents[name]
+	if rec == nil {
+		rec = &AgentRecord{}
+		ks.Agents[name] = rec
+	}
+	rec.Config = cfg
 }

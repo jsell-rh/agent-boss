@@ -123,15 +123,15 @@ func (s *Server) deliverInternalMessage(spaceName, agentName, senderName, messag
 
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, agentName)
-	ag, exists := ks.Agents[canonical]
-	if !exists {
+	ag := ks.agentStatus(canonical)
+	if ag == nil {
 		ag = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: pending message delivery", canonical),
 			Messages:  []AgentMessage{},
 			UpdatedAt: now,
 		}
-		ks.Agents[canonical] = ag
+		ks.setAgentStatus(canonical, ag)
 	}
 	if ag.Messages == nil {
 		ag.Messages = []AgentMessage{}
