@@ -372,10 +372,10 @@ func (s *Server) handleAgentInterrupt(w http.ResponseWriter, r *http.Request, sp
 
 	s.mu.RLock()
 	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.Agents[canonical]
+	agentStatus, exists := ks.agentStatusOk(canonical)
 	var sessionName string
 	if exists {
-		sessionName = agent.SessionID
+		sessionName = agentStatus.SessionID
 	}
 	s.mu.RUnlock()
 
@@ -383,8 +383,8 @@ func (s *Server) handleAgentInterrupt(w http.ResponseWriter, r *http.Request, sp
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
 		return
 	}
-	if isNonSessionAgent(agent) {
-		nonSessionLifecycleError(w, agent.Registration.AgentType)
+	if isNonSessionAgent(agentStatus) {
+		nonSessionLifecycleError(w, agentStatus.Registration.AgentType)
 		return
 	}
 	if sessionName == "" {
@@ -392,7 +392,7 @@ func (s *Server) handleAgentInterrupt(w http.ResponseWriter, r *http.Request, sp
 		return
 	}
 
-	backend := s.backendFor(agent)
+	backend := s.backendFor(agentStatus)
 	if !backend.SessionExists(sessionName) {
 		http.Error(w, fmt.Sprintf("session %q not found", sessionName), http.StatusNotFound)
 		return
