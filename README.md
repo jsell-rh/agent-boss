@@ -1,6 +1,6 @@
 # Boss Coordinator
 
-A lightweight shared memory bus for multi-agent AI coordination. Agents post structured status updates to a central HTTP server, which persists state as JSON and renders human-readable markdown.
+A shared memory bus for multi-agent AI coordination. Agents post structured status updates to a central HTTP server, which persists state as JSON (with optional SQLite backing) and renders human-readable markdown. A Vue 3 dashboard provides real-time mission control.
 
 
 <img width="2534" height="1985" alt="image" src="https://github.com/user-attachments/assets/dcf7db5a-08e7-49ad-b92f-5fcf4a277ff2" />
@@ -21,10 +21,10 @@ Boss gives agents a shared, persistent, structured document that acts as collect
 ```
 Agent A ──POST JSON──┐
 Agent B ──POST JSON──┤
-Agent C ──POST JSON──┼──▶ Boss Server ──▶ KnowledgeSpace (in-memory)
+Agent C ──POST JSON──┼──▶ Boss Server ──▶ KnowledgeSpace (in-memory + SQLite)
 Agent D ──POST JSON──┤         │                  │
 Agent E ──POST JSON──┘         ▼                  ▼
-                          feature.json       feature.md
+                          space.json          space.md
                          (structured)     (human-readable)
 ```
 
@@ -82,13 +82,27 @@ Things that degrade context warmth:
 
 ## Quick Start
 
-### Native Setup
-
 ```bash
 go build -o boss ./cmd/boss/
 DATA_DIR=./data ./boss serve
 open http://localhost:8899
 ```
+
+Server starts on `:8899` (configurable via `COORDINATOR_PORT`). Dashboard at `http://localhost:8899`. Data persists to `DATA_DIR` as JSON + rendered markdown.
+
+### Development (hot-reload frontend)
+
+During frontend development, run the Vite dev server and the Go binary together:
+
+```bash
+# Terminal 1 — Go backend
+DATA_DIR=./data ./boss serve
+
+# Terminal 2 — Vite dev server (proxies API to :8899)
+cd frontend && npm run dev
+```
+
+The Vite dev server proxies `/spaces`, `/events`, `/api`, and `/agent` to the Go backend. Open `http://localhost:5173` for the Vue app with hot-reload.
 
 ### Paude (Secure Container) Setup
 
@@ -107,45 +121,9 @@ DATA_DIR=./data ./boss serve
 
 # 4. Boot all agents in secure containers
 ./scripts/boss.sh sdk-backend-replacement
-
-# 5. Monitor and manage agents
-./scripts/boss.sh status
-./scripts/boss.sh connect API
 ```
 
-**Paude Benefits:**
-- 🔒 **Network-filtered security**: Agents can't exfiltrate data even with dangerous tools
-- ⚡ **YOLO mode**: `--privileged` containers with minimal human interrupts  
-- 🤖 **Auto-coordination**: Agents register with Boss and get ignition context automatically
-- 🔄 **Crash recovery**: Containers restart and re-ignite from blackboard state
-- 📡 **Full integration**: Tmux sessions + HTTP API + git commit hooks preserved
-- 🎯 **Role-based focus**: Each agent gets specific source file assignments
-
-**Paude Commands:**
-```bash
-# Build and deployment
-./scripts/build-paude-claude.sh                  # Build integrated image
-./scripts/boss.sh start                          # Start all agents
-./scripts/boss.sh stop                           # Stop all agents  
-
-# Agent management  
-./scripts/boss.sh status                         # Container + Boss status
-./scripts/boss.sh connect API                    # Interactive shell access
-./scripts/boss.sh restart CP                     # Restart crashed agent
-./scripts/boss.sh test                           # Test broadcast feature
-
-# Advanced usage
-./scripts/boss.sh my-workspace                   # Custom workspace
-podman logs paude-workspace-agent                # Debug container logs
-```
-
-**Integration Details:**
-- **Image**: `localhost/paude-claude:latest` (Paude + Claude Code + coordination)
-- **Agents**: API, SDK, CLI, CP, FE, BE, Cluster, Overlord, Reviewer, Paude
-- **Auto-features**: Boss registration, ignition context, git commit notifications
-- **Security**: Network filtering, container isolation, safe dangerous tools
-
-See [docs/paude.md](docs/paude.md) for complete integration guide and architecture details.
+See [docs/paude.md](docs/paude.md) for the complete integration guide.
 
 ## API Reference
 
@@ -170,22 +148,60 @@ See [docs/api-reference.md](docs/api-reference.md) for the full API reference in
 | `DELETE` | `/spaces/{space}/agent/{name}` | Remove agent from space |
 | `GET` | `/spaces/{space}/api/agents` | All agents as JSON map |
 
-### Messages
+### Messages & Conversations
+
+Agents communicate point-to-point via the message API. The dashboard renders a Conversations view grouped by agent pairs.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/spaces/{space}/agent/{name}/message` | Send a message to an agent |
 | `GET` | `/spaces/{space}/agent/{name}/messages` | Read messages with cursor pagination |
-| `POST` | `/spaces/{space}/agent/{name}/message/{id}/ack` | Acknowledge a message |
+| `POST` | `/spaces/{space}/agent/{name}/message/{id}/ack` | Acknowledge a message (marks read) |
 
-### Registration & Heartbeat
+**Cursor pagination:** `GET /messages?since=<cursor>` returns only new messages since the last check-in. The response includes a `cursor` field to save for the next call. This avoids re-reading the full history on every check-in.
 
-For non-tmux agents (scripts, CLI tools, remote processes):
+**Message priority:** Messages carry a `priority` field: `info`, `directive`, or `urgent`.
+
+### Tasks (Kanban Board)
+
+A built-in Kanban board tracks work items across a space. Tasks move through columns: `backlog → in_progress → review → done` (or `blocked`). The Vue dashboard renders the board with column-based task cards.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/spaces/{space}/agent/{name}/register` | Register agent with capabilities and callback URL |
+| `GET` | `/spaces/{space}/tasks` | List tasks (filter: `?status=`, `?assigned_to=`, `?priority=`) |
+| `POST` | `/spaces/{space}/tasks` | Create a task |
+| `GET` | `/spaces/{space}/tasks/{id}` | Get task detail |
+| `PUT` | `/spaces/{space}/tasks/{id}` | Update task fields |
+| `DELETE` | `/spaces/{space}/tasks/{id}` | Delete a task |
+| `POST` | `/spaces/{space}/tasks/{id}/move` | Move task to a different status column |
+| `POST` | `/spaces/{space}/tasks/{id}/assign` | Assign task to an agent |
+| `POST` | `/spaces/{space}/tasks/{id}/comment` | Add a comment to a task |
+| `POST` | `/spaces/{space}/tasks/{id}/subtasks` | Create a subtask under this task |
+
+When a task is assigned, the coordinator automatically sends a `task_assigned` message to the assigned agent's inbox and delivers a notification in their `#### Messages` section.
+
+Task fields: `id`, `title`, `description`, `status`, `priority` (`low`/`medium`/`high`/`urgent`), `assigned_to`, `labels`, `parent_task`, `subtasks`, `linked_branch`, `linked_pr`, `comments`, `events`.
+
+### Registration & Heartbeat
+
+For non-tmux agents (scripts, CLI tools, remote processes, HTTP services):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/spaces/{space}/agent/{name}/register` | Register agent with type, capabilities, and optional callback URL |
 | `POST` | `/spaces/{space}/agent/{name}/heartbeat` | Send liveness heartbeat |
+
+Registration fields:
+
+| Field | Description |
+|-------|-------------|
+| `agent_type` | `"tmux"`, `"http"`, `"cli"`, `"script"`, `"remote"` |
+| `capabilities` | Free-form list: `["code", "research", "review"]` |
+| `heartbeat_interval_sec` | Expected heartbeat cadence (0 = no tracking) |
+| `callback_url` | Webhook URL for push message delivery instead of polling |
+| `parent` | Manager agent name for hierarchy pre-registration |
+
+Registration is optional for tmux agents (backward compatible) but required for HTTP agents that want heartbeat tracking or webhook delivery.
 
 ### SSE Streams
 
@@ -199,20 +215,36 @@ Real-time push events. Per-agent streams deliver only events targeted at that ag
 
 ### Lifecycle
 
+Manage agent tmux sessions remotely. Agents registered with `agent_type != "tmux"` receive `HTTP 422` from these endpoints with an error directing them to manage their own process externally.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/spaces/{space}/agent/{name}/spawn` | Start agent tmux session |
-| `POST` | `/spaces/{space}/agent/{name}/stop` | Stop agent tmux session |
-| `POST` | `/spaces/{space}/agent/{name}/restart` | Restart agent tmux session |
-| `GET` | `/spaces/{space}/agent/{name}/introspect` | Agent registration + liveness info |
-| `GET` | `/spaces/{space}/agent/{name}/history` | Historical status snapshots |
-| `GET` | `/spaces/{space}/history` | All-agent history for a space |
+| `POST` | `/spaces/{space}/agent/{name}/spawn` | Create tmux session and launch agent command |
+| `POST` | `/spaces/{space}/agent/{name}/stop` | Kill agent's tmux session |
+| `POST` | `/spaces/{space}/agent/{name}/restart` | Kill and respawn agent's tmux session |
+| `GET` | `/spaces/{space}/agent/{name}/introspect` | Registration info, liveness state, and captured pane output |
+| `GET` | `/spaces/{space}/agent/{name}/history` | Historical status snapshots for an agent |
+| `GET` | `/spaces/{space}/history` | All-agent history snapshots for a space |
+
+Spawn options (POST body): `tmux_session`, `command` (default: `claude --dangerously-skip-permissions`), `width`, `height`. On spawn, the server automatically sends a `/boss.ignite` command to the new session after a 5-second initialization delay.
+
+### Agent Hierarchy
+
+Agents can declare a `parent` to form a management tree. The coordinator tracks the hierarchy and renders it in the dashboard.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/spaces/{space}/hierarchy` | Full hierarchy tree as JSON |
+
+Set hierarchy via status POST: include `"parent": "ManagerName"` and `"role": "Developer"`. Both are sticky once set.
 
 ### Ignition
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/spaces/{space}/ignition/{agent}?session_id=` | Bootstrap agent with context + task |
+| `GET` | `/spaces/{space}/ignition/{agent}?session_id=` | Bootstrap agent with context, peer list, standing orders, and pending messages |
+
+Append `&parent=NAME&role=ROLE` to pre-register hierarchy position. The `session_id` is sticky — the server preserves it after first registration.
 
 ### Shared Data
 
@@ -238,8 +270,12 @@ Routes without `/spaces/` prefix operate on the `"default"` space:
   "status": "active",
   "summary": "One-line summary (required)",
   "branch": "feat/my-feature",
-  "phase": "2.5b",
+  "pr": "#42",
+  "repo_url": "https://github.com/org/repo",
+  "phase": "implementation",
   "test_count": 88,
+  "parent": "ManagerAgent",
+  "role": "Developer",
   "items": ["bullet point 1", "bullet point 2"],
   "sections": [
     {
@@ -261,11 +297,21 @@ Routes without `/spaces/` prefix operate on the `"default"` space:
 
 | Status | Emoji | Meaning |
 |--------|-------|---------|
-| `active` | green | Currently working |
-| `done` | checkmark | Work complete |
-| `blocked` | red | Waiting on dependency |
-| `idle` | pause | Standing by |
-| `error` | X | Something failed |
+| `active` | 🟢 | Currently working |
+| `done` | ✅ | Work complete |
+| `blocked` | 🔴 | Waiting on dependency |
+| `idle` | ⏸️ | Standing by |
+| `error` | ❌ | Something failed |
+
+### Sticky Fields
+
+Several fields are preserved across status POSTs once sent — omitting them does not clear them:
+
+| Field | Description |
+|-------|-------------|
+| `repo_url` | Full HTTPS URL of the git repository (used for dashboard PR links) |
+| `parent` | Manager agent name (hierarchy) |
+| `session_id` | Registered via `?session_id=` on the ignition endpoint |
 
 ### Plain Text Fallback
 
@@ -294,11 +340,6 @@ curl -X POST http://localhost:8899/spaces/my-feature/agent/API \
   -H 'X-Agent-Name: Bob' \
   -H 'Content-Type: application/json' \
   -d '{"status":"active","summary":"impersonation attempt"}'
-
-# Rejected (400): missing header
-curl -X POST http://localhost:8899/spaces/my-feature/agent/API \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"active","summary":"no identity"}'
 ```
 
 ## Distributed Agent Architecture
@@ -316,11 +357,113 @@ The `AgentUpdate` schema is the declassification boundary. Agents distill privil
 
 ## Persistence
 
-On every mutation the server writes two files to `DATA_DIR`:
+On every mutation the server writes files to `DATA_DIR`:
 
 | File | Format | Purpose |
 |------|--------|---------|
 | `{space}.json` | Structured JSON | Source of truth, loaded on startup |
 | `{space}.md` | Rendered markdown | Human-readable snapshot |
+| `{space}-history.json` | Append-only NDJSON | Status snapshots for the history API |
 
-The `.md` file is regenerated from the `.json` on every write. It is not read back by the server — the JSON is canonical.
+The `.md` file is regenerated from the `.json` on every write. JSON is canonical.
+
+An optional SQLite backend (via the `db/` package) is available for deployments that need relational queries or concurrent write durability beyond file-based storage.
+
+## Observability
+
+The server emits structured domain events to `DATA_DIR/events.jsonl`. Each event carries a timestamp, type, and context:
+
+| Category | Event Types |
+|----------|------------|
+| Agent lifecycle | `agent.spawned`, `agent.stopped`, `agent.restarted` |
+| Agent status | `agent.status_updated`, `agent.created`, `agent.removed` |
+| Message delivery | `message.delivered`, `message.acked`, `webhook.delivered` |
+| Liveness | `liveness.agent_stale`, `liveness.heartbeat_received`, `liveness.nudge_triggered` |
+| Registration | `registration.agent_registered` |
+| Persistence | `persistence.space_loaded`, `persistence.space_created` |
+
+## CI
+
+GitHub Actions runs on every pull request and push to `main`:
+
+```yaml
+go test -race -v ./internal/coordinator/
+```
+
+## Project Structure
+
+```
+cmd/boss/main.go                          CLI entrypoint (serve, post, check)
+internal/coordinator/
+  types.go                                AgentUpdate, Task, KnowledgeSpace, markdown renderer
+  server.go                               HTTP server, routing, persistence, SSE
+  handlers_agent.go                       Agent POST/GET/DELETE, ignition, messaging
+  handlers_space.go                       Space-level routes (raw, contracts, archive, tasks)
+  handlers_sse.go                         SSE stream endpoints
+  handlers_task.go                        Task CRUD + move/assign/comment/subtask actions
+  lifecycle.go                            Spawn/stop/restart/introspect (tmux lifecycle)
+  liveness.go                             Heartbeat tracking, staleness detection
+  protocol.go                             Agent registration and webhook delivery
+  history.go                              Status snapshot append and query
+  journal.go                              Structured event logging
+  logger.go                               Domain event types and write-ahead log
+  session_backend.go                      Session backend interface
+  session_backend_tmux.go                 tmux session backend
+  session_backend_ambient.go              Ambient (non-tmux) session backend
+  storage.go                              JSON file persistence
+  db/                                     SQLite/GORM storage layer
+  db_adapter.go                           Storage interface adapter
+  deck.go                                 Multi-space deck management
+  client.go                               Go client for programmatic access
+  frontend_embed.go                       go:embed declaration for Vue dist
+  frontend/                               Vue build output (gitignored, built by npm run build)
+  server_test.go                          Integration tests with -race
+frontend/
+  src/                                    Vue 3 + TypeScript source
+  vite.config.ts                          Vite config (outDir → ../internal/coordinator/frontend)
+data/
+  {space}.json                            Source of truth per space
+  {space}.md                              Rendered markdown snapshot
+  {space}-history.json                    Append-only status snapshot log
+  events.jsonl                            Structured domain event log
+docs/                                     Architecture specs and design documents
+```
+
+## Key Conventions
+
+- Vue SPA is embedded in the binary via `//go:embed all:frontend` in `frontend_embed.go`
+- `npm run build` inside `frontend/` must run before `go build` to populate the embed dir
+- `FRONTEND_DIR` env var overrides the embedded assets at runtime (useful during development)
+- JSON is canonical; `.md` files are regenerated from JSON on every write
+- Agent channel enforcement: POST requires `X-Agent-Name` header matching the URL path agent name
+- Agent updates are structured JSON (`AgentUpdate` in `types.go`), not raw markdown
+- Non-tmux agents (registered with `agent_type != "tmux"`) receive HTTP 422 from lifecycle endpoints with an error message directing them to manage their own process
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COORDINATOR_PORT` | `8899` | Server listen port |
+| `DATA_DIR` | `./data` | Persistence directory |
+| `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
+
+## Build
+
+The Vue frontend is embedded in the Go binary via `//go:embed`. You must build the frontend before building Go:
+
+```bash
+# Step 1: Build the Vue frontend (outputs to internal/coordinator/frontend/)
+cd frontend && npm install && npm run build && cd ..
+
+# Step 2: Build the Go binary (embeds the compiled frontend)
+go build -o boss ./cmd/boss/
+```
+
+The binary is self-contained — no `FRONTEND_DIR` env var needed at runtime.
+
+## Test
+
+```bash
+go test -race -v ./internal/coordinator/
+```
