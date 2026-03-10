@@ -3537,3 +3537,52 @@ func TestStaleTaskDetection(t *testing.T) {
 		t.Error("done task should never be stale regardless of age")
 	}
 }
+
+// TestSkipPermissionsDefaultOff verifies that the global allowSkipPermissions flag
+// defaults to false and that setting BOSS_ALLOW_SKIP_PERMISSIONS=true enables it.
+func TestSkipPermissionsDefaultOff(t *testing.T) {
+	// Default: flag must be off.
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	if srv.allowSkipPermissions {
+		t.Error("allowSkipPermissions should be false by default")
+	}
+}
+
+func TestSkipPermissionsEnvVar(t *testing.T) {
+	t.Setenv("BOSS_ALLOW_SKIP_PERMISSIONS", "true")
+	dataDir := t.TempDir()
+	srv := NewServer(":0", dataDir)
+	if !srv.allowSkipPermissions {
+		t.Error("allowSkipPermissions should be true when BOSS_ALLOW_SKIP_PERMISSIONS=true")
+	}
+}
+
+// TestTaskAssignNudgesAgent verifies that assigning a task schedules a tmux nudge
+// for the assigned agent so they are prompted to check in. GH-81 regression test.
+func TestTaskAssignNudgesAgent(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "nudgetaskspace"
+
+	// Create a task and assign it to an agent.
+	postTaskJSON(t, taskURL(base, space, ""), map[string]any{
+		"title": "Work item", "assigned_to": "Worker",
+	}, "Boss").Body.Close()
+
+	// Nudge should be queued for Worker. resolveAgentName preserves input case for
+	// unregistered agents, so check case-insensitively.
+	srv.nudgeMu.Lock()
+	var found bool
+	for k := range srv.nudgePending {
+		if strings.EqualFold(k, space+"/Worker") {
+			found = true
+			break
+		}
+	}
+	srv.nudgeMu.Unlock()
+	if !found {
+		t.Error("expected nudge to be queued for Worker after task assignment, but nudgePending was empty")
+	}
+}
