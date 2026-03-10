@@ -77,8 +77,11 @@ const tasksByStatus = computed(() => {
   const groups: Record<TaskStatus, Task[]> = {
     backlog: [], in_progress: [], review: [], blocked: [], done: [],
   }
+  // Only show top-level tasks in columns; subtasks appear nested under their parents.
   for (const t of filteredTasks.value) {
-    groups[t.status]?.push(t)
+    if (!t.parent_task) {
+      groups[t.status]?.push(t)
+    }
   }
   // Sort each column: overdue tasks first (by due_at asc), then tasks with due dates, then no due date
   for (const col of Object.values(groups)) {
@@ -335,6 +338,7 @@ onUnmounted(() => {
         :key="status"
         :status="status"
         :tasks="tasksByStatus[status]"
+        :all-tasks="tasks"
         :dragging-task-id="draggingTaskId"
         @task-click="openTask"
         @task-drop="onTaskDrop"

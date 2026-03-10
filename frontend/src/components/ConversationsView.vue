@@ -112,13 +112,27 @@ function unreadCount(conv: Conversation): number {
   // Agent-to-agent conversations never show unread badges
   if (!isBossConversation(conv)) return 0
   if (readKeys.value.has(conv.key)) return 0
-  // Count messages not yet read (prefer backend read field when available)
-  return conv.messages.filter(m => m.read === false || m.read === undefined).length
+  // Only count messages directed at boss that haven't been acknowledged on the backend
+  return conv.messages.filter(m => m.recipient === 'boss' && !m.read).length
 }
 
-// Mark conversation as read when selected
+// ACK all unread messages to boss in a conversation so the backend persists read state.
+// This clears the sidebar badge (which reads msg.read from live space data) and ensures
+// the conversation stays read after navigate-away + return.
+function ackBossMessages(conv: Conversation) {
+  if (!isBossConversation(conv)) return
+  const unread = conv.messages.filter(m => m.recipient === 'boss' && !m.read)
+  for (const msg of unread) {
+    api.ackMessage(props.space.name, 'boss', msg.id, 'boss').catch(() => {})
+  }
+}
+
+// Mark conversation as read (optimistic local state) and ACK on backend
 watch(selectedKey, key => {
-  if (key) readKeys.value.add(key)
+  if (!key) return
+  readKeys.value.add(key)
+  const conv = conversations.value.find(c => c.key === key)
+  if (conv) ackBossMessages(conv)
 })
 
 // Pre-select from preselectAgent prop (set by App.vue from router param or when starting new conv)
@@ -243,7 +257,12 @@ function scrollThreadToBottom() {
 watch(selectedKey, () => scrollThreadToBottom())
 watch(
   () => selectedConversation.value?.messages.length,
-  () => scrollThreadToBottom(),
+  () => {
+    scrollThreadToBottom()
+    // ACK any new unread messages that arrived while this conversation is open
+    const conv = selectedConversation.value
+    if (conv) ackBossMessages(conv)
+  },
 )
 
 // ── Inline compose ──────────────────────────────────────────────────
