@@ -18,9 +18,27 @@ func writeJSONError(w http.ResponseWriter, msg string, code int) {
 }
 
 func (s *Server) logEvent(msg string) {
+	s.emit(DomainEvent{
+		Level:     LevelInfo,
+		EventType: EventGeneric,
+		Msg:       msg,
+	})
+}
+
+// emit records a domain event to the Logger and appends a formatted entry to
+// the in-memory EventLog ring buffer for backward compatibility.
+func (s *Server) emit(e DomainEvent) {
+	if e.Timestamp.IsZero() {
+		e.Timestamp = time.Now().UTC()
+	}
+	// Emit to structured logger (JSON or pretty, depending on runtime config).
+	if s.logger != nil {
+		s.logger.Log(e)
+	}
+	// Also retain in EventLog ring buffer for the dashboard /events endpoint.
 	s.eventMu.Lock()
 	defer s.eventMu.Unlock()
-	entry := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
+	entry := fmt.Sprintf("[%s] %s", e.Timestamp.Format("15:04:05"), e.Msg)
 	s.EventLog = append(s.EventLog, entry)
 	if len(s.EventLog) > EventLogCap {
 		s.EventLog = s.EventLog[len(s.EventLog)-EventLogCap:]

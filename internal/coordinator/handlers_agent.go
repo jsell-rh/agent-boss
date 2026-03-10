@@ -403,7 +403,9 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	// Log and broadcast SSE outside the lock (sseMu is distinct from s.mu — no deadlock).
 	// For subtree fan-out: fire-and-forget per recipient (async, 202 response).
 	for _, recipient := range recipients {
-		s.logEvent(fmt.Sprintf("[%s/%s] Message from %s: %s", spaceName, recipient, senderName, messageReq.Message))
+		s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgDelivered, Space: spaceName, Agent: recipient,
+			Msg:    fmt.Sprintf("message from %s delivered", senderName),
+			Fields: map[string]string{"sender": senderName, "priority": string(messageReq.Priority)}})
 		s.journal.Append(spaceName, EventMessageSent, recipient, &messageReq)
 		sseData, _ := json.Marshal(map[string]interface{}{
 			"space":    spaceName,
@@ -1225,7 +1227,9 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	s.mu.Unlock()
 
-	s.logEvent(fmt.Sprintf("[%s/%s] message %q acknowledged", spaceName, canonical, msgID))
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgAcked, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("message %q acknowledged", msgID),
+		Fields: map[string]string{"message_id": msgID}})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "acked", "message_id": msgID})
