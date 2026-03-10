@@ -318,6 +318,67 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 	})
 }
 
+// handleAgentInterrupt handles POST /spaces/{space}/agent/{name}/interrupt.
+// Sends an interrupt (Escape key for Claude Code) to the agent's session without killing it.
+func (s *Server) handleAgentInterrupt(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	s.mu.RLock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.Agents[canonical]
+	var sessionName string
+	if exists {
+		sessionName = agent.SessionID
+	}
+	s.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
+		return
+	}
+	if isNonSessionAgent(agent) {
+		nonSessionLifecycleError(w, agent.Registration.AgentType)
+		return
+	}
+	if sessionName == "" {
+		http.Error(w, fmt.Sprintf("agent %q has no registered session", canonical), http.StatusBadRequest)
+		return
+	}
+
+	backend := s.backendFor(agent)
+	if !backend.SessionExists(sessionName) {
+		http.Error(w, fmt.Sprintf("session %q not found", sessionName), http.StatusNotFound)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel()
+	if err := backend.Interrupt(ctx, sessionName); err != nil {
+		http.Error(w, fmt.Sprintf("interrupt session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStopped, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("interrupted (Escape sent to session %q)", sessionName),
+		Fields: map[string]string{"session_id": sessionName}})
+	s.broadcastSSE(spaceName, canonical, "agent_interrupted", canonical)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":    true,
+		"agent": canonical,
+	})
+}
+
 // handleAgentRestart handles POST /spaces/{space}/agent/{name}/restart.
 // Kills the existing session and spawns a new one.
 func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {

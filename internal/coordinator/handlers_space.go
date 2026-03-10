@@ -144,6 +144,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleAgentSpawn(w, r, spaceName, agentName)
 			case "stop":
 				s.handleAgentStop(w, r, spaceName, agentName)
+			case "interrupt":
+				s.handleAgentInterrupt(w, r, spaceName, agentName)
 			case "restart":
 				s.handleAgentRestart(w, r, spaceName, agentName)
 			case "introspect":
