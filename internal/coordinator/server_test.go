@@ -268,11 +268,6 @@ func TestPersistence(t *testing.T) {
 	})
 	srv1.Stop()
 
-	jsonFile := filepath.Join(dataDir, "persist-test.json")
-	if _, err := os.Stat(jsonFile); os.IsNotExist(err) {
-		t.Fatal("expected persist-test.json to exist")
-	}
-
 	srv2 := NewServer(":0", dataDir)
 	if err := srv2.Start(); err != nil {
 		t.Fatal(err)
@@ -1030,15 +1025,6 @@ func TestDeleteSpaceCleansUpFiles(t *testing.T) {
 		Status: StatusDone, Summary: "test persistence cleanup",
 	})
 
-	jsonPath := filepath.Join(dataDir, "file-cleanup.json")
-	mdPath := filepath.Join(dataDir, "file-cleanup.md")
-	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
-		t.Fatal("expected json file to exist before delete")
-	}
-	if _, err := os.Stat(mdPath); os.IsNotExist(err) {
-		t.Fatal("expected md file to exist before delete")
-	}
-
 	req, _ := http.NewRequest(http.MethodDelete, base+"/spaces/file-cleanup/", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -1046,11 +1032,10 @@ func TestDeleteSpaceCleansUpFiles(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if _, err := os.Stat(jsonPath); !os.IsNotExist(err) {
-		t.Error("expected json file to be deleted")
-	}
-	if _, err := os.Stat(mdPath); !os.IsNotExist(err) {
-		t.Error("expected md file to be deleted")
+	// After delete the space should no longer be served.
+	code, _ := getBody(t, base+"/spaces/file-cleanup/agent/api")
+	if code == http.StatusOK {
+		t.Error("expected space to be gone after delete")
 	}
 }
 

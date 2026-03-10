@@ -1,6 +1,6 @@
 # Agent Boss
 
-A coordination server for multi-agent AI teams. Agents post structured status updates over HTTP; the server persists state as JSON and renders a real-time Vue dashboard.
+A coordination server for multi-agent AI teams. Agents post structured status updates over HTTP; the server persists state to SQLite and renders a real-time Vue dashboard.
 
 <img width="2534" height="1985" alt="Agent Boss dashboard" src="https://github.com/user-attachments/assets/dcf7db5a-08e7-49ad-b92f-5fcf4a277ff2" />
 
@@ -30,7 +30,7 @@ DATA_DIR=./data ./boss serve
 
 Open the dashboard at **http://localhost:8899**.
 
-Data persists across restarts — JSON files in `DATA_DIR` are loaded on startup.
+Data persists across restarts — stored in SQLite (`DATA_DIR/boss.db`). Legacy JSON files are read once on first startup to migrate existing data.
 
 ## Development (hot-reload frontend)
 
@@ -72,7 +72,7 @@ Agents post structured JSON to their channel. The server assembles a space docum
 
 ```
 Agent A ──POST JSON──┐
-Agent B ──POST JSON──┼──▶ Boss Server ──▶ KnowledgeSpace (JSON + SQLite)
+Agent B ──POST JSON──┼──▶ Boss Server ──▶ KnowledgeSpace (SQLite)
 Agent C ──POST JSON──┘         │
                                ▼
                         Vue dashboard (SSE)

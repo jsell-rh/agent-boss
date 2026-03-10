@@ -142,44 +142,12 @@ func (s *Server) loadSpace(name string) (*KnowledgeSpace, error) {
 	return &ks, nil
 }
 
-const maxBackups = 10
-
-func (s *Server) rotateBackups(spaceName string) {
-	backupDir := filepath.Join(s.dataDir, "backups")
-	os.MkdirAll(backupDir, 0755)
-
-	base := filepath.Join(backupDir, spaceName+".json")
-	for i := maxBackups; i > 1; i-- {
-		src := fmt.Sprintf("%s.%d", base, i-1)
-		dst := fmt.Sprintf("%s.%d", base, i)
-		os.Rename(src, dst)
-	}
-
-	src := s.spacePath(spaceName)
-	dst := fmt.Sprintf("%s.%d", base, 1)
-	data, err := os.ReadFile(src)
-	if err == nil {
-		os.WriteFile(dst, data, 0644)
-	}
-}
 
 func (s *Server) saveSpace(ks *KnowledgeSpace) error {
-	// Persist to SQLite (primary store).
-	s.persistSpaceToDB(ks)
-
+	// Refresh protocol before persisting so SQLite receives the updated SharedContracts.
 	s.refreshProtocol(ks)
-	data, err := json.MarshalIndent(ks, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal %s: %w", ks.Name, err)
-	}
-	s.rotateBackups(ks.Name)
-	if err := os.WriteFile(s.spacePath(ks.Name), data, 0644); err != nil {
-		return err
-	}
-	md := ks.RenderMarkdown()
-	if err := os.WriteFile(s.spaceMarkdownPath(ks.Name), []byte(md), 0644); err != nil {
-		s.logEvent(fmt.Sprintf("warning: failed to write markdown for %q: %v", ks.Name, err))
-	}
+	// Persist to SQLite (primary store). JSON/.md files are migration-only artifacts.
+	s.persistSpaceToDB(ks)
 	return nil
 }
 
