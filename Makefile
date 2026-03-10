@@ -23,6 +23,7 @@ push-image:
 deploy:
 	oc apply -f deploy/openshift/namespace.yaml
 	oc process -f deploy/openshift/postgresql-credentials.yaml | oc apply -f -
+	oc process -f deploy/openshift/ambient-credentials.yaml | oc apply -f -
 	oc apply -f deploy/openshift/configmap.yaml
 	oc apply -f deploy/openshift/postgresql.yaml
 	oc apply -f deploy/openshift/deployment.yaml

@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -200,6 +201,12 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.Lock()
 		canonical := resolveAgentName(ks, agentName)
+		// Capture session info before removing the agent so we can cascade-delete.
+		var sessionID, backendType string
+		if agent, exists := ks.Agents[canonical]; exists && agent != nil {
+			sessionID = agent.SessionID
+			backendType = agent.BackendType
+		}
 		delete(ks.Agents, canonical)
 		rebuildChildren(ks) // keep children lists consistent after removal
 		ks.UpdatedAt = time.Now().UTC()
@@ -210,6 +217,21 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		s.mu.Unlock()
 		s.deleteAgentFromDB(spaceName, canonical)
+
+		// Cascade: kill the backing session if one exists.
+		if sessionID != "" {
+			backend := s.backendByName(backendType)
+			if backend != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := backend.KillSession(ctx, sessionID); err != nil {
+					s.logEvent(fmt.Sprintf("[%s/%s] warning: cascade delete session %s: %v", spaceName, canonical, sessionID, err))
+				} else {
+					s.logEvent(fmt.Sprintf("[%s/%s] cascade-deleted session %s (%s)", spaceName, canonical, sessionID, backend.Name()))
+				}
+				cancel()
+			}
+		}
+
 		s.logEvent(fmt.Sprintf("[%s/%s] agent removed", spaceName, canonical))
 		s.journal.Append(spaceName, EventAgentRemoved, canonical, nil)
 		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical})
@@ -917,21 +939,20 @@ func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.TmuxAutoDiscover(spaceName)
+	s.AutoDiscoverAll(spaceName)
 
 	s.mu.RLock()
 	type agentSession struct {
-		name    string
-		session string
+		name        string
+		session     string
+		backendType string
 	}
 	var pairs []agentSession
 	for name, agent := range ks.Agents {
-		pairs = append(pairs, agentSession{name: name, session: agent.SessionID})
+		pairs = append(pairs, agentSession{name: name, session: agent.SessionID, backendType: agent.BackendType})
 	}
 	s.mu.RUnlock()
 
-	backend := s.backends[s.defaultBackend]
-	available := backend.Available()
 	var results []agentSessionStatus
 	for i, p := range pairs {
 		st := agentSessionStatus{
@@ -939,21 +960,24 @@ func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request
 			Session:    p.session,
 			Registered: p.session != "",
 		}
-		if available && st.Registered {
-			st.Exists = backend.SessionExists(p.session)
-			if st.Exists {
-				st.Idle = backend.IsIdle(p.session)
-				if lines, err := backend.CaptureOutput(p.session, 1); err == nil && len(lines) > 0 {
-					st.LastLine = lines[0]
+		if st.Registered {
+			backend := s.backendByName(p.backendType)
+			if backend.Available() {
+				st.Exists = backend.SessionExists(p.session)
+				if st.Exists {
+					st.Idle = backend.IsIdle(p.session)
+					if lines, err := backend.CaptureOutput(p.session, 1); err == nil && len(lines) > 0 {
+						st.LastLine = lines[0]
+					}
+					approval := backend.CheckApproval(p.session)
+					st.NeedsApproval = approval.NeedsApproval
+					st.ToolName = approval.ToolName
+					st.PromptText = approval.PromptText
 				}
-				approval := backend.CheckApproval(p.session)
-				st.NeedsApproval = approval.NeedsApproval
-				st.ToolName = approval.ToolName
-				st.PromptText = approval.PromptText
 			}
 		}
 		results = append(results, st)
-		if available && i < len(pairs)-1 {
+		if i < len(pairs)-1 {
 			time.Sleep(300 * time.Millisecond)
 		}
 	}
@@ -1212,11 +1236,14 @@ type createAgentRequest struct {
 	Name    string `json:"name"`
 	WorkDir string `json:"work_dir,omitempty"`
 	Command string `json:"command,omitempty"`
-	Backend string `json:"backend,omitempty"` // "tmux" (default) or "cloud"
+	Backend string `json:"backend,omitempty"` // "tmux" (default) or "ambient"
 	Width   int    `json:"width,omitempty"`
 	Height  int    `json:"height,omitempty"`
 	Parent  string `json:"parent,omitempty"`
 	Role    string `json:"role,omitempty"`
+	// Ambient-specific fields
+	Repos []SessionRepo `json:"repos,omitempty"`
+	Task  string        `json:"task,omitempty"` // initial prompt for ambient sessions
 }
 
 // handleCreateAgents handles POST /spaces/{space}/agents.
@@ -1248,16 +1275,35 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		return
 	}
 
-	sessionName := tmuxDefaultSession(spaceName, req.Name)
-	sessionID, err := backend.CreateSession(r.Context(), SessionCreateOpts{
-		SessionID: sessionName,
-		Command:   req.Command,
-		BackendOpts: TmuxCreateOpts{
-			WorkDir: req.WorkDir,
-			Width:   req.Width,
-			Height:  req.Height,
-		},
-	})
+	var createOpts SessionCreateOpts
+	if backend.Name() == "ambient" {
+		command := req.Task
+		if command == "" {
+			command = req.Command
+		}
+		sessionName := tmuxDefaultSession(spaceName, req.Name)
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   command,
+			BackendOpts: AmbientCreateOpts{
+				DisplayName: req.Name,
+				Repos:       req.Repos,
+			},
+		}
+	} else {
+		sessionName := tmuxDefaultSession(spaceName, req.Name)
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   req.Command,
+			BackendOpts: TmuxCreateOpts{
+				WorkDir: req.WorkDir,
+				Width:   req.Width,
+				Height:  req.Height,
+			},
+		}
+	}
+
+	sessionID, err := backend.CreateSession(r.Context(), createOpts)
 	if err != nil {
 		writeJSONError(w, fmt.Sprintf("spawn: %v", err), http.StatusInternalServerError)
 		return
@@ -1266,19 +1312,20 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	// Register the new agent in the space.
 	ks := s.getOrCreateSpace(spaceName)
 	s.mu.Lock()
-	agentKey := strings.ToLower(req.Name)
-	agent, exists := ks.Agents[agentKey]
+	canonical := resolveAgentName(ks, req.Name)
+	agent, exists := ks.Agents[canonical]
 	if !exists {
 		agent = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: spawned via %s backend", req.Name, backendName),
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[agentKey] = agent
+		ks.Agents[canonical] = agent
 	}
 	agent.SessionID = sessionID
+	agent.BackendType = backend.Name()
 	if req.Parent != "" && agent.Parent == "" {
-		agent.Parent = strings.ToLower(req.Parent)
+		agent.Parent = resolveAgentName(ks, req.Parent)
 		rebuildChildren(ks)
 	}
 	if req.Role != "" && agent.Role == "" {
@@ -1296,7 +1343,16 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 
 	// Send ignite asynchronously after agent has time to initialize.
 	go func() {
-		time.Sleep(5 * time.Second)
+		if ab, ok := backend.(*AmbientSessionBackend); ok {
+			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] create: session did not reach running state: %v", spaceName, req.Name, err))
+				return
+			}
+		} else {
+			time.Sleep(5 * time.Second)
+		}
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, req.Name, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, req.Name, err))

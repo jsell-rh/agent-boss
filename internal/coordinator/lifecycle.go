@@ -17,7 +17,7 @@ func isNonSessionAgent(agent *AgentUpdate) bool {
 		return false
 	}
 	t := agent.Registration.AgentType
-	return t != "" && t != "tmux"
+	return t != "" && t != "tmux" && t != "ambient"
 }
 
 // nonSessionLifecycleError writes an HTTP 422 response explaining that session-based
@@ -97,6 +97,7 @@ type spawnRequest struct {
 	Command   string `json:"command,omitempty"`    // defaults to "claude --dangerously-skip-permissions"
 	Width     int    `json:"width,omitempty"`      // tmux window width, default 220
 	Height    int    `json:"height,omitempty"`     // tmux window height, default 50
+	Backend   string `json:"backend,omitempty"`    // "tmux" (default) or "ambient"
 }
 
 // handleAgentSpawn handles POST /spaces/{space}/agent/{name}/spawn.
@@ -115,6 +116,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		}
 	}
 
+	backendName := req.Backend
+	backend := s.backendByName(backendName)
+
 	sessionName := req.SessionID
 	if sessionName == "" {
 		sessionName = tmuxDefaultSession(spaceName, agentName)
@@ -132,22 +136,34 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		}
 	}
 
-	backend := s.backendByName("tmux")
-
-	if backend.SessionExists(sessionName) {
-		http.Error(w, fmt.Sprintf("tmux session %q already exists", sessionName), http.StatusConflict)
+	// For tmux, check if session already exists. Ambient generates its own IDs.
+	if backend.Name() == "tmux" && backend.SessionExists(sessionName) {
+		http.Error(w, fmt.Sprintf("session %q already exists", sessionName), http.StatusConflict)
 		return
 	}
 
 	ctx := context.Background()
-	sessionID, err := backend.CreateSession(ctx, SessionCreateOpts{
-		SessionID: sessionName,
-		Command:   req.Command,
-		BackendOpts: TmuxCreateOpts{
-			Width:  req.Width,
-			Height: req.Height,
-		},
-	})
+	var createOpts SessionCreateOpts
+	if backend.Name() == "ambient" {
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   req.Command,
+			BackendOpts: AmbientCreateOpts{
+				DisplayName: agentName,
+			},
+		}
+	} else {
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   req.Command,
+			BackendOpts: TmuxCreateOpts{
+				Width:  req.Width,
+				Height: req.Height,
+			},
+		}
+	}
+
+	sessionID, err := backend.CreateSession(ctx, createOpts)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("create session: %v", err), http.StatusInternalServerError)
 		return
@@ -156,20 +172,18 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	// Register session on the agent record
 	ks := s.getOrCreateSpace(spaceName)
 	s.mu.Lock()
-	agent, exists := ks.Agents[strings.ToLower(agentName)]
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.Agents[canonical]
 	if !exists {
-		canonical := resolveAgentName(ks, agentName)
-		agent = ks.Agents[canonical]
-	}
-	if agent == nil {
 		agent = &AgentUpdate{
 			Status:    StatusIdle,
 			Summary:   fmt.Sprintf("%s: spawned", agentName),
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.Agents[agentName] = agent
+		ks.Agents[canonical] = agent
 	}
 	agent.SessionID = sessionID
+	agent.BackendType = backend.Name()
 
 	// Set Parent from the spawner's identity (X-Agent-Name header), if not already set.
 	spawnerName := r.Header.Get("X-Agent-Name")
@@ -185,12 +199,22 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		s.mu.Unlock()
 	}
 
-	s.logEvent(fmt.Sprintf("[%s/%s] spawned in session %q", spaceName, agentName, sessionID))
+	s.logEvent(fmt.Sprintf("[%s/%s] spawned in session %q (backend: %s)", spaceName, agentName, sessionID, backend.Name()))
 	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
 
 	// Send ignite asynchronously after agent has time to initialize
 	go func() {
-		time.Sleep(5 * time.Second)
+		if ab, ok := backend.(*AmbientSessionBackend); ok {
+			// Poll until the ambient session is running before sending ignite.
+			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] spawn: session did not reach running state: %v", spaceName, agentName, err))
+				return
+			}
+		} else {
+			time.Sleep(5 * time.Second)
+		}
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentName, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] spawn: ignite send failed: %v (ignite manually)", spaceName, agentName, err))
@@ -200,10 +224,11 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":           true,
-		"agent":        agentName,
+		"ok":         true,
+		"agent":      agentName,
 		"session_id": sessionID,
-		"space":        spaceName,
+		"space":      spaceName,
+		"backend":    backend.Name(),
 	})
 }
 
@@ -343,16 +368,27 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	s.mu.Unlock()
 
 	// Create new session
-	newSession := tmuxDefaultSession(spaceName, canonical)
-	if backend.SessionExists(newSession) {
-		newSession = newSession + "-new"
+	var createOpts SessionCreateOpts
+	if backend.Name() == "ambient" {
+		createOpts = SessionCreateOpts{
+			Command: command,
+			BackendOpts: AmbientCreateOpts{
+				DisplayName: canonical,
+			},
+		}
+	} else {
+		newSession := tmuxDefaultSession(spaceName, canonical)
+		if backend.SessionExists(newSession) {
+			newSession = newSession + "-new"
+		}
+		createOpts = SessionCreateOpts{
+			SessionID: newSession,
+			Command:   command,
+		}
 	}
 
 	ctx2 := context.Background()
-	sessionID, err := backend.CreateSession(ctx2, SessionCreateOpts{
-		SessionID: newSession,
-		Command:   command,
-	})
+	sessionID, err := backend.CreateSession(ctx2, createOpts)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("create new session: %v", err), http.StatusInternalServerError)
 		return
@@ -371,7 +407,16 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 
 	// Send ignite asynchronously after agent has time to initialize
 	go func() {
-		time.Sleep(5 * time.Second)
+		if ab, ok := backend.(*AmbientSessionBackend); ok {
+			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] restart: session did not reach running state: %v", spaceName, canonical, err))
+				return
+			}
+		} else {
+			time.Sleep(5 * time.Second)
+		}
 		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, canonical, spaceName)
 		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] restart: ignite send failed: %v", spaceName, canonical, err))
@@ -381,8 +426,8 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":           true,
-		"agent":        canonical,
+		"ok":         true,
+		"agent":      canonical,
 		"session_id": sessionID,
 	})
 }
