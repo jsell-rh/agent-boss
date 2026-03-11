@@ -1,8 +1,8 @@
 ## Agent Communication Protocol
 
-### Coordinator (8899)
+### Coordinator
 
-All agents use `http://localhost:8899` exclusively.
+All agents use `{COORDINATOR_URL}` exclusively.
 
 Space: `{SPACE}`
 
@@ -12,30 +12,30 @@ Space: `{SPACE}`
 
 | Action | Command |
 |--------|---------|
-| Post status (JSON) | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{name} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"...","summary":"...","items":[...]}'` |
-| Send message to agent | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: {sender}' -d '{"message":"..."}'` |
-| Read my section | `curl -s http://localhost:8899/spaces/{SPACE}/agent/{name}` |
-| Read full blackboard | `curl -s http://localhost:8899/spaces/{SPACE}/raw` |
-| Poll my messages | `curl -s "http://localhost:8899/spaces/{SPACE}/agent/{name}/messages?since=<cursor>"` |
-| ACK a message | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{name}/messages/{id}/ack -H 'X-Agent-Name: {name}'` |
-| Dashboard | `http://localhost:8899/spaces/{SPACE}/` |
+| Post status (JSON) | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"...","summary":"...","items":[...]}'` |
+| Send message to agent | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: {sender}' -d '{"message":"..."}'` |
+| Read my section | `curl -s {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}` |
+| Read full blackboard | `curl -s {COORDINATOR_URL}/spaces/{SPACE}/raw` |
+| Poll my messages | `curl -s "{COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages?since=<cursor>"` |
+| ACK a message | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages/{id}/ack -H 'X-Agent-Name: {name}'` |
+| Dashboard | `{COORDINATOR_URL}/spaces/{SPACE}/` |
 
 #### Task Management
 
 | Action | Command |
 |--------|---------|
-| Create task | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/tasks -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"title":"...","assigned_to":"...","priority":"high"}'` |
-| List tasks | `curl -s "http://localhost:8899/spaces/{SPACE}/tasks?assigned_to={name}&status=in_progress"` |
-| Move task status | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/tasks/{id}/move -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"done"}'` |
-| Update task (PR link) | `curl -s -X PUT http://localhost:8899/spaces/{SPACE}/tasks/{id} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"linked_pr":"#123"}'` |
+| Create task | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/tasks -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"title":"...","assigned_to":"...","priority":"high"}'` |
+| List tasks | `curl -s "{COORDINATOR_URL}/spaces/{SPACE}/tasks?assigned_to={name}&status=in_progress"` |
+| Move task status | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/tasks/{id}/move -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"done"}'` |
+| Update task (PR link) | `curl -s -X PUT {COORDINATOR_URL}/spaces/{SPACE}/tasks/{id} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"linked_pr":"#123"}'` |
 
 #### Agent Lifecycle (tmux agents)
 
 | Action | Command |
 |--------|---------|
-| Spawn | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{name}/spawn -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{}'` |
-| Restart | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{name}/restart -H 'X-Agent-Name: {name}'` |
-| Stop | `curl -s -X POST http://localhost:8899/spaces/{SPACE}/agent/{name}/stop -H 'X-Agent-Name: {name}'` |
+| Spawn | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/spawn -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{}'` |
+| Restart | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/restart -H 'X-Agent-Name: {name}'` |
+| Stop | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/stop -H 'X-Agent-Name: {name}'` |
 
 ### Rules
 
@@ -74,10 +74,10 @@ Space: `{SPACE}`
 
 ```bash
 # Initial fetch — get all pending messages + cursor
-curl -s "http://localhost:8899/spaces/{SPACE}/agent/{name}/messages"
+curl -s "{COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages"
 
 # Subsequent polls — pass cursor from previous response
-curl -s "http://localhost:8899/spaces/{SPACE}/agent/{name}/messages?since=<cursor>"
+curl -s "{COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages?since=<cursor>"
 ```
 
 Store the `cursor` and pass it as `?since=` on each poll. Empty `messages` = no new messages.

@@ -114,12 +114,13 @@ func (s *Server) buildMCPHandler() http.Handler {
 		Description: "The agent communication and collaboration protocol",
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		text := strings.ReplaceAll(protocolTemplate, "{COORDINATOR_URL}", s.localURL())
 		return &mcp.ReadResourceResult{
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      "boss://protocol",
 					MIMEType: "text/markdown",
-					Text:     protocolTemplate,
+					Text:     text,
 				},
 			},
 		}, nil

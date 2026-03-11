@@ -157,7 +157,9 @@ func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
 	}
 	// Only set protocol if SharedContracts is empty (don't overwrite manual edits)
 	if ks.SharedContracts == "" {
-		ks.SharedContracts = strings.ReplaceAll(protocolTemplate, "{SPACE}", ks.Name)
+		p := strings.ReplaceAll(protocolTemplate, "{SPACE}", ks.Name)
+		p = strings.ReplaceAll(p, "{COORDINATOR_URL}", s.localURL())
+		ks.SharedContracts = p
 	}
 }
 
