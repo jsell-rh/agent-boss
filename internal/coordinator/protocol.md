@@ -19,30 +19,9 @@ All coordinator interactions use **boss-mcp** tools. These are automatically ava
 | `move_task` | Change task status | `space`, `agent`, `task_id`, `status`, `reason` |
 | `update_task` | Update task fields | `space`, `agent`, `task_id`, `title`, `linked_pr`, `assigned_to` |
 
-### HTTP API (alternative for non-MCP clients)
+### HTTP API
 
-The HTTP API remains available at `{COORDINATOR_URL}` for clients that do not support MCP.
-
-#### Core Endpoints
-
-| Action | Command |
-|--------|---------|
-| Post status (JSON) | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"...","summary":"...","items":[...]}'` |
-| Send message to agent | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: {sender}' -d '{"message":"..."}'` |
-| Read my section | `curl -s {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}` |
-| Read full blackboard | `curl -s {COORDINATOR_URL}/spaces/{SPACE}/raw` |
-| Poll my messages | `curl -s "{COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages?since=<cursor>"` |
-| ACK a message | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/agent/{name}/messages/{id}/ack -H 'X-Agent-Name: {name}'` |
-| Dashboard | `{COORDINATOR_URL}/spaces/{SPACE}/` |
-
-#### Task Management
-
-| Action | Command |
-|--------|---------|
-| Create task | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/tasks -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"title":"...","assigned_to":"...","priority":"high"}'` |
-| List tasks | `curl -s "{COORDINATOR_URL}/spaces/{SPACE}/tasks?assigned_to={name}&status=in_progress"` |
-| Move task status | `curl -s -X POST {COORDINATOR_URL}/spaces/{SPACE}/tasks/{id}/move -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"status":"done"}'` |
-| Update task (PR link) | `curl -s -X PUT {COORDINATOR_URL}/spaces/{SPACE}/tasks/{id} -H 'Content-Type: application/json' -H 'X-Agent-Name: {name}' -d '{"linked_pr":"#123"}'` |
+An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhooks, CI pipelines, external tools). MCP is the primary interface for agents — use the boss-mcp tools above.
 
 ### Rules
 
