@@ -10,27 +10,24 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // buildMCPHandler creates the MCP server and returns an http.Handler for mounting at /mcp.
 func (s *Server) buildMCPHandler() http.Handler {
-	srv := mcpserver.NewMCPServer(
-		"boss",
-		"1.0.0",
-		mcpserver.WithResourceCapabilities(true, true),
-	)
+	srv := mcp.NewServer(&mcp.Implementation{
+		Name:    "boss",
+		Version: "1.0.0",
+	}, nil)
 
 	// Resource: boss://bootstrap/{space}/{agent}
 	// Returns the full agent ignition/bootstrap text for a specific agent.
-	bootstrapTemplate := mcp.NewResourceTemplate(
-		"boss://bootstrap/{space}/{agent}",
-		"Agent bootstrap instructions",
-		mcp.WithTemplateDescription("Full ignition prompt for a named agent in a space"),
-		mcp.WithTemplateMIMEType("text/plain"),
-	)
-	srv.AddResourceTemplate(bootstrapTemplate, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	srv.AddResourceTemplate(&mcp.ResourceTemplate{
+		URITemplate: "boss://bootstrap/{space}/{agent}",
+		Name:        "Agent bootstrap instructions",
+		Description: "Full ignition prompt for a named agent in a space",
+		MIMEType:    "text/plain",
+	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		uri := req.Params.URI
 		// Parse space and agent from URI: boss://bootstrap/{space}/{agent}
 		rest := strings.TrimPrefix(uri, "boss://bootstrap/")
@@ -58,42 +55,44 @@ func (s *Server) buildMCPHandler() http.Handler {
 		}
 		s.mu.RUnlock()
 
-		return []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      uri,
-				MIMEType: "text/plain",
-				Text:     text,
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{
+					URI:      uri,
+					MIMEType: "text/plain",
+					Text:     text,
+				},
 			},
 		}, nil
 	})
 
 	// Resource: boss://protocol
 	// Returns the embedded agent collaboration protocol.
-	protocolResource := mcp.NewResource(
-		"boss://protocol",
-		"Agent collaboration protocol",
-		mcp.WithResourceDescription("The agent communication and collaboration protocol"),
-		mcp.WithMIMEType("text/markdown"),
-	)
-	srv.AddResource(protocolResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-		return []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      "boss://protocol",
-				MIMEType: "text/markdown",
-				Text:     protocolTemplate,
+	srv.AddResource(&mcp.Resource{
+		URI:         "boss://protocol",
+		Name:        "Agent collaboration protocol",
+		Description: "The agent communication and collaboration protocol",
+		MIMEType:    "text/markdown",
+	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{
+					URI:      "boss://protocol",
+					MIMEType: "text/markdown",
+					Text:     protocolTemplate,
+				},
 			},
 		}, nil
 	})
 
 	// Resource template: boss://space/{space}/blackboard
 	// Returns the rendered markdown blackboard for a space.
-	blackboardTemplate := mcp.NewResourceTemplate(
-		"boss://space/{space}/blackboard",
-		"Space blackboard",
-		mcp.WithTemplateDescription("Current state of all agents in a space"),
-		mcp.WithTemplateMIMEType("text/markdown"),
-	)
-	srv.AddResourceTemplate(blackboardTemplate, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	srv.AddResourceTemplate(&mcp.ResourceTemplate{
+		URITemplate: "boss://space/{space}/blackboard",
+		Name:        "Space blackboard",
+		Description: "Current state of all agents in a space",
+		MIMEType:    "text/markdown",
+	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		uri := req.Params.URI
 		spaceName := strings.TrimPrefix(uri, "boss://space/")
 		spaceName = strings.TrimSuffix(spaceName, "/blackboard")
@@ -111,16 +110,21 @@ func (s *Server) buildMCPHandler() http.Handler {
 		}
 		s.mu.RUnlock()
 
-		return []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      uri,
-				MIMEType: "text/markdown",
-				Text:     md,
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{
+					URI:      uri,
+					MIMEType: "text/markdown",
+					Text:     md,
+				},
 			},
 		}, nil
 	})
 
-	return mcpserver.NewStreamableHTTPServer(srv)
+	return mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return srv },
+		nil,
+	)
 }
 
 // handleSettings handles GET and PATCH /settings.
