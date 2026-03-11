@@ -1331,6 +1331,64 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	json.NewEncoder(w).Encode(map[string]string{"status": "acked", "message_id": msgID})
 }
 
+// handleMessageResolve resolves a decision-type message with the operator's reply.
+// POST /spaces/{space}/agent/{agent}/message/{id}/resolve
+func (s *Server) handleMessageResolve(w http.ResponseWriter, r *http.Request, spaceName, agentName, msgID string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Resolution string `json:"resolution"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.agentStatusOk(canonical)
+	if !exists {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
+		return
+	}
+
+	found := false
+	for i := range agent.Messages {
+		if agent.Messages[i].ID == msgID {
+			agent.Messages[i].Resolved = true
+			agent.Messages[i].Resolution = req.Resolution
+			found = true
+			break
+		}
+	}
+	if !found {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("message %q not found", msgID), http.StatusNotFound)
+		return
+	}
+
+	ks.UpdatedAt = time.Now().UTC()
+	if err := s.saveSpace(ks); err != nil {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "resolved", "message_id": msgID})
+}
+
 // createAgentRequest is the body for POST /spaces/{space}/agents.
 type createAgentRequest struct {
 	Name           string `json:"name"`

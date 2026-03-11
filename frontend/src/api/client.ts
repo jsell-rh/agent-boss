@@ -103,6 +103,17 @@ class ApiClient {
     )
   }
 
+  resolveDecisionMessage(space: string, agent: string, messageId: string, resolution: string): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/message/${encodeURIComponent(messageId)}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      },
+    )
+  }
+
   fetchAgentHistory(space: string, agent: string): Promise<import('@/types').StatusSnapshot[]> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/history`,

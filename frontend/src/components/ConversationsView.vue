@@ -338,6 +338,8 @@ async function replyToDecision(msgId: string, agentName: string) {
   try {
     // Send the reply as a regular message to the agent
     await api.sendMessage(props.space.name, agentName, text, 'boss')
+    // Mark the decision message as resolved on the boss agent
+    await api.resolveDecisionMessage(props.space.name, 'boss', msgId, text)
     decisionReplyTexts.value[msgId] = ''
     decisionFeedback.value[msgId] = { ok: true, msg: 'Reply sent' }
     setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
