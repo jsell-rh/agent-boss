@@ -250,7 +250,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	// Capture closure variables before goroutine.
 	initialMsg := req.InitialMessage
 	cfgInitialPrompt := spawnInitialPrompt
-	cfgPersonaPrompt := s.assemblePersonaPrompt(spawnPersonas)
+	// Persona directives are now embedded directly in buildIgnitionText,
+	// so we no longer need to assemble them separately for delivery.
+	_ = spawnPersonas // used during spawn config resolution above
 	spawnerIdentity := r.Header.Get("X-Agent-Name")
 	if spawnerIdentity == "" {
 		spawnerIdentity = "boss"
@@ -278,23 +280,17 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		// Bootstrap the agent by sending a plain-text prompt that fetches
-		// the ignition context from the coordinator. This replaces the old
-		// /boss.ignite slash command which relied on symlinked command files.
-		ignitePrompt := fmt.Sprintf(
-			"You are %s, an autonomous AI agent in workspace %s.\n"+
-				"Fetch your ignition context and begin work immediately:\n"+
-				"curl -s %s/spaces/%s/ignition/%s\n"+
-				"Read the output and start your work loop.",
-			agentName, spaceName, s.localURL(), spaceName, agentName,
-		)
+		// Send the full ignition text directly via MCP-aware prompt.
+		// The agent has boss-mcp tools registered and can use them immediately.
+		s.mu.RLock()
+		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)
+		s.mu.RUnlock()
 		if err := backend.SendInput(sessionID, ignitePrompt); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
 				Msg: fmt.Sprintf("spawn: ignite send failed: %v (fetch manually: curl %s/spaces/%s/ignition/%s)", err, s.localURL(), spaceName, agentName)})
 		}
-		if cfgPersonaPrompt != "" {
-			s.deliverInternalMessage(spaceName, agentName, "boss", cfgPersonaPrompt)
-		}
+		// Persona directives are now included directly in the ignition text,
+		// so we no longer deliver them as a separate internal message.
 		if initialMsg != "" {
 			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
 		}
@@ -581,17 +577,9 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		// Send plain-text ignition prompt — no slash command required.
+		// Send ignition text directly — personas are included by buildIgnitionText.
 		s.mu.RLock()
 		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
-		// Prepend persona prompts if configured (mirrors handleIgnition and mcp_server.go).
-		if ks, ok := s.spaces[spaceName]; ok {
-			if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
-				if personaPrompt := s.assemblePersonaPrompt(cfg.Personas); personaPrompt != "" {
-					igniteText = personaPrompt + "\n\n" + igniteText
-				}
-			}
-		}
 		s.mu.RUnlock()
 		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,

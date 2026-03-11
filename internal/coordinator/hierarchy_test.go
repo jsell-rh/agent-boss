@@ -334,14 +334,9 @@ func TestIgnitionPostTemplateIncludesParent(t *testing.T) {
 		t.Fatalf("ignition: expected 200, got %d: %s", code, body)
 	}
 
-	// The POST template section must include "parent" field.
-	if !strings.Contains(body, `"parent"`) {
-		t.Errorf("ignition response missing \"parent\" field in POST template; body snippet: %s",
-			truncate(body, 500))
-	}
-	// The POST template must include "role" field.
-	if !strings.Contains(body, `"role"`) {
-		t.Errorf("ignition response missing \"role\" field in POST template; body snippet: %s",
+	// The "Your Last State" section must show the manager relationship.
+	if !strings.Contains(body, "Manager: Boss") {
+		t.Errorf("ignition response missing Manager in Your Last State; body snippet: %s",
 			truncate(body, 500))
 	}
 }

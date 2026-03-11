@@ -537,7 +537,7 @@ func TestProtocolInjectedOnNewSpace(t *testing.T) {
 	if !strings.Contains(md, "Space: `local-reconciler`") {
 		t.Error("{SPACE} not substituted in protocol")
 	}
-	if !strings.Contains(md, "POST /spaces/local-reconciler/agent/{name}") {
+	if !strings.Contains(md, "local-reconciler/agent/{name}") {
 		t.Error("{SPACE} not substituted in endpoint URLs")
 	}
 	if strings.Contains(md, "{SPACE}") {
@@ -1377,8 +1377,8 @@ func TestIgnitionEndpoint(t *testing.T) {
 	if !strings.Contains(body, "Peer") {
 		t.Error("missing peer agent in response")
 	}
-	if !strings.Contains(body, "/message") {
-		t.Error("ignition should document the /message endpoint")
+	if !strings.Contains(body, "send_message") {
+		t.Error("ignition should document the send_message tool")
 	}
 
 	// Verify tmux session was registered
@@ -1433,8 +1433,8 @@ func TestIgnitionShowsTaskListEndpoint(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", code)
 	}
-	if !strings.Contains(body, "/spaces/ignite-ep-test/tasks") {
-		t.Error("ignition should reference task list endpoint")
+	if !strings.Contains(body, "list_tasks") {
+		t.Error("ignition should reference the list_tasks tool")
 	}
 }
 
@@ -2809,9 +2809,9 @@ func TestIgnitionMentionsTasksEndpoint(t *testing.T) {
 
 	_, body := getBody(t, base+"/spaces/"+space+"/ignition/myagent")
 
-	// Ignition should mention the /tasks endpoint for discoverability
-	if !strings.Contains(body, "/tasks") {
-		t.Error("ignition response should mention the /tasks endpoint")
+	// Ignition should mention task tools for discoverability
+	if !strings.Contains(body, "create_task") {
+		t.Error("ignition response should mention the create_task tool")
 	}
 }
 
@@ -3402,13 +3402,13 @@ func TestIgnitionCollaborationNorms(t *testing.T) {
 
 	checks := []string{
 		"## Collaboration Norms",
-		"**Communication**",
-		"**Team Formation**",
-		"**Task Discipline**",
-		"**Hierarchy & Escalation**",
+		"**Communication:**",
+		"**Team Formation:**",
+		"**Task Discipline:**",
+		"**Hierarchy:**",
 		"## Work Loop",
-		"Read messages:",
-		"POST status update",
+		"check_messages",
+		"post_status",
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {

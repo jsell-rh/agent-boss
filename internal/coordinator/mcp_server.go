@@ -73,17 +73,8 @@ func (s *Server) buildMCPHandler() http.Handler {
 		}
 
 		s.mu.RLock()
+		// buildIgnitionText now includes persona directives directly.
 		text := s.buildIgnitionText(spaceName, agentName, "")
-		// Prepend assembled persona prompt if agent has personas configured.
-		if ks, ok := s.spaces[spaceName]; ok {
-			canonical := resolveAgentName(ks, agentName)
-			if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
-				personaPrompt := s.assemblePersonaPrompt(cfg.Personas)
-				if personaPrompt != "" {
-					text = personaPrompt + "\n\n" + text
-				}
-			}
-		}
 		s.mu.RUnlock()
 
 		return &mcp.ReadResourceResult{
@@ -152,6 +143,9 @@ func (s *Server) buildMCPHandler() http.Handler {
 			},
 		}, nil
 	})
+
+	// Register MCP tools for agent interactions.
+	s.registerMCPTools(srv)
 
 	handler := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server { return srv },

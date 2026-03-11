@@ -699,9 +699,6 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 // buildIgnitionText assembles the agent ignition/bootstrap text.
 // Must be called with s.mu.RLock held.
 func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) string {
-	// Get ks for the response builder. If the space doesn't exist yet
-	// (no sessionID, no previous posts), use an empty space so the
-	// response is well-formed.
 	ks, ok := s.spaces[spaceName]
 	if !ok {
 		ks = NewKnowledgeSpace(spaceName)
@@ -711,73 +708,76 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString(fmt.Sprintf("# Agent Ignition: %s\n\n", agentName))
 	b.WriteString(fmt.Sprintf("You are **%s**, an autonomous AI agent working in workspace **%s**.\n\n", agentName, spaceName))
 
+	// Persona directives — front and center, before operating instructions.
+	canonical := resolveAgentName(ks, agentName)
+	if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
+		personaPrompt := s.assemblePersonaPrompt(cfg.Personas)
+		if personaPrompt != "" {
+			b.WriteString("## Your Role & Persona\n\n")
+			b.WriteString("**IMPORTANT: The following directives define who you are and how you must behave. Follow them precisely.**\n\n")
+			b.WriteString(personaPrompt)
+			b.WriteString("\n\n")
+		}
+	}
+
 	b.WriteString("## Operating Mode\n\n")
 	b.WriteString("**You are running autonomously. There is no human at this terminal.**\n\n")
-	b.WriteString("- You do NOT have a conversational partner. Do not ask questions like \"Shall I...?\" or wait for confirmation.\n")
-	b.WriteString("- Messages from other agents or the boss are **instructions to act on immediately**, not conversation starters.\n")
-	b.WriteString("- Your ONLY means of communication is through `curl` commands to the coordinator API (described below).\n")
-	b.WriteString("- When you receive a new task via messages, **start working on it immediately** — do not ask for permission.\n")
-	b.WriteString("- If you need a decision from the boss, message your manager directly and continue working on what you can while waiting.\n")
-	b.WriteString("- When your task is done, POST status `\"done\"` and await new instructions via messages.\n")
+	b.WriteString("- You do NOT have a conversational partner. Do not ask questions or wait for confirmation.\n")
+	b.WriteString("- Messages from other agents or the boss are **instructions to act on immediately**.\n")
+	b.WriteString("- You interact with the coordinator using your **boss-mcp tools** (described below).\n")
+	b.WriteString("- When you receive a new task via messages, **start working on it immediately**.\n")
+	b.WriteString("- If you need a decision, use `send_message` to your manager and continue working on what you can.\n")
+	b.WriteString("- When your task is done, use `post_status` with status `\"done\"` and await new messages.\n")
 	b.WriteString("\n")
 
-	baseURL := s.localURL()
 	b.WriteString("## Coordinator\n\n")
-	b.WriteString(fmt.Sprintf("- Boss URL: `%s`\n", baseURL))
 	b.WriteString(fmt.Sprintf("- Workspace: `%s`\n", spaceName))
-	b.WriteString(fmt.Sprintf("- Your channel: `POST /spaces/%s/agent/%s`\n", spaceName, agentName))
-	b.WriteString(fmt.Sprintf("- Read blackboard: `GET /spaces/%s/raw`\n", spaceName))
-	b.WriteString(fmt.Sprintf("- Dashboard: `%s/spaces/%s/`\n", baseURL, spaceName))
-	b.WriteString(fmt.Sprintf("- Task list: `GET /spaces/%s/tasks` (filter: `?assigned_to=%s&status=in_progress`)\n", spaceName, agentName))
+	b.WriteString(fmt.Sprintf("- Agent name: `%s`\n", agentName))
 	if sessionID != "" {
 		b.WriteString(fmt.Sprintf("- Session: `%s` (pre-registered)\n", sessionID))
 	}
 	b.WriteString("\n")
 
+	b.WriteString("## MCP Tools (boss-mcp)\n\n")
+	b.WriteString("You have **boss-mcp** tools available. Use these for ALL coordinator interactions:\n\n")
+	b.WriteString("| Tool | Purpose |\n")
+	b.WriteString("| ---- | ------- |\n")
+	b.WriteString("| `post_status` | Report your current status, branch, PR, progress |\n")
+	b.WriteString("| `check_messages` | Poll for new messages (call at start of every work cycle) |\n")
+	b.WriteString("| `send_message` | Send a message to another agent or your parent |\n")
+	b.WriteString("| `ack_message` | Acknowledge a message you have acted on |\n")
+	b.WriteString("| `create_task` | Create a new task (always create before starting work) |\n")
+	b.WriteString("| `list_tasks` | List tasks, optionally filtered by status/assignee |\n")
+	b.WriteString("| `move_task` | Change task status: backlog → in_progress → review → done |\n")
+	b.WriteString("| `update_task` | Update task fields (title, PR link, assignee, etc.) |\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("All tools require `space: \"%s\"` and `agent: \"%s\"` parameters.\n\n", spaceName, agentName))
+
 	b.WriteString("## Protocol\n\n")
-	b.WriteString("1. **Read before write.** GET /raw first to see what others are doing.\n")
-	b.WriteString(fmt.Sprintf("2. **Post to your channel only.** POST to `/spaces/%s/agent/%s` with `-H 'X-Agent-Name: %s'`.\n", spaceName, agentName, agentName))
-	b.WriteString("3. **Escalate decisions** — message your manager directly; for boss-level decisions, message the boss agent channel.\n")
-	b.WriteString("4. **Include location fields** in every POST: `branch`, `pr`, `test_count`.\n")
-	if sessionID != "" {
-		b.WriteString(fmt.Sprintf("5. **Session is pre-registered.** Your session `%s` is already known to the coordinator. It is sticky — you do not need to include `session_id` in your POSTs.\n", sessionID))
-	} else {
-		b.WriteString("5. **Register your session.** Include `\"session_id\"` in your first POST. Find it with `tmux display-message -p '#S'`. It is sticky — you only need to send it once.\n")
-	}
-	b.WriteString(fmt.Sprintf("6. **Check your messages.** When you read `/raw`, look for a `#### Messages` section under your agent name. Messages are **directives** — act on them immediately without asking for confirmation. To send a message to another agent: `curl -s -X POST %s/spaces/%s/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"message\": \"...\"}'`\n", baseURL, spaceName, agentName))
-	b.WriteString("7. **Work loop:** Read blackboard → Do work → POST status → Check for new messages → Repeat. Do not stop and wait for human input.\n")
+	b.WriteString("1. **Check messages first.** Use `check_messages` at the start of every work cycle.\n")
+	b.WriteString("2. **Post status regularly.** Use `post_status` at least every 10 minutes during active work.\n")
+	b.WriteString("3. **Include location fields** in every status update: `branch`, `pr`, `test_count`.\n")
+	b.WriteString("4. **Escalate decisions** — use `send_message` to your manager; for boss-level decisions, message the boss agent.\n")
+	b.WriteString("5. **ACK messages** you have acted on using `ack_message`.\n")
+	b.WriteString("6. **Task discipline** — create a task before starting work, move it through statuses, link your PR.\n")
 	b.WriteString("\n")
 
 	b.WriteString("## Collaboration Norms\n\n")
-	b.WriteString("You are part of a multi-agent team. Follow these rules:\n\n")
-	b.WriteString("**Communication**\n")
-	b.WriteString(fmt.Sprintf("- Message peers and managers: `POST /spaces/%s/agent/{target}/message`\n", spaceName))
-	b.WriteString("- Use messages for coordination — do not rely solely on /raw status updates\n")
-	b.WriteString("- Check messages at the start of every work cycle\n\n")
-	b.WriteString("**Team Formation**\n")
-	b.WriteString("- Any task you cannot complete alone in one session → form a team\n")
-	b.WriteString("- Create subtasks FIRST, then spawn agents, then delegate via message\n")
-	b.WriteString("- Include TASK-{id} in every delegation message\n\n")
-	b.WriteString("**Task Discipline**\n")
-	b.WriteString("- Every piece of work has a task (create it before starting)\n")
-	b.WriteString("- Set task status to `in_progress` when you begin\n")
-	b.WriteString("- Update task with PR number when you open one\n")
-	b.WriteString("- Set task to `done` when merged and verified\n\n")
-	b.WriteString("**Hierarchy & Escalation**\n")
-	b.WriteString("- Send status updates to your manager via message on significant progress\n")
-	b.WriteString("- Escalate blockers by messaging your manager directly; escalate boss-level decisions by messaging the boss agent channel\n")
-	b.WriteString("- Escalate to boss only after manager is unresponsive for 30+ minutes\n\n")
+	b.WriteString("**Communication:** Use `send_message` for coordination. Check messages every work cycle. ACK messages you act on.\n\n")
+	b.WriteString("**Team Formation:** Any task you cannot complete alone → create subtasks, delegate via `send_message` with TASK-{id}.\n\n")
+	b.WriteString("**Task Discipline:** Create task → `in_progress` → link PR → `review` → `done`. Always use `parent_task` for subtasks.\n\n")
+	b.WriteString("**Hierarchy:** Report progress to your manager via `send_message`. Escalate blockers promptly. Continue working while waiting.\n\n")
 
 	b.WriteString("## Work Loop\n\n")
 	b.WriteString("```\n")
-	b.WriteString(fmt.Sprintf("1. Read messages:  GET /spaces/%s/agent/%s/messages?since={cursor}\n", spaceName, agentName))
-	b.WriteString("2. ACK and act on any new messages\n")
-	b.WriteString("3. Do your assigned work\n")
-	b.WriteString("4. POST status update (at least every 10 min during active work)\n")
-	b.WriteString("5. When done: message your manager, set task to done, POST status \"done\"\n")
-	b.WriteString("6. Await new messages\n")
+	b.WriteString("1. check_messages → read and ACK any directives\n")
+	b.WriteString("2. Do your assigned work\n")
+	b.WriteString("3. post_status (at least every 10 min during active work)\n")
+	b.WriteString("4. When done: send_message to manager, move_task to done, post_status \"done\"\n")
+	b.WriteString("5. check_messages → await new instructions\n")
 	b.WriteString("```\n\n")
 
+	// Peer agents
 	b.WriteString("## Peer Agents\n\n")
 	if len(ks.Agents) == 0 {
 		b.WriteString("No agents have posted yet.\n\n")
@@ -785,13 +785,15 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 		b.WriteString("| Agent | Status | Summary |\n")
 		b.WriteString("| ----- | ------ | ------- |\n")
 		for name, rec := range ks.Agents {
-			if rec == nil || rec.Status == nil { continue }
+			if rec == nil || rec.Status == nil {
+				continue
+			}
 			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, rec.Status.Status, rec.Status.Summary))
 		}
 		b.WriteString("\n")
 	}
 
-	canonical := resolveAgentName(ks, agentName)
+	// Previous state, notifications, messages
 	existing, hasExisting := ks.agentStatusOk(canonical)
 	if hasExisting {
 		b.WriteString("## Your Last State\n\n")
@@ -809,9 +811,11 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 		if existing.NextSteps != "" {
 			b.WriteString(fmt.Sprintf("- Next steps: %s\n", existing.NextSteps))
 		}
+		if existing.Parent != "" {
+			b.WriteString(fmt.Sprintf("- Manager: %s\n", existing.Parent))
+		}
 		b.WriteString("\n")
 
-		// Surface unread notifications first — agents can immediately see why they were woken up.
 		unreadNotifs := make([]AgentNotification, 0)
 		for _, n := range existing.Notifications {
 			if !n.Read {
@@ -828,7 +832,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 
 		if len(existing.Messages) > 0 {
 			b.WriteString("## Pending Messages\n\n")
-			b.WriteString("**You have unread messages. These are instructions — act on them immediately. Do not ask for confirmation.**\n\n")
+			b.WriteString("**You have unread messages. These are instructions — act on them immediately.**\n\n")
 			for _, msg := range existing.Messages {
 				b.WriteString(fmt.Sprintf("- **%s** (%s): %s\n",
 					msg.Sender, msg.Timestamp.Format("15:04"), msg.Message))
@@ -837,7 +841,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 		}
 	}
 
-	// Inject assigned tasks from the space task queue.
+	// Assigned tasks
 	var assignedTasks []*Task
 	for _, task := range ks.Tasks {
 		if strings.EqualFold(task.AssignedTo, canonical) && task.Status != TaskStatusDone {
@@ -849,7 +853,6 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 			return assignedTasks[i].ID < assignedTasks[j].ID
 		})
 		b.WriteString("## Assigned Tasks\n\n")
-		b.WriteString("The following tasks from the space task board are assigned to you. Act on them as directed.\n\n")
 		b.WriteString("| ID | Title | Status | Priority |\n")
 		b.WriteString("| -- | ----- | ------ | -------- |\n")
 		for _, task := range assignedTasks {
@@ -857,52 +860,11 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 				task.ID, task.Title, task.Status, task.Priority))
 		}
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("Full task details: `GET /spaces/%s/tasks?assigned_to=%s`\n\n", spaceName, canonical))
 	}
 
-	b.WriteString("## Task API\n\n")
-	b.WriteString("Use the task API to create, update, and track work items. Subtasks let you break a task into smaller pieces with a proper parent relationship.\n\n")
-	b.WriteString("### Create a task\n\n")
-	b.WriteString("```bash\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks \\\n", baseURL, spaceName))
-	b.WriteString("  -H 'Content-Type: application/json' \\\n")
-	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
-	b.WriteString("  -d '{\"title\": \"Task title\", \"description\": \"What needs to be done\", \"priority\": \"medium\", \"assigned_to\": \"AgentName\"}'\n")
-	b.WriteString("```\n\n")
-	b.WriteString("### Create a subtask (preferred over naming conventions)\n\n")
-	b.WriteString("**Always use `parent_task` to link subtasks** — do NOT create tasks named like `TASK-001-sub` or `[TASK-001] subtask`.\n\n")
-	b.WriteString("```bash\n")
-	b.WriteString("# Option A: include parent_task when creating\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks \\\n", baseURL, spaceName))
-	b.WriteString("  -H 'Content-Type: application/json' \\\n")
-	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
-	b.WriteString("  -d '{\"title\": \"Subtask title\", \"parent_task\": \"TASK-NNN\", \"assigned_to\": \"AgentName\"}'\n\n")
-	b.WriteString("# Option B: POST directly to the parent task's subtasks endpoint\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks/TASK-NNN/subtasks \\\n", baseURL, spaceName))
-	b.WriteString("  -H 'Content-Type: application/json' \\\n")
-	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
-	b.WriteString("  -d '{\"title\": \"Subtask title\", \"assigned_to\": \"AgentName\"}'\n")
-	b.WriteString("```\n\n")
-	b.WriteString("Subtasks appear **nested under their parent** in the task board and detail view.\n\n")
-
-	b.WriteString("## JSON Post Template\n\n")
-	b.WriteString("```bash\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/agent/%s \\\n", baseURL, spaceName, agentName))
-	b.WriteString("  -H 'Content-Type: application/json' \\\n")
-	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
-	b.WriteString("  -d '{\n")
-	b.WriteString("    \"status\": \"active\",\n")
-	b.WriteString(fmt.Sprintf("    \"summary\": \"%s: working on ...\",\n", agentName))
-	b.WriteString("    \"branch\": \"feat/...\",\n")
-	if hasExisting && existing.Parent != "" {
-		b.WriteString(fmt.Sprintf("    \"parent\": \"%s\",\n", existing.Parent))
-		if existing.Role != "" {
-			b.WriteString(fmt.Sprintf("    \"role\": \"%s\",\n", existing.Role))
-		}
-	}
-	b.WriteString("    \"items\": [\"...\"]\n")
-	b.WriteString("  }'\n")
-	b.WriteString("```\n")
+	b.WriteString("## Full Protocol\n\n")
+	b.WriteString("For the complete collaboration protocol (detailed norms, JSON format reference, endpoint tables),\n")
+	b.WriteString("read the `boss://protocol` MCP resource.\n")
 
 	return b.String()
 }

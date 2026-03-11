@@ -474,14 +474,14 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 
 	boardTimeBefore := s.agentUpdatedAt(spaceName, canonical)
 
-	// Send a plain-text check-in prompt. The old /boss.check slash command
-	// relied on symlinked command files which no longer exist.
-	baseURL := s.localURL()
-	checkInURL := fmt.Sprintf("%s/spaces/%s/agent/%s", baseURL, spaceName, canonical)
-	msgURL := fmt.Sprintf("%s/spaces/%s/agent/%s/messages", baseURL, spaceName, canonical)
+	// Send a plain-text check-in prompt using MCP tools.
 	checkInPrompt := fmt.Sprintf(
-		"Check in now. 1) Fetch new messages: curl -s %q 2) Post your current status: curl -s -X POST %q -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"status\":\"active\",\"summary\":\"%s: checking in\"}' 3) Act on any message directives.",
-		msgURL, checkInURL, canonical, canonical,
+		"Check in now. Use your boss-mcp tools: "+
+			"1) check_messages(space: %q, agent: %q) to read pending messages. "+
+			"2) post_status(space: %q, agent: %q, status: \"active\", summary: \"%s: checking in\") to report your current state. "+
+			"3) Act on any message directives immediately. "+
+			"If you have lost context about the collaboration protocol, read the boss://protocol MCP resource.",
+		spaceName, canonical, spaceName, canonical, canonical,
 	)
 	progress("sending check-in prompt")
 	if err := backend.SendInput(sessionID, checkInPrompt); err != nil {
