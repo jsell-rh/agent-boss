@@ -353,6 +353,10 @@ func (s *Server) handleSpaceTextField(w http.ResponseWriter, r *http.Request, sp
 		s.mu.Lock()
 		ks := s.getOrCreateSpaceLocked(spaceName)
 		cfg.setField(ks, sanitizeInput(string(body)))
+		// If the caller posted an empty body (e.g. EnsureSpace lazy-creation),
+		// fall back to the default protocol template so the live in-memory space
+		// and the persisted snapshot are both non-empty from the start.
+		s.refreshProtocol(ks)
 		ks.UpdatedAt = time.Now().UTC()
 		snap := ks.snapshot()
 		s.mu.Unlock()
@@ -420,6 +424,7 @@ func (s *Server) handleSpaceContractsDefault(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defaultContracts := strings.ReplaceAll(protocolTemplate, "{SPACE}", spaceName)
+	defaultContracts = strings.ReplaceAll(defaultContracts, "{COORDINATOR_URL}", s.localURL())
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, defaultContracts)
 }
