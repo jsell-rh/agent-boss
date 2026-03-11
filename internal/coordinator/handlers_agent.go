@@ -680,6 +680,16 @@ func (s *Server) handleIgnition(w http.ResponseWriter, r *http.Request, spaceNam
 
 	s.mu.RLock()
 	text := s.buildIgnitionText(spaceName, agentName, sessionID)
+	// Prepend persona prompts if the agent has personas configured.
+	// Mirrors the same logic in mcp_server.go for MCP-connected agents.
+	if ks, ok := s.spaces[spaceName]; ok {
+		canonical := resolveAgentName(ks, agentName)
+		if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
+			if personaPrompt := s.assemblePersonaPrompt(cfg.Personas); personaPrompt != "" {
+				text = personaPrompt + "\n\n" + text
+			}
+		}
+	}
 	s.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
