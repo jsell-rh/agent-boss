@@ -543,6 +543,25 @@ function setupSSE() {
     pushLog('agent_updated', `[${data.agent}] ${data.status}: ${data.summary}`)
   })
 
+  sse.on('agent_spawned', (data) => {
+    // New agent just spawned — add a placeholder immediately so the card
+    // appears in the UI without waiting for the agent's first status POST.
+    if (currentSpace.value && currentSpace.value.name === data.space) {
+      if (!currentSpace.value.agents[data.agent]) {
+        currentSpace.value.agents[data.agent] = {
+          status: 'idle',
+          summary: `${data.agent}: spawning…`,
+          updated_at: new Date().toISOString(),
+        } as AgentUpdate
+      }
+    }
+    // Schedule a full reload to pick up the real agent record from the backend
+    scheduleSpaceReload(data.space, 2000)
+    scheduleSpacesReload(500)
+    statusAnnouncement.value = `Agent ${data.agent} spawned`
+    pushLog('agent_spawned', `[${data.agent}] agent spawned`)
+  })
+
   sse.on('agent_removed', (data) => {
     // Remove agent in-place immediately for instant feedback
     if (currentSpace.value && currentSpace.value.name === data.space) {

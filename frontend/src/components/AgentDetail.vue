@@ -190,7 +190,7 @@ async function handleSpawn() {
   lifecycleLoading.value = 'spawn'
   try {
     await api.spawnAgent(props.spaceName, props.agentName)
-    showToast('success', `${props.agentName} spawned — ignite sent in ~5s`)
+    showToast('success', `${props.agentName} spawned — ignition prompt sent in ~5s`)
   } catch (e) {
     showToast('error', e instanceof Error ? e.message : String(e))
   } finally {

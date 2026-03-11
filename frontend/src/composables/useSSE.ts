@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import type {
   SSEAgentUpdated,
   SSEAgentRemoved,
+  SSEAgentSpawned,
   SSEAgentMessage,
   SSESessionLiveness,
   SSEBroadcastProgress,
@@ -11,6 +12,7 @@ import type {
 // All SSE event types emitted by the Go backend
 export type SSEEventType =
   | 'agent_updated'
+  | 'agent_spawned'
   | 'agent_removed'
   | 'space_deleted'
   | 'agent_message'
@@ -21,6 +23,7 @@ export type SSEEventType =
 
 export type SSEEventMap = {
   agent_updated: SSEAgentUpdated
+  agent_spawned: SSEAgentSpawned
   agent_removed: SSEAgentRemoved
   space_deleted: string // space name
   agent_message: SSEAgentMessage
@@ -95,6 +98,7 @@ export function useSSE() {
   function attachListeners(es: EventSource) {
     const eventTypes: SSEEventType[] = [
       'agent_updated',
+      'agent_spawned',
       'agent_removed',
       'space_deleted',
       'agent_message',
