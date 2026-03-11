@@ -112,6 +112,10 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 	case "raw":
 		s.handleSpaceRaw(w, r, spaceName)
 	case "contracts":
+		if len(parts) >= 3 && strings.TrimRight(parts[2], "/") == "default" {
+			s.handleSpaceContractsDefault(w, r, spaceName)
+			return
+		}
 		s.handleSpaceContracts(w, r, spaceName)
 	case "archive":
 		s.handleSpaceArchive(w, r, spaceName)
@@ -401,6 +405,23 @@ func (s *Server) handleSpaceContracts(w http.ResponseWriter, r *http.Request, sp
 		logLabel:    "contracts",
 		journalType: EventContractsUpdated,
 	})
+}
+
+// handleSpaceContractsDefault serves GET /spaces/{space}/contracts/default —
+// returns the embedded protocol.md template with {SPACE} substituted.
+// This lets the frontend compare current contracts to the default and offer a reset.
+func (s *Server) handleSpaceContractsDefault(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if protocolTemplate == "" {
+		writeJSONError(w, "protocol template not available", http.StatusInternalServerError)
+		return
+	}
+	defaultContracts := strings.ReplaceAll(protocolTemplate, "{SPACE}", spaceName)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, defaultContracts)
 }
 
 func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spaceName string) {

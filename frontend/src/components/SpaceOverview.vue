@@ -45,6 +45,11 @@ import {
   Search,
   Plus,
   RotateCcw,
+  FileText,
+  Pencil,
+  X,
+  Save,
+  Loader2,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
@@ -54,6 +59,7 @@ import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
 import AgentCreateDialog from './AgentCreateDialog.vue'
 import { prLink } from '@/lib/utils'
+import { renderMarkdown } from '@/lib/markdown'
 import api from '@/api/client'
 
 const props = defineProps<{
@@ -112,6 +118,84 @@ onMounted(loadPersonaVersions)
 const agentSearch = ref('')
 const activeTab = ref('agents')
 const agentCreateDialogOpen = ref(false)
+
+// Protocol tab state
+const contractsEditing = ref(false)
+const contractsText = ref('')
+const contractsDefault = ref('')
+const contractsSaving = ref(false)
+const contractsError = ref('')
+const contractsSuccess = ref(false)
+const contractsResetConfirmOpen = ref(false)
+const contractsLoading = ref(false)
+
+const contractsIsCustomized = computed(() =>
+  contractsDefault.value !== '' && contractsText.value.trim() !== contractsDefault.value.trim()
+)
+
+async function loadContractsDefault() {
+  if (contractsDefault.value) return
+  try {
+    contractsDefault.value = await api.fetchDefaultContracts(props.space.name)
+  } catch {
+    // ignore — reset button just won't show accurate state
+  }
+}
+
+async function onProtocolTabActivated() {
+  contractsText.value = props.space.shared_contracts ?? ''
+  contractsEditing.value = false
+  contractsError.value = ''
+  contractsSuccess.value = false
+  contractsLoading.value = true
+  try {
+    // Re-fetch live value from server (space prop may be stale)
+    const live = await api.fetchContracts(props.space.name)
+    contractsText.value = live
+  } catch {
+    // fall back to prop value
+  } finally {
+    contractsLoading.value = false
+  }
+  loadContractsDefault()
+}
+
+async function saveContracts() {
+  contractsSaving.value = true
+  contractsError.value = ''
+  contractsSuccess.value = false
+  try {
+    await api.saveContracts(props.space.name, contractsText.value)
+    contractsEditing.value = false
+    contractsSuccess.value = true
+    setTimeout(() => { contractsSuccess.value = false }, 3000)
+  } catch (e) {
+    contractsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    contractsSaving.value = false
+  }
+}
+
+async function resetContractsToDefault() {
+  contractsResetConfirmOpen.value = false
+  contractsSaving.value = true
+  contractsError.value = ''
+  try {
+    await api.saveContracts(props.space.name, contractsDefault.value)
+    contractsText.value = contractsDefault.value
+    contractsEditing.value = false
+    contractsSuccess.value = true
+    setTimeout(() => { contractsSuccess.value = false }, 3000)
+  } catch (e) {
+    contractsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    contractsSaving.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'protocol') onProtocolTabActivated()
+})
 const deleteDialogOpen = ref(false)
 const deleteDialogAgent = ref<string | null>(null)
 const deleteSpaceDialogOpen = ref(false)
@@ -538,6 +622,11 @@ const activeSections = computed(() => [
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="hierarchy">Hierarchy</TabsTrigger>
+          <TabsTrigger value="protocol" class="gap-1.5">
+            <FileText class="size-3.5" />
+            Protocol
+            <Badge v-if="contractsIsCustomized" variant="secondary" class="text-[9px] px-1 py-0 h-3.5 leading-none">custom</Badge>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="agents">
@@ -974,7 +1063,106 @@ const activeSections = computed(() => [
             @select-agent="emit('select-agent', $event)"
           />
         </TabsContent>
+
+        <!-- Protocol / Shared Contracts tab -->
+        <TabsContent value="protocol">
+          <div class="p-4 space-y-3 max-w-3xl">
+            <!-- Header row -->
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-sm font-semibold">Shared Contracts</h2>
+                <p class="text-xs text-muted-foreground mt-0.5">Communication protocol and rules your agents follow in this space.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <Badge v-if="contractsIsCustomized" variant="outline" class="text-[10px] px-2 py-0.5 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                  Customized
+                </Badge>
+                <Button v-if="!contractsEditing" variant="ghost" size="sm" class="h-7 gap-1 text-xs" @click="contractsEditing = true; contractsError = ''">
+                  <Pencil class="size-3.5" /> Edit
+                </Button>
+                <Button
+                  v-if="contractsIsCustomized && !contractsEditing"
+                  variant="ghost"
+                  size="sm"
+                  class="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  title="Reset to default protocol template"
+                  @click="contractsResetConfirmOpen = true"
+                >
+                  <RotateCcw class="size-3.5" /> Reset
+                </Button>
+              </div>
+            </div>
+
+            <!-- Success toast -->
+            <div v-if="contractsSuccess" class="flex items-center gap-2 px-3 py-2 rounded-md bg-green-500/10 border border-green-500/20 text-xs text-green-700 dark:text-green-400">
+              Contracts saved successfully.
+            </div>
+
+            <!-- Loading -->
+            <div v-if="contractsLoading" class="flex items-center gap-2 text-xs text-muted-foreground py-4">
+              <Loader2 class="size-3.5 animate-spin" /> Loading…
+            </div>
+
+            <!-- View mode -->
+            <div v-else-if="!contractsEditing">
+              <div
+                v-if="contractsText"
+                class="prose prose-sm dark:prose-invert max-w-none md-content border rounded-md p-4 bg-muted/30 text-sm leading-relaxed overflow-y-auto max-h-[60vh]"
+                v-html="renderMarkdown(contractsText)"
+              />
+              <div v-else class="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+                <FileText class="size-8 opacity-30" />
+                <p class="text-sm">No protocol defined for this space yet.</p>
+                <Button size="sm" variant="outline" @click="contractsEditing = true">
+                  <Pencil class="size-3.5 mr-1.5" /> Define Protocol
+                </Button>
+              </div>
+            </div>
+
+            <!-- Edit mode -->
+            <div v-else class="space-y-2">
+              <Textarea
+                v-model="contractsText"
+                rows="24"
+                class="font-mono text-xs leading-relaxed resize-y"
+                placeholder="# Protocol&#10;&#10;Define the communication rules your agents follow..."
+              />
+              <p v-if="contractsError" class="text-xs text-destructive">{{ contractsError }}</p>
+              <div class="flex items-center gap-2">
+                <Button size="sm" class="h-7 gap-1 text-xs" :disabled="contractsSaving" @click="saveContracts">
+                  <Loader2 v-if="contractsSaving" class="size-3 animate-spin" />
+                  <Save v-else class="size-3" />
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" class="h-7 text-xs" :disabled="contractsSaving" @click="contractsEditing = false; contractsError = ''">
+                  <X class="size-3 mr-1" /> Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      <!-- Reset contracts confirmation -->
+      <AlertDialog v-model:open="contractsResetConfirmOpen">
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to default protocol?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will replace the current shared contracts with the default protocol template. Your customizations will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              @click.prevent="resetContractsToDefault"
+            >
+              <RotateCcw class="size-4 mr-1" /> Reset to Default
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <!-- Clear done/idle agents confirmation dialog -->
       <AlertDialog v-model:open="clearDoneDialogOpen">

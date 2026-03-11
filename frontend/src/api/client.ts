@@ -460,6 +460,26 @@ class ApiClient {
 
 
 
+  // --------------- Contracts ---------------
+
+  fetchContracts(space: string): Promise<string> {
+    return fetch(`${this.baseUrl}/spaces/${encodeURIComponent(space)}/contracts`)
+      .then(r => r.text())
+  }
+
+  saveContracts(space: string, content: string): Promise<void> {
+    return this.requestVoid(`/spaces/${encodeURIComponent(space)}/contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: content,
+    })
+  }
+
+  fetchDefaultContracts(space: string): Promise<string> {
+    return fetch(`${this.baseUrl}/spaces/${encodeURIComponent(space)}/contracts/default`)
+      .then(r => r.text())
+  }
+
   // --------------- Personas ---------------
 
   fetchPersonas(): Promise<Persona[]> {
