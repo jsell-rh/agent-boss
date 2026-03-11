@@ -44,6 +44,7 @@ import {
   Layers,
   Search,
   Plus,
+  RotateCcw,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
@@ -58,12 +59,14 @@ const props = defineProps<{
   space: KnowledgeSpace
   tmuxStatus: Record<string, SessionAgentStatus> | null
   broadcasting?: boolean
+  restartAllProgress?: { agents: string[]; completed: number } | null
   hierarchy?: HierarchyTree | null
 }>()
 
 const emit = defineEmits<{
   'select-agent': [name: string]
   broadcast: []
+  'restart-all': []
   'delete-agent': [name: string]
   'broadcast-agent': [name: string]
   'send-message-to-agent': [agentName: string, text: string]
@@ -318,6 +321,19 @@ const activeSections = computed(() => [
         <span>This space is archived. <span class="font-mono text-xs">{{ space.archive }}</span></span>
       </div>
 
+      <!-- Fleet restart progress banner -->
+      <div
+        v-if="restartAllProgress"
+        class="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/5 border border-primary/20 text-sm"
+        role="status"
+      >
+        <RotateCcw class="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+        <span>
+          Restarting {{ restartAllProgress.agents.length }} agent{{ restartAllProgress.agents.length !== 1 ? 's' : '' }}…
+          <span class="font-medium">({{ restartAllProgress.completed }}/{{ restartAllProgress.agents.length }} complete)</span>
+        </span>
+      </div>
+
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
@@ -353,6 +369,26 @@ const activeSections = computed(() => [
             </TooltipTrigger>
             <TooltipContent>
               Send a nudge to all {{ agentCount }} agent{{ agentCount !== 1 ? 's' : '' }} in this space
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="agentCount === 0 || !!restartAllProgress"
+                @click="emit('restart-all')"
+              >
+                <RotateCcw class="size-4" :class="restartAllProgress ? 'animate-spin' : ''" />
+                {{ restartAllProgress
+                  ? `Restarting… (${restartAllProgress.completed}/${restartAllProgress.agents.length})`
+                  : 'Restart All' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {{ restartAllProgress
+                ? `Fleet restart in progress: ${restartAllProgress.completed} of ${restartAllProgress.agents.length} done`
+                : 'Restart all active/idle agents in this space' }}
             </TooltipContent>
           </Tooltip>
           <Tooltip v-if="doneIdleAgents.length > 0">
