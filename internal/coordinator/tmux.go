@@ -164,19 +164,24 @@ func tmuxCheckApproval(session string) ApprovalInfo {
 	}
 	var toolName string
 	var contentLines []string
+	toolKeywords := []string{"Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "NotebookEdit", "Task"}
 	for _, l := range lines[:promptIdx] {
-		if !strings.Contains(l, "│") {
-			continue
-		}
 		trimmed := strings.TrimSpace(l)
+		// Strip box-drawing borders (old-style dialog) or plain spaces (new-style).
 		inner := strings.TrimSpace(strings.ReplaceAll(trimmed, "│", ""))
 		if inner == "" {
 			continue
 		}
+		// Skip box corners/edges
 		if strings.HasPrefix(inner, "╭") || strings.HasPrefix(inner, "╰") || strings.HasPrefix(inner, "─") {
 			continue
 		}
-		for _, kw := range []string{"Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "NotebookEdit", "Task"} {
+		// Skip meta lines like "This command requires approval"
+		if strings.Contains(inner, "requires approval") {
+			continue
+		}
+		// Try to extract tool name from this line
+		for _, kw := range toolKeywords {
 			if strings.HasPrefix(inner, kw+" ") || inner == kw || strings.HasPrefix(inner, kw+"(") {
 				toolName = kw
 				break
@@ -253,10 +258,15 @@ func lineIsIdleIndicator(line string) bool {
 	// ── Claude Code prompt with suggestion ──
 	// Claude Code shows "❯" as its prompt. When idle it may auto-fill a
 	// suggested prompt after the ❯ (e.g. "❯ give me something to work on").
-	// A line starting with ❯ means the agent is waiting for input regardless
-	// of what follows (user-typed text or auto-suggestion).
+	// A line starting with ❯ means the agent is waiting for input, UNLESS
+	// it is a numbered menu option (e.g. "❯ 1. Yes") — those appear inside
+	// the approval dialog and must NOT be treated as idle.
 	if strings.HasPrefix(trimmed, "❯") {
-		return true
+		after := strings.TrimSpace(strings.TrimPrefix(trimmed, "❯"))
+		isNumberedOption := len(after) > 0 && after[0] >= '1' && after[0] <= '9' && len(after) > 1 && after[1] == '.'
+		if !isNumberedOption {
+			return true
+		}
 	}
 
 	// ── Shell prompts ──
