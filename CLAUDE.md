@@ -26,7 +26,7 @@ go test -race -v ./internal/coordinator/
 DATA_DIR=./data /tmp/boss serve
 ```
 
-Server starts on `:8899`. Dashboard at `http://localhost:8899`. Data persists to `DATA_DIR` as JSON + rendered markdown.
+Server starts on `:8899`. Dashboard at `http://localhost:8899`. Data persists to `DATA_DIR/boss.db` (SQLite).
 
 ### Development (hot-reload frontend)
 
@@ -64,20 +64,20 @@ frontend/
   src/                                 Vue 3 + TypeScript source
   vite.config.ts                       Vite config (outDir → ../internal/coordinator/frontend)
 data/
-  {space}.json                         Source of truth per space
-  {space}.md                           Rendered markdown snapshot
+  boss.db                              SQLite database (primary store — spaces, agents, tasks, events)
   protocol.md                          Agent communication protocol template
 ```
 
 ## Key Conventions
 
-- Zero external dependencies in Go — stdlib only (see `go.mod`)
+- SQLite (`data/boss.db`) is the primary store — spaces, agents, tasks, messages, events, history, settings
+- Zero external Go dependencies beyond GORM and glebarez/sqlite (pure-Go SQLite driver, no CGO)
 - Vue SPA is embedded in the binary via `//go:embed all:frontend` in `frontend_embed.go`
 - `npm run build` inside `frontend/` must run before `go build` to populate the embed dir
 - `FRONTEND_DIR` env var overrides the embedded assets at runtime (useful during development)
-- JSON is canonical; `.md` files are regenerated from JSON on every write
 - Agent channel enforcement: POST requires `X-Agent-Name` header matching the URL path agent name
 - Agent updates are structured JSON (`AgentUpdate` in `types.go`), not raw markdown
+- Legacy JSON/JSONL files in `DATA_DIR` are only read once (on first start with empty DB) for migration
 
 ## Environment Variables
 
@@ -85,6 +85,9 @@ data/
 |----------|---------|-------------|
 | `COORDINATOR_PORT` | `8899` | Server listen port |
 | `DATA_DIR` | `./data` | Persistence directory |
+| `DB_TYPE` | `sqlite` | Database backend: `sqlite` or `postgres` |
+| `DB_PATH` | `$DATA_DIR/boss.db` | SQLite file path |
+| `DB_DSN` | _(required for postgres)_ | Postgres DSN (e.g. `host=... user=... dbname=... sslmode=disable`) |
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
 
@@ -97,4 +100,4 @@ sleep 1
 DATA_DIR=./data nohup /tmp/boss serve > /tmp/boss.log 2>&1 &
 ```
 
-Data survives restarts — JSON files in `DATA_DIR` are loaded on startup.
+Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.

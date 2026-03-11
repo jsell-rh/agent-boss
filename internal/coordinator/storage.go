@@ -18,31 +18,28 @@ func (s *Server) spaceMarkdownPath(name string) string {
 }
 
 func (s *Server) loadAllSpaces() error {
-	// --- Primary path: load from SQLite ---
-	if s.repo != nil {
-		empty, err := s.repo.IsEmpty()
-		if err != nil {
-			return fmt.Errorf("check db empty: %w", err)
-		}
-		if !empty {
-			return s.loadAllSpacesFromRepo()
-		}
-		// DB is empty: import from legacy JSON/journal files, then persist to DB.
-		s.logEvent("DB empty — importing legacy JSON/journal data")
-		if err := s.loadAllSpacesFromFiles(); err != nil {
-			return err
-		}
-		for _, ks := range s.spaces {
-			s.persistSpaceToDB(ks)
-		}
-		return nil
+	// SQLite is the primary store. s.repo is always non-nil when Start() succeeds.
+	empty, err := s.repo.IsEmpty()
+	if err != nil {
+		return fmt.Errorf("check db empty: %w", err)
 	}
-
-	// --- Fallback: no DB, use file storage ---
-	return s.loadAllSpacesFromFiles()
+	if !empty {
+		return s.loadAllSpacesFromRepo()
+	}
+	// DB is empty on first start (or after a wipe): import from legacy JSON/journal
+	// files so existing data is preserved across the SQLite migration.
+	s.logEvent("DB empty — importing legacy JSON/journal data")
+	if err := s.loadAllSpacesFromFiles(); err != nil {
+		return err
+	}
+	for _, ks := range s.spaces {
+		s.persistSpaceToDB(ks)
+	}
+	return nil
 }
 
-// loadAllSpacesFromFiles loads spaces from legacy JSON/JSONL files (fallback path).
+// loadAllSpacesFromFiles loads spaces from legacy JSON/JSONL files.
+// Only called once on first start when the SQLite DB is empty (one-time import).
 func (s *Server) loadAllSpacesFromFiles() error {
 	entries, err := os.ReadDir(s.dataDir)
 	if err != nil {
