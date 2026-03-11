@@ -67,6 +67,9 @@ type EventJournal struct {
 	ringMode bool
 	ringBuf  map[string][]SpaceEvent
 	ringCap  int
+	// dbWrite is called in ring buffer mode to persist each event to SQLite.
+	// It must be safe for concurrent use and must not block significantly.
+	dbWrite func(ev *SpaceEvent)
 }
 
 func NewEventJournal(dataDir string) *EventJournal {
@@ -78,16 +81,34 @@ func NewEventJournal(dataDir string) *EventJournal {
 	return j
 }
 
+// LoadIntoRing loads a pre-existing event into the ring buffer without calling
+// dbWrite. Used to pre-warm the ring from SQLite on startup.
+func (j *EventJournal) LoadIntoRing(ev *SpaceEvent) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.ringMode {
+		return
+	}
+	buf := j.ringBuf[ev.Space]
+	buf = append(buf, *ev)
+	if len(buf) > j.ringCap {
+		buf = buf[len(buf)-j.ringCap:]
+	}
+	j.ringBuf[ev.Space] = buf
+}
+
 // UseRingBuffer switches the journal to in-memory ring buffer mode.
 // All subsequent Append calls store events in memory (capped at cap per space)
 // and no files are written. Compact and MigrateFromJSON become no-ops.
+// dbWrite, if non-nil, is called for each event to persist it to SQLite.
 // Must be called before any Append calls (i.e. before serving requests).
-func (j *EventJournal) UseRingBuffer(cap int) {
+func (j *EventJournal) UseRingBuffer(cap int, dbWrite func(ev *SpaceEvent)) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.ringMode = true
 	j.ringCap = cap
 	j.ringBuf = make(map[string][]SpaceEvent)
+	j.dbWrite = dbWrite
 }
 
 // EventCount returns the current event count for a space (best-effort, not exact after restart).
@@ -141,7 +162,6 @@ func (j *EventJournal) Append(space string, evType SpaceEventType, agent string,
 
 func (j *EventJournal) write(ev *SpaceEvent) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 
 	if j.ringMode {
 		buf := j.ringBuf[ev.Space]
@@ -151,8 +171,16 @@ func (j *EventJournal) write(ev *SpaceEvent) {
 		}
 		j.ringBuf[ev.Space] = buf
 		j.incrementCount(ev.Space)
+		dbw := j.dbWrite
+		j.mu.Unlock()
+		// Call dbWrite outside the lock to avoid holding mu during I/O.
+		if dbw != nil {
+			dbw(ev)
+		}
 		return
 	}
+
+	defer j.mu.Unlock()
 
 	data, err := json.Marshal(ev)
 	if err != nil {
