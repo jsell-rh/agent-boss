@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -237,6 +238,26 @@ func (r *Repository) DeleteTask(spaceName, taskID string) error {
 		return err
 	}
 	return r.db.Where("id = ? AND space_name = ?", taskID, spaceName).Delete(&Task{}).Error
+}
+
+// ---- Setting operations ----
+
+// GetSetting returns the value for the given key, or ("", nil) if not found.
+func (r *Repository) GetSetting(key string) (string, error) {
+	var s Setting
+	err := r.db.Where("key = ?", key).First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return s.Value, err
+}
+
+// SetSetting upserts a key-value setting.
+func (r *Repository) SetSetting(key, value string) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value"}),
+	}).Create(&Setting{Key: key, Value: value}).Error
 }
 
 // DeleteSpace removes a space and all its associated data (agents, messages,

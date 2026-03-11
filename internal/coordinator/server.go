@@ -194,6 +194,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// With SQLite as the primary store, switch the event journal to in-memory
+	// ring buffer mode so no .events.jsonl files are written to disk.
+	s.journal.UseRingBuffer(ringBufferCap)
 
 	s.loadSettings() // load persisted settings before spaces
 
@@ -258,7 +261,10 @@ func (s *Server) Start() error {
 	}()
 
 	go s.livenessLoop()
-	s.startCompactionLoop(30 * time.Minute)
+	// Compaction rewrites .events.jsonl files; skip it when SQLite is active.
+	if s.repo == nil {
+		s.startCompactionLoop(30 * time.Minute)
+	}
 
 	return nil
 }

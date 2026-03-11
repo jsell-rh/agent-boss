@@ -188,3 +188,12 @@ type StatusSnapshot struct {
 }
 
 func (StatusSnapshot) TableName() string { return "status_snapshots" }
+
+// Setting is a simple key-value table for server-wide configuration.
+// Replaces the legacy settings.json file.
+type Setting struct {
+	Key   string `gorm:"primarykey;not null"`
+	Value string `gorm:"type:text"`
+}
+
+func (Setting) TableName() string { return "settings" }
