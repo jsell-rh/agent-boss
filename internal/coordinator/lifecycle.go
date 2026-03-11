@@ -459,10 +459,6 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 			return
 		}
 	}
-	command := req.Command
-	if command == "" {
-		command = "claude --dangerously-skip-permissions"
-	}
 
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
@@ -477,7 +473,22 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	if exists {
 		oldSession = agent.SessionID
 	}
+	// Load AgentConfig to restore cwd, command, and initial_prompt on restart.
+	var restartWorkDir string
+	var restartInitialPrompt string
+	if cfg := ks.agentConfig(canonical); cfg != nil {
+		restartWorkDir = cfg.WorkDir
+		restartInitialPrompt = cfg.InitialPrompt
+		if req.Command == "" && cfg.Command != "" {
+			req.Command = cfg.Command
+		}
+	}
 	s.mu.RUnlock()
+
+	command := req.Command
+	if command == "" {
+		command = "claude --dangerously-skip-permissions"
+	}
 
 	if !exists {
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
@@ -531,6 +542,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 			SessionID: newSession,
 			Command:   command,
 			BackendOpts: TmuxCreateOpts{
+				WorkDir:              restartWorkDir,
 				MCPServerURL:         s.localURL(),
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
@@ -584,6 +596,9 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
 				Msg: fmt.Sprintf("restart: ignite send failed: %v", err)})
+		}
+		if restartInitialPrompt != "" {
+			s.deliverInternalMessage(spaceName, canonical, "boss", restartInitialPrompt)
 		}
 	}()
 
