@@ -9,12 +9,19 @@ Any task that cannot be completed in a single focused session by a single agent 
 
 ## Definition: Non-Trivial Task
 
-A task is non-trivial if it meets any of these criteria:
-- Requires touching more than 2 subsystems (frontend + backend + tests = 3 → non-trivial)
-- Has estimated effort > 1 hour of focused work
-- Requires specialized knowledge in more than one domain
-- Has >3 acceptance criteria
-- Is a planning or design task (always non-trivial — requires at least a researcher)
+The threshold is deliberately low — when in doubt, form a team. A task is non-trivial if it
+meets **any** of these criteria:
+
+- Touches more than one file or component area
+- Has more than one distinct deliverable
+- Requires any research before implementation can begin
+- Has more than one acceptance criterion
+- Is a planning, spec, or design task (always non-trivial)
+- Would benefit from an independent review pass
+- Estimated effort exceeds ~30 minutes of focused work
+
+Solo work is appropriate only for tightly scoped leaf tasks: a single bug fix, a one-file
+documentation update, or a clearly-specified implementation with no design decisions.
 
 ## Required Team Roles
 
@@ -40,22 +47,19 @@ Before spawning agents, the manager must:
 ### Step 2: Spawn agents via API
 
 ```bash
-# Spawn a developer agent
 POST /spaces/{space}/agent/{AgentName}/spawn
   X-Agent-Name: {Manager}
+  Content-Type: application/json
   {
     "session_name": "{AgentName}",
     "command": "claude --dangerously-skip-permissions"
   }
 ```
 
-Alternatively (if API spawn not yet supported), spawn via tmux:
-```bash
-tmux new-session -d -s "{AgentName}" -x 220 -y 50
-tmux send-keys -t "{AgentName}" "claude --dangerously-skip-permissions" Enter
-sleep 8
-tmux send-keys -t "{AgentName}" '/boss.ignite "{AgentName}" "{Space}"' Enter
-```
+**`--dangerously-skip-permissions` opt-in:** The `command` field controls whether Claude runs in
+autonomous mode. Platform operators and users must explicitly configure whether this flag is
+permitted. Do not assume it is always enabled — check the space's settings or ask the user.
+Future: the coordinator will expose a per-space setting to allow/disallow this flag.
 
 ### Step 3: Register hierarchy
 
@@ -92,13 +96,12 @@ Naming is `{Domain}{Role}` where Role is `Dev`, `Dev2`, `SME`, `Doc`.
 2. **Mission**: Manager sends mission message with task ID and deliverable
 3. **Work**: Agent works and reports via messages + status updates
 4. **Done**: Agent sends `"status": "done"` and messages manager
-5. **Teardown**: Manager kills the session and optionally removes from dashboard
+5. **Teardown**: Manager stops the agent and optionally removes from dashboard
 
 ```bash
-# Teardown
-curl -X POST .../agent/{AgentName} -d '{"status": "done", "summary": "..."}'
-tmux kill-session -t {AgentName}
-curl -X DELETE .../agent/{AgentName} -H 'X-Agent-Name: {Manager}'
+# Teardown via API
+POST /spaces/{space}/agent/{AgentName}/stop   X-Agent-Name: {Manager}
+DELETE /spaces/{space}/agent/{AgentName}   X-Agent-Name: {Manager}
 ```
 
 ## Anti-Patterns
