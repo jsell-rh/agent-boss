@@ -308,11 +308,18 @@ func lineIsIdleIndicator(line string) bool {
 	}
 
 	// ── OpenCode / Claude Code status bar keywords ──
+	// Be specific: these must match exact status-bar phrases, not arbitrary
+	// content lines that happen to contain common words like "ready".
 	lower := strings.ToLower(trimmed)
 	if strings.Contains(lower, "waiting for input") ||
-		strings.Contains(lower, "ready") ||
 		strings.Contains(lower, "type a message") ||
 		strings.Contains(lower, "press enter") {
+		return true
+	}
+	// "ready" alone or as a full status-bar token (e.g. "Model ready", "claude ready")
+	// but NOT embedded in arbitrary sentence content like "online and ready for tasks".
+	// Match only when "ready" is the last meaningful word on the line.
+	if strings.HasSuffix(lower, "ready") || strings.HasSuffix(lower, "ready.") {
 		return true
 	}
 
