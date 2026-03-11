@@ -209,6 +209,8 @@ func (s *Server) Start() error {
 		})
 	})
 
+	// Route InterruptLedger operations to SQLite.
+	s.interrupts.SetRepo(s.repo)
 	s.loadSettings() // load persisted settings before spaces
 
 	if err := s.loadAllSpaces(); err != nil {

@@ -285,6 +285,9 @@ func (r *Repository) DeleteSpace(name string) error {
 		if err := tx.Where("space_name = ?", name).Delete(&SpaceEventLog{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("space_name = ?", name).Delete(&InterruptRecord{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("space_name = ?", name).Delete(&Agent{}).Error; err != nil {
 			return err
 		}
@@ -377,4 +380,48 @@ func (r *Repository) NextTaskSeqForSpace(spaceName string) (int, error) {
 		return 0, err
 	}
 	return next, nil
+}
+
+// ---- InterruptRecord operations ----
+
+// SaveInterrupt upserts an interrupt record.
+func (r *Repository) SaveInterrupt(rec *InterruptRecord) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"resolved_by", "answer", "resolved_at", "wait_seconds"}),
+	}).Create(rec).Error
+}
+
+// LoadInterrupts returns all interrupt records for a space, ordered by creation time.
+func (r *Repository) LoadInterrupts(spaceName string) ([]*InterruptRecord, error) {
+	var recs []*InterruptRecord
+	return recs, r.db.Where("space_name = ?", spaceName).Order("created_at ASC").Find(&recs).Error
+}
+
+// ResolveInterrupt marks the interrupt with the given ID as resolved.
+// Returns an error if the record is not found or already resolved.
+func (r *Repository) ResolveInterrupt(spaceName, id, resolvedBy, answer string) error {
+	now := time.Now().UTC()
+	var rec InterruptRecord
+	if err := r.db.Where("id = ? AND space_name = ?", id, spaceName).First(&rec).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("interrupt %q not found", id)
+		}
+		return err
+	}
+	if rec.ResolvedAt.Valid {
+		return fmt.Errorf("interrupt %q already resolved", id)
+	}
+	waitSecs := now.Sub(rec.CreatedAt).Seconds()
+	return r.db.Model(&rec).Updates(map[string]any{
+		"resolved_by":  resolvedBy,
+		"answer":       answer,
+		"resolved_at":  now,
+		"wait_seconds": waitSecs,
+	}).Error
+}
+
+// DeleteInterrupts removes all interrupt records for a space.
+func (r *Repository) DeleteInterrupts(spaceName string) error {
+	return r.db.Where("space_name = ?", spaceName).Delete(&InterruptRecord{}).Error
 }

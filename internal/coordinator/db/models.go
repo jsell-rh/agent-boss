@@ -211,3 +211,21 @@ type SpaceEventLog struct {
 }
 
 func (SpaceEventLog) TableName() string { return "space_event_log" }
+
+// InterruptRecord stores an agent interrupt (approval request, decision, etc.)
+// Replaces the legacy {space}.interrupts.jsonl files.
+type InterruptRecord struct {
+	ID          string       `gorm:"primarykey;not null"`
+	SpaceName   string       `gorm:"index;not null"`
+	Agent       string       `gorm:"not null"`
+	Type        string       `gorm:"not null"`
+	Question    string       `gorm:"type:text;not null"`
+	Context     string       `gorm:"type:text"` // JSON map[string]string
+	ResolvedBy  string
+	Answer      string       `gorm:"type:text"`
+	ResolvedAt  sql.NullTime
+	WaitSeconds float64
+	CreatedAt   time.Time    `gorm:"index"`
+}
+
+func (InterruptRecord) TableName() string { return "interrupts" }

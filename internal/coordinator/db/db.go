@@ -88,6 +88,7 @@ func migrate(db *gorm.DB) error {
 		&StatusSnapshot{},
 		&Setting{},
 		&SpaceEventLog{},
+		&InterruptRecord{},
 	); err != nil {
 		return err
 	}
