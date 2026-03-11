@@ -248,9 +248,27 @@ func (s *Server) Start() error {
 	})
 	mux.HandleFunc("/personas", s.handlePersonaList)
 	mux.HandleFunc("/personas/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimPrefix(r.URL.Path, "/personas/")
-		id = strings.TrimRight(id, "/")
-		s.handlePersonaDetail(w, r, id)
+		rest := strings.TrimPrefix(r.URL.Path, "/personas/")
+		rest = strings.TrimRight(rest, "/")
+		// Sub-routes: /personas/{id}/history, /personas/{id}/agents, etc.
+		if idx := strings.Index(rest, "/"); idx >= 0 {
+			id := rest[:idx]
+			sub := rest[idx+1:]
+			switch sub {
+			case "history":
+				s.handlePersonaHistory(w, r, id)
+			case "revert":
+				s.handlePersonaRevert(w, r, id)
+			case "agents":
+				s.handlePersonaAgents(w, r, id)
+			case "restart-outdated":
+				s.handlePersonaRestartOutdated(w, r, id)
+			default:
+				writeJSONError(w, "not found", http.StatusNotFound)
+			}
+			return
+		}
+		s.handlePersonaDetail(w, r, rest)
 	})
 	mux.HandleFunc("/settings", s.handleSettings)
 	mcpHandler := s.buildMCPHandler()
