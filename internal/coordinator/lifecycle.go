@@ -572,6 +572,14 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		// Send plain-text ignition prompt — no slash command required.
 		s.mu.RLock()
 		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
+		// Prepend persona prompts if configured (mirrors handleIgnition and mcp_server.go).
+		if ks, ok := s.spaces[spaceName]; ok {
+			if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
+				if personaPrompt := s.assemblePersonaPrompt(cfg.Personas); personaPrompt != "" {
+					igniteText = personaPrompt + "\n\n" + igniteText
+				}
+			}
+		}
 		s.mu.RUnlock()
 		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
