@@ -25,6 +25,9 @@ func (s *Server) registerMCPTools(srv *mcp.Server) {
 	s.addToolListTasks(srv)
 	s.addToolMoveTask(srv)
 	s.addToolUpdateTask(srv)
+	s.addToolSpawnAgent(srv)
+	s.addToolRestartAgent(srv)
+	s.addToolStopAgent(srv)
 }
 
 // jsonSchema builds a JSON Schema object for use as InputSchema.
@@ -853,4 +856,144 @@ func pruneReadMessages(ag *AgentUpdate) {
 		}
 		ag.Messages = filtered
 	}
+}
+
+// --- spawn_agent ---
+
+func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "spawn_agent",
+		Description: "Spawn a new agent session in a space. Creates a tmux session, sends the ignition prompt, and returns the session ID.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space":           prop("string", "The workspace name"),
+			"name":            prop("string", "The agent name to spawn"),
+			"command":         prop("string", "Command to run (default: claude or claude --dangerously-skip-permissions based on server setting)"),
+			"work_dir":        prop("string", "Working directory for the session"),
+			"initial_message": prop("string", "First message to deliver to the agent after spawn"),
+			"parent":          prop("string", "Parent agent name (sets hierarchy relationship)"),
+			"task_id":         prop("string", "Task ID to link to this agent (sets assigned_to)"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		spawnReq := spawnRequest{
+			Command:        strArg(args, "command"),
+			InitialMessage: strArg(args, "initial_message"),
+			TaskID:         strArg(args, "task_id"),
+		}
+
+		// work_dir is applied via AgentConfig; for MCP callers we inject it by
+		// temporarily setting a config entry if not already present.
+		workDir := strArg(args, "work_dir")
+		spawnerName := strArg(args, "parent")
+
+		if workDir != "" {
+			// Ensure an AgentConfig entry exists so spawnAgentService picks up the workDir.
+			s.mu.Lock()
+			ks := s.getOrCreateSpaceLocked(spaceName)
+			canonical := resolveAgentName(ks, agentName)
+			rec, ok := ks.Agents[canonical]
+			if !ok || rec == nil {
+				rec = &AgentRecord{}
+				ks.Agents[canonical] = rec
+			}
+			if rec.Config == nil {
+				rec.Config = &AgentConfig{}
+			}
+			if rec.Config.WorkDir == "" {
+				rec.Config.WorkDir = workDir
+			}
+			s.mu.Unlock()
+		}
+
+		sessionID, backendName, canonical, err := s.spawnAgentService(spaceName, agentName, spawnReq, spawnerName)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"session_id": sessionID,
+			"space":      spaceName,
+			"backend":    backendName,
+		}), nil
+	})
+}
+
+// --- restart_agent ---
+
+func (s *Server) addToolRestartAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "restart_agent",
+		Description: "Restart an existing agent: kills the current session and spawns a new one with the same config.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space": prop("string", "The workspace name"),
+			"name":  prop("string", "The agent name to restart"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		sessionID, canonical, err := s.restartAgentService(spaceName, agentName, spawnRequest{})
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"session_id": sessionID,
+			"space":      spaceName,
+		}), nil
+	})
+}
+
+// --- stop_agent ---
+
+func (s *Server) addToolStopAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "stop_agent",
+		Description: "Stop an agent by killing its session and marking it as done.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space": prop("string", "The workspace name"),
+			"name":  prop("string", "The agent name to stop"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		canonical, err := s.stopAgentService(spaceName, agentName)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"space":      spaceName,
+		}), nil
+	})
 }
