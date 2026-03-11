@@ -537,7 +537,7 @@ func TestProtocolInjectedOnNewSpace(t *testing.T) {
 	if !strings.Contains(md, "Space: `local-reconciler`") {
 		t.Error("{SPACE} not substituted in protocol")
 	}
-	if !strings.Contains(md, "POST /spaces/local-reconciler/agent/{name}") {
+	if !strings.Contains(md, "local-reconciler/agent/{name}") {
 		t.Error("{SPACE} not substituted in endpoint URLs")
 	}
 	if strings.Contains(md, "{SPACE}") {
@@ -1377,8 +1377,8 @@ func TestIgnitionEndpoint(t *testing.T) {
 	if !strings.Contains(body, "Peer") {
 		t.Error("missing peer agent in response")
 	}
-	if !strings.Contains(body, "/message") {
-		t.Error("ignition should document the /message endpoint")
+	if !strings.Contains(body, "send_message") {
+		t.Error("ignition should document the send_message tool")
 	}
 
 	// Verify tmux session was registered
@@ -1433,8 +1433,8 @@ func TestIgnitionShowsTaskListEndpoint(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", code)
 	}
-	if !strings.Contains(body, "/spaces/ignite-ep-test/tasks") {
-		t.Error("ignition should reference task list endpoint")
+	if !strings.Contains(body, "list_tasks") {
+		t.Error("ignition should reference the list_tasks tool")
 	}
 }
 
@@ -2809,9 +2809,9 @@ func TestIgnitionMentionsTasksEndpoint(t *testing.T) {
 
 	_, body := getBody(t, base+"/spaces/"+space+"/ignition/myagent")
 
-	// Ignition should mention the /tasks endpoint for discoverability
-	if !strings.Contains(body, "/tasks") {
-		t.Error("ignition response should mention the /tasks endpoint")
+	// Ignition should mention task tools for discoverability
+	if !strings.Contains(body, "create_task") {
+		t.Error("ignition response should mention the create_task tool")
 	}
 }
 
@@ -3402,13 +3402,13 @@ func TestIgnitionCollaborationNorms(t *testing.T) {
 
 	checks := []string{
 		"## Collaboration Norms",
-		"**Communication**",
-		"**Team Formation**",
-		"**Task Discipline**",
-		"**Hierarchy & Escalation**",
+		"**Communication:**",
+		"**Team Formation:**",
+		"**Task Discipline:**",
+		"**Hierarchy:**",
 		"## Work Loop",
-		"Read messages:",
-		"POST status update",
+		"check_messages",
+		"post_status",
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
@@ -3609,6 +3609,132 @@ func TestSpawnWithTaskID(t *testing.T) {
 	}
 	if !strings.EqualFold(updated.AssignedTo, "Builder") {
 		t.Errorf("expected assigned_to=Builder, got %q", updated.AssignedTo)
+	}
+}
+
+// TestRestartAllNotFound verifies that POST /spaces/{unknown}/restart-all returns 404.
+func TestRestartAllNotFound(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := postJSON(t, base+"/spaces/no-such-space/restart-all", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+// TestRestartAllMethodNotAllowed verifies that GET /spaces/{space}/restart-all returns 405.
+func TestRestartAllMethodNotAllowed(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "restart-method-test"
+
+	// Create space by posting an agent.
+	postJSON(t, base+"/spaces/"+space+"/agent/A", AgentUpdate{Status: StatusIdle, Summary: "A: idle"}).Body.Close()
+
+	resp, err := http.Get(base + "/spaces/" + space + "/restart-all")
+	if err != nil {
+		t.Fatalf("GET restart-all: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", resp.StatusCode)
+	}
+}
+
+// TestRestartAllNoEligibleAgents verifies that when no agents have a registered session,
+// the endpoint returns 202 with an empty agent list.
+func TestRestartAllNoEligibleAgents(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "restart-no-session"
+
+	// Post agents without SessionID — they are not eligible for restart.
+	postJSON(t, base+"/spaces/"+space+"/agent/A", AgentUpdate{Status: StatusIdle, Summary: "A: idle"}).Body.Close()
+	postJSON(t, base+"/spaces/"+space+"/agent/B", AgentUpdate{Status: StatusActive, Summary: "B: working"}).Body.Close()
+
+	resp := postJSON(t, base+"/spaces/"+space+"/restart-all", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+
+	var result struct {
+		OK     bool     `json:"ok"`
+		Agents []string `json:"agents"`
+		Count  int      `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !result.OK {
+		t.Error("expected ok=true")
+	}
+	if result.Count != 0 {
+		t.Errorf("expected count=0, got %d", result.Count)
+	}
+	if len(result.Agents) != 0 {
+		t.Errorf("expected empty agents list, got %v", result.Agents)
+	}
+}
+
+// TestRestartAllSelectsEligibleAgents verifies that only agents with a session ID and
+// eligible status (active/idle/done) are included in the restart list.
+func TestRestartAllSelectsEligibleAgents(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+	space := "restart-eligible"
+
+	// Eligible: active with session.
+	postJSON(t, base+"/spaces/"+space+"/agent/Active", AgentUpdate{
+		Status: StatusActive, Summary: "Active: working", SessionID: "sess-active",
+	}).Body.Close()
+	// Eligible: idle with session.
+	postJSON(t, base+"/spaces/"+space+"/agent/Idle", AgentUpdate{
+		Status: StatusIdle, Summary: "Idle: waiting", SessionID: "sess-idle",
+	}).Body.Close()
+	// Eligible: done with session.
+	postJSON(t, base+"/spaces/"+space+"/agent/Done", AgentUpdate{
+		Status: StatusDone, Summary: "Done: finished", SessionID: "sess-done",
+	}).Body.Close()
+	// Not eligible: no session.
+	postJSON(t, base+"/spaces/"+space+"/agent/NoSession", AgentUpdate{
+		Status: StatusIdle, Summary: "NoSession: no session",
+	}).Body.Close()
+
+	resp := postJSON(t, base+"/spaces/"+space+"/restart-all", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.StatusCode)
+	}
+
+	var result struct {
+		OK     bool     `json:"ok"`
+		Agents []string `json:"agents"`
+		Count  int      `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !result.OK {
+		t.Error("expected ok=true")
+	}
+	if result.Count != 3 {
+		t.Errorf("expected count=3, got %d (agents: %v)", result.Count, result.Agents)
+	}
+	eligible := map[string]bool{"Active": true, "Idle": true, "Done": true}
+	for _, name := range result.Agents {
+		if !eligible[name] {
+			t.Errorf("unexpected agent in restart list: %q", name)
+		}
+	}
+	if len(result.Agents) != 3 {
+		t.Errorf("expected 3 agents, got %d: %v", len(result.Agents), result.Agents)
 	}
 }
 

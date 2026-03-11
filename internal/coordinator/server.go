@@ -194,12 +194,31 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// With SQLite as the primary store, switch the event journal to in-memory
+	// ring buffer mode so no .events.jsonl files are written to disk.
+	// Each event is also persisted to SQLite for cross-restart durability.
+	repo := s.repo
+	s.journal.UseRingBuffer(ringBufferCap, func(ev *SpaceEvent) {
+		repo.AppendSpaceEvent(&bossdb.SpaceEventLog{
+			ID:        ev.ID,
+			SpaceName: ev.Space,
+			EventType: string(ev.Type),
+			Agent:     ev.Agent,
+			Payload:   string(ev.Payload),
+			Timestamp: ev.Timestamp,
+		})
+	})
 
+	// Route InterruptLedger operations to SQLite.
+	s.interrupts.SetRepo(s.repo)
 	s.loadSettings() // load persisted settings before spaces
 
 	if err := s.loadAllSpaces(); err != nil {
 		return fmt.Errorf("load spaces: %w", err)
 	}
+
+	// Pre-warm the ring buffer from SQLite so event history survives restarts.
+	s.loadEventRingFromDB()
 
 	mux := http.NewServeMux()
 
@@ -229,9 +248,27 @@ func (s *Server) Start() error {
 	})
 	mux.HandleFunc("/personas", s.handlePersonaList)
 	mux.HandleFunc("/personas/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimPrefix(r.URL.Path, "/personas/")
-		id = strings.TrimRight(id, "/")
-		s.handlePersonaDetail(w, r, id)
+		rest := strings.TrimPrefix(r.URL.Path, "/personas/")
+		rest = strings.TrimRight(rest, "/")
+		// Sub-routes: /personas/{id}/history, /personas/{id}/agents, etc.
+		if idx := strings.Index(rest, "/"); idx >= 0 {
+			id := rest[:idx]
+			sub := rest[idx+1:]
+			switch sub {
+			case "history":
+				s.handlePersonaHistory(w, r, id)
+			case "revert":
+				s.handlePersonaRevert(w, r, id)
+			case "agents":
+				s.handlePersonaAgents(w, r, id)
+			case "restart-outdated":
+				s.handlePersonaRestartOutdated(w, r, id)
+			default:
+				writeJSONError(w, "not found", http.StatusNotFound)
+			}
+			return
+		}
+		s.handlePersonaDetail(w, r, rest)
 	})
 	mux.HandleFunc("/settings", s.handleSettings)
 	mcpHandler := s.buildMCPHandler()
@@ -258,7 +295,10 @@ func (s *Server) Start() error {
 	}()
 
 	go s.livenessLoop()
-	s.startCompactionLoop(30 * time.Minute)
+	// Compaction rewrites .events.jsonl files; skip it when SQLite is active.
+	if s.repo == nil {
+		s.startCompactionLoop(30 * time.Minute)
+	}
 
 	return nil
 }

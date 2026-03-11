@@ -487,13 +487,13 @@ func TestServerPersistsViaJournal(t *testing.T) {
 	})
 	srv1.Stop()
 
-	// Verify journal file was created
+	// When SQLite is active, no .events.jsonl file should be written.
 	journalPath := dir + "/" + space + ".events.jsonl"
-	if _, err := os.Stat(journalPath); err != nil {
-		t.Fatalf("expected journal file at %s: %v", journalPath, err)
+	if _, err := os.Stat(journalPath); err == nil {
+		t.Errorf("expected no journal file (SQLite is primary store), but found %s", journalPath)
 	}
 
-	// Start a new server on same data dir — should replay from journal
+	// Start a new server on same data dir — should load from SQLite
 	srv2 := NewServer(":0", dir)
 	if err := srv2.Start(); err != nil {
 		t.Fatalf("start srv2: %v", err)

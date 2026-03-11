@@ -228,6 +228,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeJSONError(w, "agent name required", http.StatusBadRequest)
 		}
+	case "restart-all":
+		s.handleRestartAll(w, r, spaceName)
 	case "factory":
 		factorySub := ""
 		if len(parts) == 3 {

@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	bossdb "github.com/ambient/platform/components/boss/internal/coordinator/db"
 )
 
 type InterruptType string
@@ -54,12 +57,19 @@ type InterruptLedger struct {
 	dataDir string
 	mu      sync.Mutex
 	seq     atomic.Int64
+	repo    *bossdb.Repository // nil until SetRepo is called; enables SQLite persistence
 }
 
 func NewInterruptLedger(dataDir string) *InterruptLedger {
 	l := &InterruptLedger{dataDir: dataDir}
 	l.seq.Store(time.Now().UnixMilli())
 	return l
+}
+
+// SetRepo injects the SQLite repository. Once set, all operations use SQLite
+// instead of the JSONL file. Must be called before any concurrent use.
+func (l *InterruptLedger) SetRepo(repo *bossdb.Repository) {
+	l.repo = repo
 }
 
 func (l *InterruptLedger) nextID() string {
@@ -81,7 +91,7 @@ func (l *InterruptLedger) Record(space, agent string, itype InterruptType, quest
 		Context:   ctx,
 		CreatedAt: time.Now().UTC(),
 	}
-	l.append(intr)
+	l.save(intr)
 	return intr
 }
 
@@ -101,11 +111,41 @@ func (l *InterruptLedger) RecordResolved(space, agent string, itype InterruptTyp
 		},
 		CreatedAt: now,
 	}
-	l.append(intr)
+	l.save(intr)
 	return intr
 }
 
-func (l *InterruptLedger) append(intr *Interrupt) {
+// save persists an interrupt to SQLite (when repo is set) or appends to JSONL file.
+func (l *InterruptLedger) save(intr *Interrupt) {
+	if l.repo != nil {
+		ctxJSON := ""
+		if intr.Context != nil {
+			if b, err := json.Marshal(intr.Context); err == nil {
+				ctxJSON = string(b)
+			}
+		}
+		rec := &bossdb.InterruptRecord{
+			ID:        intr.ID,
+			SpaceName: intr.Space,
+			Agent:     intr.Agent,
+			Type:      string(intr.Type),
+			Question:  intr.Question,
+			Context:   ctxJSON,
+			CreatedAt: intr.CreatedAt,
+		}
+		if intr.Resolution != nil {
+			rec.ResolvedBy = intr.Resolution.ResolvedBy
+			rec.Answer = intr.Resolution.Answer
+			rec.ResolvedAt = sql.NullTime{Time: intr.Resolution.ResolvedAt, Valid: true}
+			rec.WaitSeconds = intr.Resolution.WaitDuration
+		}
+		l.repo.SaveInterrupt(rec)
+		return
+	}
+	l.appendFile(intr)
+}
+
+func (l *InterruptLedger) appendFile(intr *Interrupt) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -124,6 +164,21 @@ func (l *InterruptLedger) append(intr *Interrupt) {
 }
 
 func (l *InterruptLedger) LoadAll(space string) []Interrupt {
+	if l.repo != nil {
+		recs, err := l.repo.LoadInterrupts(space)
+		if err != nil {
+			return nil
+		}
+		result := make([]Interrupt, 0, len(recs))
+		for _, rec := range recs {
+			result = append(result, dbRecordToInterrupt(rec))
+		}
+		return result
+	}
+	return l.loadAllFromFile(space)
+}
+
+func (l *InterruptLedger) loadAllFromFile(space string) []Interrupt {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -150,8 +205,15 @@ func (l *InterruptLedger) LoadAll(space string) []Interrupt {
 	return interrupts
 }
 
-// Resolve marks a pending interrupt as resolved by rewriting the ledger file.
+// Resolve marks a pending interrupt as resolved.
 func (l *InterruptLedger) Resolve(space, id, resolvedBy, answer string) error {
+	if l.repo != nil {
+		return l.repo.ResolveInterrupt(space, id, resolvedBy, answer)
+	}
+	return l.resolveInFile(space, id, resolvedBy, answer)
+}
+
+func (l *InterruptLedger) resolveInFile(space, id, resolvedBy, answer string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -207,6 +269,33 @@ func (l *InterruptLedger) Resolve(space, id, resolvedBy, answer string) error {
 	}
 	out.Close()
 	return os.Rename(tmp, path)
+}
+
+// dbRecordToInterrupt converts a db.InterruptRecord to the coordinator Interrupt type.
+func dbRecordToInterrupt(rec *bossdb.InterruptRecord) Interrupt {
+	intr := Interrupt{
+		ID:        rec.ID,
+		Space:     rec.SpaceName,
+		Agent:     rec.Agent,
+		Type:      InterruptType(rec.Type),
+		Question:  rec.Question,
+		CreatedAt: rec.CreatedAt,
+	}
+	if rec.Context != "" {
+		var ctx map[string]string
+		if json.Unmarshal([]byte(rec.Context), &ctx) == nil {
+			intr.Context = ctx
+		}
+	}
+	if rec.ResolvedAt.Valid {
+		intr.Resolution = &InterruptResolution{
+			ResolvedBy:   rec.ResolvedBy,
+			Answer:       rec.Answer,
+			ResolvedAt:   rec.ResolvedAt.Time,
+			WaitDuration: rec.WaitSeconds,
+		}
+	}
+	return intr
 }
 
 func (l *InterruptLedger) Metrics(space string) InterruptMetrics {

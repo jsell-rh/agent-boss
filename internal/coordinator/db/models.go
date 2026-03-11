@@ -188,3 +188,44 @@ type StatusSnapshot struct {
 }
 
 func (StatusSnapshot) TableName() string { return "status_snapshots" }
+
+// Setting is a simple key-value table for server-wide configuration.
+// Replaces the legacy settings.json file.
+type Setting struct {
+	Key   string `gorm:"primarykey;not null"`
+	Value string `gorm:"type:text"`
+}
+
+func (Setting) TableName() string { return "settings" }
+
+// SpaceEventLog records coordinator events (agent updates, task changes, etc.)
+// per space. Replaces the legacy {space}.events.jsonl files.
+// Only the most recent EventLogWindowSize events per space are retained.
+type SpaceEventLog struct {
+	ID        string    `gorm:"primarykey;not null"`
+	SpaceName string    `gorm:"index;not null"`
+	EventType string    `gorm:"not null"`
+	Agent     string
+	Payload   string    `gorm:"type:text"` // raw JSON
+	Timestamp time.Time `gorm:"index"`
+}
+
+func (SpaceEventLog) TableName() string { return "space_event_log" }
+
+// InterruptRecord stores an agent interrupt (approval request, decision, etc.)
+// Replaces the legacy {space}.interrupts.jsonl files.
+type InterruptRecord struct {
+	ID          string       `gorm:"primarykey;not null"`
+	SpaceName   string       `gorm:"index;not null"`
+	Agent       string       `gorm:"not null"`
+	Type        string       `gorm:"not null"`
+	Question    string       `gorm:"type:text;not null"`
+	Context     string       `gorm:"type:text"` // JSON map[string]string
+	ResolvedBy  string
+	Answer      string       `gorm:"type:text"`
+	ResolvedAt  sql.NullTime
+	WaitSeconds float64
+	CreatedAt   time.Time    `gorm:"index"`
+}
+
+func (InterruptRecord) TableName() string { return "interrupts" }

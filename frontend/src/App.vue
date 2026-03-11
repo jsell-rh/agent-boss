@@ -27,6 +27,7 @@ import ConversationsView from '@/components/ConversationsView.vue'
 import KanbanView from '@/components/KanbanView.vue'
 import PersonasView from '@/components/PersonasView.vue'
 import SettingsView from '@/components/SettingsView.vue'
+import ApprovalTray from '@/components/ApprovalTray.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 
@@ -48,6 +49,7 @@ const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const statusAnnouncement = ref('')
 const broadcasting = ref(false)
+const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(null)
 
 const sse = useSSE()
 const eventLogRef = ref<InstanceType<typeof EventLog> | null>(null)
@@ -288,6 +290,21 @@ async function handleBroadcastSpace() {
   }
 }
 
+async function handleRestartAllSpace() {
+  if (!selectedSpace.value) return
+  try {
+    const res = await api.restartAll(selectedSpace.value)
+    if (res.count === 0) {
+      showStatus('No eligible agents to restart.')
+      return
+    }
+    restartAllProgress.value = { agents: res.agents, completed: 0 }
+  } catch (err) {
+    console.error('Restart all failed:', err)
+    showError('Fleet restart failed. Please try again.')
+  }
+}
+
 async function handleApproveAgent(always = false) {
   if (!selectedSpace.value || !selectedAgent.value) return
   try {
@@ -302,6 +319,18 @@ async function handleApproveAgent(always = false) {
 
 async function handleAlwaysAllowAgent() {
   return handleApproveAgent(true)
+}
+
+async function handleApproveSpecificAgent(agentName: string, always = false) {
+  if (!selectedSpace.value) return
+  try {
+    await api.approveAgent(selectedSpace.value, agentName, always)
+    await loadSessionStatus(selectedSpace.value)
+    showStatus(always ? `Always allowed for ${agentName}` : `Approved ${agentName}`)
+  } catch (err) {
+    console.error('Approve failed:', err)
+    showError('Approval failed. Please try again.')
+  }
 }
 
 async function handleReplyAgent(text: string) {
@@ -625,6 +654,18 @@ function setupSSE() {
   sse.on('broadcast_progress', (data) => {
     pushLog('broadcast_progress', data.message || 'Nudge in progress...')
   })
+
+  sse.on('agent_restarted', (agentName) => {
+    pushLog('agent_restarted', `[${agentName}] restarted`)
+    if (restartAllProgress.value && restartAllProgress.value.agents.includes(agentName)) {
+      restartAllProgress.value.completed++
+      if (restartAllProgress.value.completed >= restartAllProgress.value.agents.length) {
+        const n = restartAllProgress.value.agents.length
+        showStatus(`Fleet restart complete — ${n} agent${n !== 1 ? 's' : ''} restarted.`)
+        restartAllProgress.value = null
+      }
+    }
+  })
 }
 
 // ── Polling fallback ───────────────────────────────────────────────
@@ -835,27 +876,6 @@ onUnmounted(() => {
         @archive-space="handleArchiveSpace"
       />
       <SidebarInset class="flex flex-col h-dvh">
-        <!-- Global approval banner — shown whenever any agent in the current space needs approval -->
-        <div
-          v-if="agentsNeedingApproval.length > 0"
-          class="shrink-0 bg-destructive text-destructive-foreground px-4 py-2 flex items-center justify-between gap-3 text-sm font-text"
-          role="alert"
-          aria-live="assertive"
-        >
-          <span class="font-semibold">
-            ⚠ {{ agentsNeedingApproval.length === 1 ? agentsNeedingApproval[0] : agentsNeedingApproval.length + ' agents' }} waiting for approval
-          </span>
-          <div class="flex gap-2">
-            <button
-              v-for="name in agentsNeedingApproval"
-              :key="name"
-              class="underline underline-offset-2 hover:no-underline cursor-pointer"
-              @click="handleSelectAgent(name)"
-            >
-              {{ agentsNeedingApproval.length > 1 ? name : 'View' }}
-            </button>
-          </div>
-        </div>
         <!-- Header -->
         <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4 overflow-hidden">
           <SidebarTrigger class="-ml-1" />
@@ -917,6 +937,15 @@ onUnmounted(() => {
           </template>
           <!-- SSE connection indicator + theme toggle -->
           <div class="ml-auto flex items-center gap-3">
+            <!-- Approval tray — visible when any agent in the current space needs approval -->
+            <ApprovalTray
+              v-if="agentsNeedingApproval.length > 0"
+              :agents="agentsNeedingApproval"
+              :tmux-status="tmuxStatus"
+              :space-name="selectedSpace"
+              @approve="handleApproveSpecificAgent"
+              @select-agent="handleSelectAgent"
+            />
             <span
               :class="[
                 'inline-block size-2 rounded-full',
@@ -1054,9 +1083,11 @@ onUnmounted(() => {
             :space="currentSpace"
             :tmux-status="tmuxStatus"
             :broadcasting="broadcasting"
+            :restart-all-progress="restartAllProgress"
             :hierarchy="effectiveHierarchy"
             @select-agent="handleSelectAgent"
             @broadcast="handleBroadcastSpace"
+            @restart-all="handleRestartAllSpace"
             @delete-agent="handleDeleteAgent"
             @broadcast-agent="handleBroadcastSingleAgent"
             @send-message-to-agent="handleSendMessageToAgent"

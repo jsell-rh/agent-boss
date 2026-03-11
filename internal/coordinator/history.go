@@ -17,12 +17,16 @@ func (s *Server) spaceHistoryPath(spaceName string) string {
 }
 
 // appendSnapshot appends a StatusSnapshot to the space history.
-// When a repository is available it is written to SQLite; the NDJSON file
-// is also written for backwards compatibility.
+// When a repository is available (SQLite active) it is written to SQLite only.
+// Fallback: append to NDJSON file when no repository is configured.
 func (s *Server) appendSnapshot(snapshot StatusSnapshot) error {
-	// Persist to SQLite.
-	s.saveSnapshotToDB(&snapshot)
+	// Persist to SQLite (primary store).
+	if s.repo != nil {
+		s.saveSnapshotToDB(&snapshot)
+		return nil
+	}
 
+	// Fallback: no SQLite — write to NDJSON file.
 	if s.dataDir == "" {
 		return nil
 	}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { KnowledgeSpace, SessionAgentStatus, HierarchyTree } from '@/types'
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTime } from '@/composables/useTime'
 import { Card, CardContent } from '@/components/ui/card'
@@ -44,6 +44,7 @@ import {
   Layers,
   Search,
   Plus,
+  RotateCcw,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import InterruptTracker from './InterruptTracker.vue'
@@ -53,17 +54,20 @@ import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
 import AgentCreateDialog from './AgentCreateDialog.vue'
 import { prLink } from '@/lib/utils'
+import api from '@/api/client'
 
 const props = defineProps<{
   space: KnowledgeSpace
   tmuxStatus: Record<string, SessionAgentStatus> | null
   broadcasting?: boolean
+  restartAllProgress?: { agents: string[]; completed: number } | null
   hierarchy?: HierarchyTree | null
 }>()
 
 const emit = defineEmits<{
   'select-agent': [name: string]
   broadcast: []
+  'restart-all': []
   'delete-agent': [name: string]
   'broadcast-agent': [name: string]
   'send-message-to-agent': [agentName: string, text: string]
@@ -71,6 +75,39 @@ const emit = defineEmits<{
   'archive-space': []
   'clear-done-agents': [names: string[]]
 }>()
+
+// Persona version tracking for outdated badge
+const personaVersions = ref<Record<string, number>>({})
+async function loadPersonaVersions() {
+  try {
+    const personas = await api.fetchPersonas()
+    const versions: Record<string, number> = {}
+    for (const p of personas) versions[p.id] = p.version
+    personaVersions.value = versions
+  } catch { /* non-critical */ }
+}
+function isPersonaOutdated(agent: any): boolean {
+  const config = agent?.config || (agent as any)?.Config
+  if (!config?.personas?.length) return false
+  for (const ref of config.personas) {
+    const current = personaVersions.value[ref.id]
+    if (current && ref.pinned_version && ref.pinned_version < current) return true
+  }
+  return false
+}
+function personaOutdatedTooltip(agent: any): string {
+  const config = agent?.config || (agent as any)?.Config
+  if (!config?.personas?.length) return ''
+  const parts: string[] = []
+  for (const ref of config.personas) {
+    const current = personaVersions.value[ref.id]
+    if (current && ref.pinned_version && ref.pinned_version < current) {
+      parts.push(`${ref.id}: v${ref.pinned_version} → v${current}`)
+    }
+  }
+  return parts.join(', ')
+}
+onMounted(loadPersonaVersions)
 
 const agentSearch = ref('')
 const activeTab = ref('agents')
@@ -318,6 +355,19 @@ const activeSections = computed(() => [
         <span>This space is archived. <span class="font-mono text-xs">{{ space.archive }}</span></span>
       </div>
 
+      <!-- Fleet restart progress banner -->
+      <div
+        v-if="restartAllProgress"
+        class="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/5 border border-primary/20 text-sm"
+        role="status"
+      >
+        <RotateCcw class="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+        <span>
+          Restarting {{ restartAllProgress.agents.length }} agent{{ restartAllProgress.agents.length !== 1 ? 's' : '' }}…
+          <span class="font-medium">({{ restartAllProgress.completed }}/{{ restartAllProgress.agents.length }} complete)</span>
+        </span>
+      </div>
+
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
@@ -353,6 +403,26 @@ const activeSections = computed(() => [
             </TooltipTrigger>
             <TooltipContent>
               Send a nudge to all {{ agentCount }} agent{{ agentCount !== 1 ? 's' : '' }} in this space
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="agentCount === 0 || !!restartAllProgress"
+                @click="emit('restart-all')"
+              >
+                <RotateCcw class="size-4" :class="restartAllProgress ? 'animate-spin' : ''" />
+                {{ restartAllProgress
+                  ? `Restarting… (${restartAllProgress.completed}/${restartAllProgress.agents.length})`
+                  : 'Restart All' }}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {{ restartAllProgress
+                ? `Fleet restart in progress: ${restartAllProgress.completed} of ${restartAllProgress.agents.length} done`
+                : 'Restart all active/idle agents in this space' }}
             </TooltipContent>
           </Tooltip>
           <Tooltip v-if="doneIdleAgents.length > 0">
@@ -536,6 +606,17 @@ const activeSections = computed(() => [
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                           <StatusBadge :status="agent.status" />
+                          <Tooltip v-if="isPersonaOutdated(agent)">
+                            <TooltipTrigger as-child>
+                              <Badge
+                                variant="outline"
+                                class="border-amber-500/50 text-amber-500 text-[10px] h-5 px-1.5"
+                              >
+                                Persona
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>Outdated persona: {{ personaOutdatedTooltip(agent) }}. Restart to update.</TooltipContent>
+                          </Tooltip>
                           <Tooltip v-if="agent.stale">
                             <TooltipTrigger as-child>
                               <Badge

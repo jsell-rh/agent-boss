@@ -773,11 +773,19 @@ type PersonaRef struct {
 // Persona is a global, reusable prompt fragment that can be assigned to agents.
 // Personas are stored in DATA_DIR/personas.json and are independent of spaces.
 type Persona struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Prompt      string    `json:"prompt"`
-	Version     int       `json:"version"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Prompt      string           `json:"prompt"`
+	Version     int              `json:"version"`
+	History     []PersonaVersion `json:"history,omitempty"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+}
+
+// PersonaVersion is a snapshot of a persona at a specific version.
+type PersonaVersion struct {
+	Version   int       `json:"version"`
+	Prompt    string    `json:"prompt"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

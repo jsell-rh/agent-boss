@@ -8,49 +8,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const settingsFile = "settings.json"
+const settingKeyAllowSkipPermissions = "allow_skip_permissions"
 
-type serverSettings struct {
-	AllowSkipPermissions bool `json:"allow_skip_permissions"`
-}
-
-func (s *Server) settingsPath() string {
-	return filepath.Join(s.dataDir, settingsFile)
-}
-
-// loadSettings reads settings.json from DATA_DIR and applies stored values.
-// Called once at server startup; missing file is silently ignored.
+// loadSettings reads persisted settings from SQLite and applies them.
+// Called once at server startup; missing values are silently ignored (defaults apply).
 func (s *Server) loadSettings() {
-	data, err := os.ReadFile(s.settingsPath())
-	if err != nil {
-		return // first run or file missing — use defaults
+	if s.repo == nil {
+		return
 	}
-	var stored serverSettings
-	if err := json.Unmarshal(data, &stored); err != nil {
+	val, err := s.repo.GetSetting(settingKeyAllowSkipPermissions)
+	if err != nil || val == "" {
 		return
 	}
 	s.mu.Lock()
-	s.allowSkipPermissions = stored.AllowSkipPermissions
+	s.allowSkipPermissions = val == "true"
 	s.mu.Unlock()
 }
 
-// saveSettings writes the current settings to settings.json in DATA_DIR.
+// saveSettings persists the current settings to SQLite.
 func (s *Server) saveSettings() error {
-	s.mu.RLock()
-	snap := serverSettings{AllowSkipPermissions: s.allowSkipPermissions}
-	s.mu.RUnlock()
-	data, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		return err
+	if s.repo == nil {
+		return nil
 	}
-	return os.WriteFile(s.settingsPath(), data, 0644)
+	s.mu.RLock()
+	val := "false"
+	if s.allowSkipPermissions {
+		val = "true"
+	}
+	s.mu.RUnlock()
+	return s.repo.SetSetting(settingKeyAllowSkipPermissions, val)
 }
 
 // buildMCPHandler creates the MCP server and returns an http.Handler for mounting at /mcp.
@@ -82,17 +73,8 @@ func (s *Server) buildMCPHandler() http.Handler {
 		}
 
 		s.mu.RLock()
+		// buildIgnitionText now includes persona directives directly.
 		text := s.buildIgnitionText(spaceName, agentName, "")
-		// Prepend assembled persona prompt if agent has personas configured.
-		if ks, ok := s.spaces[spaceName]; ok {
-			canonical := resolveAgentName(ks, agentName)
-			if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
-				personaPrompt := s.assemblePersonaPrompt(cfg.Personas)
-				if personaPrompt != "" {
-					text = personaPrompt + "\n\n" + text
-				}
-			}
-		}
 		s.mu.RUnlock()
 
 		return &mcp.ReadResourceResult{
@@ -114,12 +96,13 @@ func (s *Server) buildMCPHandler() http.Handler {
 		Description: "The agent communication and collaboration protocol",
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		text := strings.ReplaceAll(protocolTemplate, "{COORDINATOR_URL}", s.localURL())
 		return &mcp.ReadResourceResult{
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      "boss://protocol",
 					MIMEType: "text/markdown",
-					Text:     protocolTemplate,
+					Text:     text,
 				},
 			},
 		}, nil
@@ -160,6 +143,9 @@ func (s *Server) buildMCPHandler() http.Handler {
 			},
 		}, nil
 	})
+
+	// Register MCP tools for agent interactions.
+	s.registerMCPTools(srv)
 
 	handler := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server { return srv },

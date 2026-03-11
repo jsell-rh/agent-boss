@@ -250,7 +250,9 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 	// Capture closure variables before goroutine.
 	initialMsg := req.InitialMessage
 	cfgInitialPrompt := spawnInitialPrompt
-	cfgPersonaPrompt := s.assemblePersonaPrompt(spawnPersonas)
+	// Persona directives are now embedded directly in buildIgnitionText,
+	// so we no longer need to assemble them separately for delivery.
+	_ = spawnPersonas // used during spawn config resolution above
 	spawnerIdentity := r.Header.Get("X-Agent-Name")
 	if spawnerIdentity == "" {
 		spawnerIdentity = "boss"
@@ -278,23 +280,17 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		// Bootstrap the agent by sending a plain-text prompt that fetches
-		// the ignition context from the coordinator. This replaces the old
-		// /boss.ignite slash command which relied on symlinked command files.
-		ignitePrompt := fmt.Sprintf(
-			"You are %s, an autonomous AI agent in workspace %s.\n"+
-				"Fetch your ignition context and begin work immediately:\n"+
-				"curl -s %s/spaces/%s/ignition/%s\n"+
-				"Read the output and start your work loop.",
-			agentName, spaceName, s.localURL(), spaceName, agentName,
-		)
+		// Send the full ignition text directly via MCP-aware prompt.
+		// The agent has boss-mcp tools registered and can use them immediately.
+		s.mu.RLock()
+		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)
+		s.mu.RUnlock()
 		if err := backend.SendInput(sessionID, ignitePrompt); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
 				Msg: fmt.Sprintf("spawn: ignite send failed: %v (fetch manually: curl %s/spaces/%s/ignition/%s)", err, s.localURL(), spaceName, agentName)})
 		}
-		if cfgPersonaPrompt != "" {
-			s.deliverInternalMessage(spaceName, agentName, "boss", cfgPersonaPrompt)
-		}
+		// Persona directives are now included directly in the ignition text,
+		// so we no longer deliver them as a separate internal message.
 		if initialMsg != "" {
 			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
 		}
@@ -459,10 +455,6 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 			return
 		}
 	}
-	command := req.Command
-	if command == "" {
-		command = "claude --dangerously-skip-permissions"
-	}
 
 	ks, ok := s.getSpace(spaceName)
 	if !ok {
@@ -477,7 +469,22 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	if exists {
 		oldSession = agent.SessionID
 	}
+	// Load AgentConfig to restore cwd, command, and initial_prompt on restart.
+	var restartWorkDir string
+	var restartInitialPrompt string
+	if cfg := ks.agentConfig(canonical); cfg != nil {
+		restartWorkDir = cfg.WorkDir
+		restartInitialPrompt = cfg.InitialPrompt
+		if req.Command == "" && cfg.Command != "" {
+			req.Command = cfg.Command
+		}
+	}
 	s.mu.RUnlock()
+
+	command := req.Command
+	if command == "" {
+		command = "claude --dangerously-skip-permissions"
+	}
 
 	if !exists {
 		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
@@ -531,6 +538,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 			SessionID: newSession,
 			Command:   command,
 			BackendOpts: TmuxCreateOpts{
+				WorkDir:              restartWorkDir,
 				MCPServerURL:         s.localURL(),
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
@@ -549,6 +557,10 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	agent.Status = StatusIdle
 	agent.Summary = fmt.Sprintf("%s: restarted", canonical)
 	agent.UpdatedAt = time.Now().UTC()
+	// Re-pin persona versions so the agent gets the latest prompts.
+	if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
+		cfg.Personas = s.resolvePersonaRefs(cfg.Personas)
+	}
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
@@ -569,21 +581,16 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		// Send plain-text ignition prompt — no slash command required.
+		// Send ignition text directly — personas are included by buildIgnitionText.
 		s.mu.RLock()
 		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
-		// Prepend persona prompts if configured (mirrors handleIgnition and mcp_server.go).
-		if ks, ok := s.spaces[spaceName]; ok {
-			if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
-				if personaPrompt := s.assemblePersonaPrompt(cfg.Personas); personaPrompt != "" {
-					igniteText = personaPrompt + "\n\n" + igniteText
-				}
-			}
-		}
 		s.mu.RUnlock()
 		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
 				Msg: fmt.Sprintf("restart: ignite send failed: %v", err)})
+		}
+		if restartInitialPrompt != "" {
+			s.deliverInternalMessage(spaceName, canonical, "boss", restartInitialPrompt)
 		}
 	}()
 
@@ -666,4 +673,144 @@ func (s *Server) handleAgentIntrospect(w http.ResponseWriter, r *http.Request, s
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleRestartAll handles POST /spaces/{space}/restart-all.
+// Restarts all agents in the space that have status active/idle/done and a registered session.
+// Restarts are sequenced with a 2s delay between each to avoid overwhelming the system.
+func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceName string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	type target struct {
+		name    string
+		session string
+	}
+	var targets []target
+
+	s.mu.RLock()
+	for name, rec := range ks.Agents {
+		if rec == nil || rec.Status == nil {
+			continue
+		}
+		agent := rec.Status
+		if agent.SessionID == "" {
+			continue
+		}
+		switch agent.Status {
+		case StatusActive, StatusIdle, StatusDone:
+			targets = append(targets, target{name: name, session: agent.SessionID})
+		}
+	}
+	s.mu.RUnlock()
+
+	names := make([]string, len(targets))
+	for i, t := range targets {
+		names[i] = t.name
+	}
+
+	// Fire off sequential restarts in a goroutine so this handler returns immediately.
+	go func() {
+		for i, t := range targets {
+			if i > 0 {
+				time.Sleep(2 * time.Second)
+			}
+			// Reuse the per-agent restart handler via a synthetic HTTP round-trip would be
+			// complex; replicate the core kill-and-recreate logic directly.
+			s.mu.RLock()
+			agent, exists := ks.agentStatusOk(t.name)
+			var cfg *AgentConfig
+			if exists {
+				cfg = ks.agentConfig(t.name)
+			}
+			s.mu.RUnlock()
+			if !exists || agent.SessionID == "" {
+				continue
+			}
+			backend := s.backendFor(agent)
+
+			// Kill existing session
+			ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+			_ = backend.KillSession(ctx, agent.SessionID)
+			cancel()
+			time.Sleep(1 * time.Second)
+
+			// Determine work dir and command from stored config
+			workDir := ""
+			command := "claude --dangerously-skip-permissions"
+			initialPrompt := ""
+			if cfg != nil {
+				workDir = cfg.WorkDir
+				if cfg.Command != "" {
+					command = cfg.Command
+				}
+				initialPrompt = cfg.InitialPrompt
+			}
+
+			// Create new session
+			newSession := tmuxDefaultSession(spaceName, t.name)
+			if backend.SessionExists(newSession) {
+				newSession = newSession + "-new"
+			}
+			createOpts := SessionCreateOpts{
+				SessionID: newSession,
+				Command:   command,
+				BackendOpts: TmuxCreateOpts{
+					WorkDir:              workDir,
+					MCPServerURL:         s.localURL(),
+					AllowSkipPermissions: s.allowSkipPermissions,
+				},
+			}
+			sessionID, err := backend.CreateSession(context.Background(), createOpts)
+			if err != nil {
+				s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: t.name,
+					Msg: fmt.Sprintf("restart-all: failed to create session: %v", err)})
+				continue
+			}
+
+			s.mu.Lock()
+			agent.SessionID = sessionID
+			agent.Status = StatusIdle
+			agent.Summary = fmt.Sprintf("%s: restarted (fleet restart)", t.name)
+			agent.UpdatedAt = time.Now().UTC()
+			s.saveSpace(ks) //nolint:errcheck
+			s.mu.Unlock()
+
+			s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentRestarted, Space: spaceName, Agent: t.name,
+				Msg:    fmt.Sprintf("restart-all: restarted in session %q", sessionID),
+				Fields: map[string]string{"session_id": sessionID}})
+			s.broadcastSSE(spaceName, t.name, "agent_restarted", t.name)
+
+			// Send ignition asynchronously
+			go func(agentName, sid, prompt string) {
+				time.Sleep(5 * time.Second)
+				s.mu.RLock()
+				igniteText := s.buildIgnitionText(spaceName, agentName, sid)
+				s.mu.RUnlock()
+				if err := backend.SendInput(sid, igniteText); err != nil {
+					s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: agentName,
+						Msg: fmt.Sprintf("restart-all: ignite failed: %v", err)})
+				}
+				if prompt != "" {
+					s.deliverInternalMessage(spaceName, agentName, "boss", prompt)
+				}
+			}(t.name, sessionID, initialPrompt)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"agents": names,
+		"count":  len(names),
+	})
 }
