@@ -557,6 +557,10 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	agent.Status = StatusIdle
 	agent.Summary = fmt.Sprintf("%s: restarted", canonical)
 	agent.UpdatedAt = time.Now().UTC()
+	// Re-pin persona versions so the agent gets the latest prompts.
+	if cfg := ks.agentConfig(canonical); cfg != nil && len(cfg.Personas) > 0 {
+		cfg.Personas = s.resolvePersonaRefs(cfg.Personas)
+	}
 	s.saveSpace(ks)
 	s.mu.Unlock()
 

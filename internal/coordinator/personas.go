@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -115,6 +116,12 @@ func (ps *PersonaStore) update(id string, fn func(*Persona)) (*Persona, error) {
 	if p == nil {
 		return nil, fmt.Errorf("persona %q not found", id)
 	}
+	// Save current state to history before applying changes.
+	p.History = append(p.History, PersonaVersion{
+		Version:   p.Version,
+		Prompt:    p.Prompt,
+		UpdatedAt: p.UpdatedAt,
+	})
 	fn(p)
 	p.Version++
 	p.UpdatedAt = time.Now().UTC()
@@ -123,6 +130,62 @@ func (ps *PersonaStore) update(id string, fn func(*Persona)) (*Persona, error) {
 	}
 	copy := *p
 	return &copy, nil
+}
+
+// history returns the version history for a persona.
+func (ps *PersonaStore) history(id string) ([]PersonaVersion, error) {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	p := ps.data[id]
+	if p == nil {
+		return nil, fmt.Errorf("persona %q not found", id)
+	}
+	// Return history + current version.
+	all := make([]PersonaVersion, len(p.History), len(p.History)+1)
+	copy(all, p.History)
+	all = append(all, PersonaVersion{
+		Version:   p.Version,
+		Prompt:    p.Prompt,
+		UpdatedAt: p.UpdatedAt,
+	})
+	return all, nil
+}
+
+// revert restores a persona to a previous version's prompt, creating a new version.
+func (ps *PersonaStore) revert(id string, targetVersion int) (*Persona, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	p := ps.data[id]
+	if p == nil {
+		return nil, fmt.Errorf("persona %q not found", id)
+	}
+	// Find the target version in history.
+	var targetPrompt string
+	found := false
+	for _, h := range p.History {
+		if h.Version == targetVersion {
+			targetPrompt = h.Prompt
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("version %d not found in history", targetVersion)
+	}
+	// Save current to history, then apply the old prompt.
+	p.History = append(p.History, PersonaVersion{
+		Version:   p.Version,
+		Prompt:    p.Prompt,
+		UpdatedAt: p.UpdatedAt,
+	})
+	p.Prompt = targetPrompt
+	p.Version++
+	p.UpdatedAt = time.Now().UTC()
+	if err := ps.save(); err != nil {
+		return nil, err
+	}
+	cp := *p
+	return &cp, nil
 }
 
 func (ps *PersonaStore) delete(id string) error {
@@ -329,6 +392,178 @@ func (s *Server) handlePersonaDetail(w http.ResponseWriter, r *http.Request, per
 	default:
 		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handlePersonaHistory handles GET /personas/{id}/history.
+func (s *Server) handlePersonaHistory(w http.ResponseWriter, r *http.Request, personaID string) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	versions, err := s.personas.history(personaID)
+	if err != nil {
+		writeJSONError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(versions)
+}
+
+// handlePersonaRevert handles POST /personas/{id}/revert.
+func (s *Server) handlePersonaRevert(w http.ResponseWriter, r *http.Request, personaID string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Version int `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	updated, err := s.personas.revert(personaID, req.Version)
+	if err != nil {
+		writeJSONError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updated)
+}
+
+// personaAgentInfo describes an agent using a persona, with outdated status.
+type personaAgentInfo struct {
+	Space          string `json:"space"`
+	Agent          string `json:"agent"`
+	PinnedVersion  int    `json:"pinned_version"`
+	CurrentVersion int    `json:"current_version"`
+	Outdated       bool   `json:"outdated"`
+	SessionID      string `json:"session_id,omitempty"`
+}
+
+// handlePersonaAgents handles GET /personas/{id}/agents.
+func (s *Server) handlePersonaAgents(w http.ResponseWriter, r *http.Request, personaID string) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p := s.personas.get(personaID)
+	if p == nil {
+		writeJSONError(w, fmt.Sprintf("persona %q not found", personaID), http.StatusNotFound)
+		return
+	}
+
+	var agents []personaAgentInfo
+	s.mu.RLock()
+	for spaceName, ks := range s.spaces {
+		for agentName, rec := range ks.Agents {
+			if rec == nil || rec.Config == nil {
+				continue
+			}
+			for _, ref := range rec.Config.Personas {
+				if ref.ID == personaID {
+					agents = append(agents, personaAgentInfo{
+						Space:          spaceName,
+						Agent:          agentName,
+						PinnedVersion:  ref.PinnedVersion,
+						CurrentVersion: p.Version,
+						Outdated:       ref.PinnedVersion < p.Version,
+						SessionID:      rec.Status.SessionID,
+					})
+					break
+				}
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if agents == nil {
+		agents = []personaAgentInfo{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(agents)
+}
+
+// handlePersonaRestartOutdated handles POST /personas/{id}/restart-outdated.
+func (s *Server) handlePersonaRestartOutdated(w http.ResponseWriter, r *http.Request, personaID string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p := s.personas.get(personaID)
+	if p == nil {
+		writeJSONError(w, fmt.Sprintf("persona %q not found", personaID), http.StatusNotFound)
+		return
+	}
+
+	type restartTarget struct {
+		Space     string
+		Agent     string
+		SessionID string
+		Backend   string
+	}
+	var targets []restartTarget
+
+	s.mu.RLock()
+	for spaceName, ks := range s.spaces {
+		for agentName, rec := range ks.Agents {
+			if rec == nil || rec.Config == nil || rec.Status == nil {
+				continue
+			}
+			for _, ref := range rec.Config.Personas {
+				if ref.ID == personaID && ref.PinnedVersion < p.Version {
+					targets = append(targets, restartTarget{
+						Space:     spaceName,
+						Agent:     agentName,
+						SessionID: rec.Status.SessionID,
+						Backend:   rec.Status.BackendType,
+					})
+					break
+				}
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	var restarted []string
+	var errors []string
+	for _, t := range targets {
+		if t.SessionID == "" {
+			errors = append(errors, fmt.Sprintf("%s/%s: no session", t.Space, t.Agent))
+			continue
+		}
+		backend := s.backendByName(t.Backend)
+		if backend == nil {
+			errors = append(errors, fmt.Sprintf("%s/%s: backend not available", t.Space, t.Agent))
+			continue
+		}
+		// Re-pin persona versions before restart.
+		s.mu.Lock()
+		if ks, ok := s.spaces[t.Space]; ok {
+			if rec, ok := ks.Agents[t.Agent]; ok && rec.Config != nil {
+				rec.Config.Personas = s.resolvePersonaRefs(rec.Config.Personas)
+				s.saveSpace(ks)
+			}
+		}
+		s.mu.Unlock()
+
+		// Trigger restart via the lifecycle handler logic.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := backend.KillSession(ctx, t.SessionID); err != nil {
+			errors = append(errors, fmt.Sprintf("%s/%s: kill failed: %v", t.Space, t.Agent, err))
+			cancel()
+			continue
+		}
+		cancel()
+		restarted = append(restarted, t.Space+"/"+t.Agent)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"restarted": restarted,
+		"errors":    errors,
+		"total":     len(targets),
+	})
 }
 
 // dedup removes duplicate strings from a slice.

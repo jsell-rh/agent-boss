@@ -922,9 +922,40 @@ func (s *Server) handleSpaceAgentsJSON(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	// Enrich agent records with persona_outdated info.
+	type agentWithPersonaStatus struct {
+		*AgentRecord
+		PersonaOutdated  bool                        `json:"persona_outdated,omitempty"`
+		PersonaVersions  map[string]personaVersionInfo `json:"persona_versions,omitempty"`
+	}
+	result := make(map[string]agentWithPersonaStatus, len(ks.Agents))
+	for name, rec := range ks.Agents {
+		entry := agentWithPersonaStatus{AgentRecord: rec}
+		if rec != nil && rec.Config != nil && s.personas != nil {
+			for _, ref := range rec.Config.Personas {
+				cur := s.personas.currentVersion(ref.ID)
+				if ref.PinnedVersion < cur {
+					entry.PersonaOutdated = true
+					if entry.PersonaVersions == nil {
+						entry.PersonaVersions = make(map[string]personaVersionInfo)
+					}
+					entry.PersonaVersions[ref.ID] = personaVersionInfo{
+						Pinned:  ref.PinnedVersion,
+						Current: cur,
+					}
+				}
+			}
+		}
+		result[name] = entry
+	}
+	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ks.Agents)
+	json.NewEncoder(w).Encode(result)
+}
+
+type personaVersionInfo struct {
+	Pinned  int `json:"pinned"`
+	Current int `json:"current"`
 }
 
 func (s *Server) handleSpaceEventsJSON(w http.ResponseWriter, r *http.Request) {
