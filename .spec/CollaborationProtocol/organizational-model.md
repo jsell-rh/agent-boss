@@ -17,6 +17,12 @@ Boss (human)
 
 The hierarchy is registered in the coordinator via `parent=` in ignition. Dashboard renders it visually.
 
+> **Note:** This diagram reflects one common pattern (software development teams), not a
+> required template. Agent Boss supports any workflow — scientific research, customer support,
+> content pipelines, or anything else. Roles and team shapes are defined by the spawning agent
+> and the use case, not by the platform. The org structure also changes over time; treat the
+> ignition hierarchy as a starting point, not a permanent arrangement.
+
 ## Leadership Responsibilities
 
 A **leader** (Manager or CTO) is responsible for:
@@ -109,7 +115,7 @@ Every task must have: an assignee, a parent (or be a root task), and a status th
 
 - Agents report status up (via messages and status updates)
 - Managers send decisions down (via task assignment and messages)
-- Peers coordinate laterally (via direct messages, pre-authorized by manager)
+- Peers coordinate laterally (via direct messages — allowed by default; manager can restrict specific interactions as an exception)
 
 ### 5. Context at the edge
 
