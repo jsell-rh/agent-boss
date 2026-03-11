@@ -520,3 +520,33 @@ func dbAgentToRecord(a *bossdb.Agent) *AgentRecord {
 	}
 	return rec
 }
+
+// loadEventRingFromDB pre-warms the journal ring buffer from recent SQLite events.
+// Called once at startup after loadAllSpaces().
+func (s *Server) loadEventRingFromDB() {
+	if s.repo == nil {
+		return
+	}
+	names := s.listSpaceNames()
+	for _, space := range names {
+		evs, err := s.repo.LoadSpaceEventsSince(space, time.Time{})
+		if err != nil {
+			s.logEvent(fmt.Sprintf("warning: pre-warm event ring for %q: %v", space, err))
+			continue
+		}
+		for _, e := range evs {
+			var payload json.RawMessage
+			if e.Payload != "" {
+				payload = json.RawMessage(e.Payload)
+			}
+			s.journal.LoadIntoRing(&SpaceEvent{
+				ID:        e.ID,
+				Space:     e.SpaceName,
+				Type:      SpaceEventType(e.EventType),
+				Agent:     e.Agent,
+				Timestamp: e.Timestamp,
+				Payload:   payload,
+			})
+		}
+	}
+}

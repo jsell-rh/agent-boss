@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -239,8 +240,28 @@ func (r *Repository) DeleteTask(spaceName, taskID string) error {
 	return r.db.Where("id = ? AND space_name = ?", taskID, spaceName).Delete(&Task{}).Error
 }
 
+// ---- Setting operations ----
+
+// GetSetting returns the value for the given key, or ("", nil) if not found.
+func (r *Repository) GetSetting(key string) (string, error) {
+	var s Setting
+	err := r.db.Where("key = ?", key).First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return s.Value, err
+}
+
+// SetSetting upserts a key-value setting.
+func (r *Repository) SetSetting(key, value string) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value"}),
+	}).Create(&Setting{Key: key, Value: value}).Error
+}
+
 // DeleteSpace removes a space and all its associated data (agents, messages,
-// notifications, tasks, comments, events, snapshots) in a single transaction.
+// notifications, tasks, comments, events, snapshots, event log) in a single transaction.
 func (r *Repository) DeleteSpace(name string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("space_name = ?", name).Delete(&TaskEvent{}).Error; err != nil {
@@ -259,6 +280,9 @@ func (r *Repository) DeleteSpace(name string) error {
 			return err
 		}
 		if err := tx.Where("space_name = ?", name).Delete(&StatusSnapshot{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("space_name = ?", name).Delete(&SpaceEventLog{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("space_name = ?", name).Delete(&Agent{}).Error; err != nil {
@@ -286,6 +310,37 @@ func (r *Repository) GetSnapshots(spaceName string, agentName string, since *tim
 	}
 	var snaps []*StatusSnapshot
 	return snaps, q.Find(&snaps).Error
+}
+
+// ---- SpaceEventLog operations ----
+
+// EventLogWindowSize is the number of recent events retained per space.
+const EventLogWindowSize = 500
+
+// AppendSpaceEvent persists a space event and prunes old events beyond the window.
+// Pruning is best-effort (silently ignored on error).
+func (r *Repository) AppendSpaceEvent(e *SpaceEventLog) error {
+	if err := r.db.Create(e).Error; err != nil {
+		return err
+	}
+	// Prune: keep only the most recent EventLogWindowSize events per space.
+	r.db.Exec(
+		`DELETE FROM space_event_log WHERE space_name = ? AND id NOT IN (
+			SELECT id FROM space_event_log WHERE space_name = ? ORDER BY timestamp DESC LIMIT ?
+		)`, e.SpaceName, e.SpaceName, EventLogWindowSize,
+	)
+	return nil
+}
+
+// LoadSpaceEventsSince returns events for a space at or after the given time.
+// If since is zero, all retained events are returned.
+func (r *Repository) LoadSpaceEventsSince(spaceName string, since time.Time) ([]*SpaceEventLog, error) {
+	q := r.db.Where("space_name = ?", spaceName).Order("timestamp ASC")
+	if !since.IsZero() {
+		q = q.Where("timestamp >= ?", since)
+	}
+	var events []*SpaceEventLog
+	return events, q.Find(&events).Error
 }
 
 // ---- JSON helpers ----

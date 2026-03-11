@@ -194,12 +194,29 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// With SQLite as the primary store, switch the event journal to in-memory
+	// ring buffer mode so no .events.jsonl files are written to disk.
+	// Each event is also persisted to SQLite for cross-restart durability.
+	repo := s.repo
+	s.journal.UseRingBuffer(ringBufferCap, func(ev *SpaceEvent) {
+		repo.AppendSpaceEvent(&bossdb.SpaceEventLog{
+			ID:        ev.ID,
+			SpaceName: ev.Space,
+			EventType: string(ev.Type),
+			Agent:     ev.Agent,
+			Payload:   string(ev.Payload),
+			Timestamp: ev.Timestamp,
+		})
+	})
 
 	s.loadSettings() // load persisted settings before spaces
 
 	if err := s.loadAllSpaces(); err != nil {
 		return fmt.Errorf("load spaces: %w", err)
 	}
+
+	// Pre-warm the ring buffer from SQLite so event history survives restarts.
+	s.loadEventRingFromDB()
 
 	mux := http.NewServeMux()
 
@@ -258,7 +275,10 @@ func (s *Server) Start() error {
 	}()
 
 	go s.livenessLoop()
-	s.startCompactionLoop(30 * time.Minute)
+	// Compaction rewrites .events.jsonl files; skip it when SQLite is active.
+	if s.repo == nil {
+		s.startCompactionLoop(30 * time.Minute)
+	}
 
 	return nil
 }

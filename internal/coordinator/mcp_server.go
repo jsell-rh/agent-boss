@@ -8,49 +8,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const settingsFile = "settings.json"
+const settingKeyAllowSkipPermissions = "allow_skip_permissions"
 
-type serverSettings struct {
-	AllowSkipPermissions bool `json:"allow_skip_permissions"`
-}
-
-func (s *Server) settingsPath() string {
-	return filepath.Join(s.dataDir, settingsFile)
-}
-
-// loadSettings reads settings.json from DATA_DIR and applies stored values.
-// Called once at server startup; missing file is silently ignored.
+// loadSettings reads persisted settings from SQLite and applies them.
+// Called once at server startup; missing values are silently ignored (defaults apply).
 func (s *Server) loadSettings() {
-	data, err := os.ReadFile(s.settingsPath())
-	if err != nil {
-		return // first run or file missing — use defaults
+	if s.repo == nil {
+		return
 	}
-	var stored serverSettings
-	if err := json.Unmarshal(data, &stored); err != nil {
+	val, err := s.repo.GetSetting(settingKeyAllowSkipPermissions)
+	if err != nil || val == "" {
 		return
 	}
 	s.mu.Lock()
-	s.allowSkipPermissions = stored.AllowSkipPermissions
+	s.allowSkipPermissions = val == "true"
 	s.mu.Unlock()
 }
 
-// saveSettings writes the current settings to settings.json in DATA_DIR.
+// saveSettings persists the current settings to SQLite.
 func (s *Server) saveSettings() error {
-	s.mu.RLock()
-	snap := serverSettings{AllowSkipPermissions: s.allowSkipPermissions}
-	s.mu.RUnlock()
-	data, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		return err
+	if s.repo == nil {
+		return nil
 	}
-	return os.WriteFile(s.settingsPath(), data, 0644)
+	s.mu.RLock()
+	val := "false"
+	if s.allowSkipPermissions {
+		val = "true"
+	}
+	s.mu.RUnlock()
+	return s.repo.SetSetting(settingKeyAllowSkipPermissions, val)
 }
 
 // buildMCPHandler creates the MCP server and returns an http.Handler for mounting at /mcp.

@@ -47,14 +47,29 @@ type SpaceEvent struct {
 // count-based compaction. The server checks this after each write.
 const CompactionThreshold = 1000
 
+// ringBufferCap is the default maximum number of events held per space in memory
+// when the journal operates in ring buffer mode (SQLite is the primary store).
+const ringBufferCap = 500
+
 // EventJournal is an append-only JSONL event log for a data directory.
 // One journal file per space: {space}.events.jsonl
+//
+// When UseRingBuffer is called (used when SQLite is the primary store),
+// events are kept in a bounded in-memory ring instead of written to disk.
 type EventJournal struct {
 	dataDir   string
-	mu        sync.RWMutex          // write lock for Append/Compact; read lock for LoadSince
+	mu        sync.RWMutex        // write lock for Append/Compact; read lock for LoadSince
 	seq       atomic.Int64
-	openFiles map[string]*os.File   // persistent write handles, protected by mu (write lock)
-	counts    sync.Map              // map[string]*atomic.Int64 — event count per space
+	openFiles map[string]*os.File // persistent write handles, protected by mu (write lock)
+	counts    sync.Map            // map[string]*atomic.Int64 — event count per space
+
+	// Ring buffer mode (no file I/O). All fields protected by mu.
+	ringMode bool
+	ringBuf  map[string][]SpaceEvent
+	ringCap  int
+	// dbWrite is called in ring buffer mode to persist each event to SQLite.
+	// It must be safe for concurrent use and must not block significantly.
+	dbWrite func(ev *SpaceEvent)
 }
 
 func NewEventJournal(dataDir string) *EventJournal {
@@ -64,6 +79,36 @@ func NewEventJournal(dataDir string) *EventJournal {
 	}
 	j.seq.Store(time.Now().UnixMilli())
 	return j
+}
+
+// LoadIntoRing loads a pre-existing event into the ring buffer without calling
+// dbWrite. Used to pre-warm the ring from SQLite on startup.
+func (j *EventJournal) LoadIntoRing(ev *SpaceEvent) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.ringMode {
+		return
+	}
+	buf := j.ringBuf[ev.Space]
+	buf = append(buf, *ev)
+	if len(buf) > j.ringCap {
+		buf = buf[len(buf)-j.ringCap:]
+	}
+	j.ringBuf[ev.Space] = buf
+}
+
+// UseRingBuffer switches the journal to in-memory ring buffer mode.
+// All subsequent Append calls store events in memory (capped at cap per space)
+// and no files are written. Compact and MigrateFromJSON become no-ops.
+// dbWrite, if non-nil, is called for each event to persist it to SQLite.
+// Must be called before any Append calls (i.e. before serving requests).
+func (j *EventJournal) UseRingBuffer(cap int, dbWrite func(ev *SpaceEvent)) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.ringMode = true
+	j.ringCap = cap
+	j.ringBuf = make(map[string][]SpaceEvent)
+	j.dbWrite = dbWrite
 }
 
 // EventCount returns the current event count for a space (best-effort, not exact after restart).
@@ -117,6 +162,24 @@ func (j *EventJournal) Append(space string, evType SpaceEventType, agent string,
 
 func (j *EventJournal) write(ev *SpaceEvent) {
 	j.mu.Lock()
+
+	if j.ringMode {
+		buf := j.ringBuf[ev.Space]
+		buf = append(buf, *ev)
+		if len(buf) > j.ringCap {
+			buf = buf[len(buf)-j.ringCap:]
+		}
+		j.ringBuf[ev.Space] = buf
+		j.incrementCount(ev.Space)
+		dbw := j.dbWrite
+		j.mu.Unlock()
+		// Call dbWrite outside the lock to avoid holding mu during I/O.
+		if dbw != nil {
+			dbw(ev)
+		}
+		return
+	}
+
 	defer j.mu.Unlock()
 
 	data, err := json.Marshal(ev)
@@ -124,7 +187,9 @@ func (j *EventJournal) write(ev *SpaceEvent) {
 		return
 	}
 
-	f, ok := j.openFiles[ev.Space]
+	var f *os.File
+	var ok bool
+	f, ok = j.openFiles[ev.Space]
 	if !ok {
 		f, err = os.OpenFile(j.journalPath(ev.Space), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -142,6 +207,17 @@ func (j *EventJournal) write(ev *SpaceEvent) {
 func (j *EventJournal) LoadSince(space string, since time.Time) ([]SpaceEvent, error) {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
+
+	if j.ringMode {
+		buf := j.ringBuf[space]
+		var events []SpaceEvent
+		for _, ev := range buf {
+			if since.IsZero() || !ev.Timestamp.Before(since) {
+				events = append(events, ev)
+			}
+		}
+		return events, nil
+	}
 
 	f, err := os.Open(j.journalPath(space))
 	if err != nil {
@@ -374,7 +450,15 @@ func (j *EventJournal) ReplayInto(space string) (*KnowledgeSpace, error) {
 
 // Compact writes a snapshot event of the current state and then rewrites the
 // journal to contain only the snapshot (dropping all prior events).
+// In ring buffer mode this is a no-op — SQLite is the durable store.
 func (j *EventJournal) Compact(space string, ks *KnowledgeSpace) error {
+	j.mu.Lock()
+	if j.ringMode {
+		j.mu.Unlock()
+		return nil
+	}
+	j.mu.Unlock()
+
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
@@ -422,7 +506,11 @@ func (j *EventJournal) Compact(space string, ks *KnowledgeSpace) error {
 
 // MigrateFromJSON writes an initial snapshot event from an existing JSON space
 // so that subsequent operations are journal-based.
+// In ring buffer mode this is a no-op — SQLite handles persistence.
 func (j *EventJournal) MigrateFromJSON(ks *KnowledgeSpace) error {
+	if j.ringMode {
+		return nil
+	}
 	snapPayload, err := json.Marshal(ks)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
