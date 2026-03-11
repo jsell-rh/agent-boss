@@ -1416,6 +1416,16 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	if req.Role != "" && agent.Role == "" {
 		agent.Role = req.Role
 	}
+	// Persist work_dir (and any future create-time config) to AgentConfig so it
+	// is visible in the agent detail view and survives restarts.
+	if req.WorkDir != "" {
+		cfg := ks.agentConfig(canonical)
+		if cfg == nil {
+			cfg = &AgentConfig{}
+		}
+		cfg.WorkDir = req.WorkDir
+		ks.setAgentConfig(canonical, cfg)
+	}
 	if err := s.saveSpace(ks); err != nil {
 		s.mu.Unlock()
 		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
