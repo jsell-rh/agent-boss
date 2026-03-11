@@ -98,7 +98,7 @@ async function submit() {
       initial_message: initialMessage.value.trim() || undefined,
     })
     if (selectedPersonaIds.value.length > 0) {
-      await api.updateAgentConfig(props.space, name, { persona_ids: [...selectedPersonaIds.value] })
+      await api.updateAgentConfig(props.space, name, { personas: selectedPersonaIds.value.map(id => ({ id })) })
     }
     const created = name
     reset()

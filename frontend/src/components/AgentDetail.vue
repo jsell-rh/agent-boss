@@ -345,7 +345,7 @@ const duplicating = ref(false)
 const duplicateError = ref('')
 
 const agentPersonas = computed(() => {
-  const ids = agentConfig.value?.persona_ids ?? []
+  const ids = (agentConfig.value?.personas ?? []).map(p => p.id)
   if (ids.length === 0 || allPersonas.value.length === 0) return []
   return ids.map(id => allPersonas.value.find(p => p.id === id)).filter(Boolean) as Persona[]
 })

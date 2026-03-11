@@ -323,7 +323,7 @@ class ApiClient {
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/config`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Name': agent },
         body: JSON.stringify(config),
       },
     )

@@ -80,7 +80,7 @@ export interface PersonaRef {
 export interface AgentConfig {
   work_dir?: string
   initial_prompt?: string
-  persona_ids?: string[]
+  personas?: PersonaRef[]
   backend?: string
   command?: string
   repo_url?: string
