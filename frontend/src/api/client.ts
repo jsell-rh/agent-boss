@@ -307,6 +307,13 @@ class ApiClient {
     )
   }
 
+  restartAll(space: string): Promise<{ ok: boolean; agents: string[]; count: number }> {
+    return this.request(
+      `/spaces/${encodeURIComponent(space)}/restart-all`,
+      { method: 'POST' },
+    )
+  }
+
   introspectAgent(space: string, agent: string): Promise<IntrospectResponse> {
     return this.request(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/introspect`,

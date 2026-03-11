@@ -49,6 +49,7 @@ const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const statusAnnouncement = ref('')
 const broadcasting = ref(false)
+const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(null)
 
 const sse = useSSE()
 const eventLogRef = ref<InstanceType<typeof EventLog> | null>(null)
@@ -286,6 +287,21 @@ async function handleBroadcastSpace() {
     showError('Nudge failed. Please try again.')
   } finally {
     broadcasting.value = false
+  }
+}
+
+async function handleRestartAllSpace() {
+  if (!selectedSpace.value) return
+  try {
+    const res = await api.restartAll(selectedSpace.value)
+    if (res.count === 0) {
+      showStatus('No eligible agents to restart.')
+      return
+    }
+    restartAllProgress.value = { agents: res.agents, completed: 0 }
+  } catch (err) {
+    console.error('Restart all failed:', err)
+    showError('Fleet restart failed. Please try again.')
   }
 }
 
@@ -637,6 +653,18 @@ function setupSSE() {
 
   sse.on('broadcast_progress', (data) => {
     pushLog('broadcast_progress', data.message || 'Nudge in progress...')
+  })
+
+  sse.on('agent_restarted', (agentName) => {
+    pushLog('agent_restarted', `[${agentName}] restarted`)
+    if (restartAllProgress.value && restartAllProgress.value.agents.includes(agentName)) {
+      restartAllProgress.value.completed++
+      if (restartAllProgress.value.completed >= restartAllProgress.value.agents.length) {
+        const n = restartAllProgress.value.agents.length
+        showStatus(`Fleet restart complete — ${n} agent${n !== 1 ? 's' : ''} restarted.`)
+        restartAllProgress.value = null
+      }
+    }
   })
 }
 
@@ -1055,9 +1083,11 @@ onUnmounted(() => {
             :space="currentSpace"
             :tmux-status="tmuxStatus"
             :broadcasting="broadcasting"
+            :restart-all-progress="restartAllProgress"
             :hierarchy="effectiveHierarchy"
             @select-agent="handleSelectAgent"
             @broadcast="handleBroadcastSpace"
+            @restart-all="handleRestartAllSpace"
             @delete-agent="handleDeleteAgent"
             @broadcast-agent="handleBroadcastSingleAgent"
             @send-message-to-agent="handleSendMessageToAgent"

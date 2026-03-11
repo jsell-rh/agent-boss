@@ -14,6 +14,7 @@ export type SSEEventType =
   | 'agent_updated'
   | 'agent_spawned'
   | 'agent_removed'
+  | 'agent_restarted'
   | 'space_deleted'
   | 'agent_message'
   | 'session_liveness'
@@ -25,6 +26,7 @@ export type SSEEventMap = {
   agent_updated: SSEAgentUpdated
   agent_spawned: SSEAgentSpawned
   agent_removed: SSEAgentRemoved
+  agent_restarted: string // agent name
   space_deleted: string // space name
   agent_message: SSEAgentMessage
   session_liveness: SSESessionLiveness[]
@@ -100,6 +102,7 @@ export function useSSE() {
       'agent_updated',
       'agent_spawned',
       'agent_removed',
+      'agent_restarted',
       'space_deleted',
       'agent_message',
       'session_liveness',
