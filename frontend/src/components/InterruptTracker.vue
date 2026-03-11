@@ -60,16 +60,19 @@ async function fetchData() {
 }
 
 // Expose pending count and refresh for parent (SSE-triggered refresh)
+// Approval-type interrupts are handled exclusively by the ApprovalTray — exclude them here.
 const pendingCount = computed(() => {
-  return interrupts.value.filter(i => !i.resolution).length
+  return interrupts.value.filter(i => !i.resolution && i.type !== 'approval').length
 })
 
 defineExpose({ pendingCount, refresh: fetchData })
 
-const totalCount = computed(() => interrupts.value.length)
+const totalCount = computed(() => interrupts.value.filter(i => i.type !== 'approval').length)
 
 const filteredInterrupts = computed(() => {
-  const sorted = [...interrupts.value].sort((a, b) => {
+  // Approval-type interrupts are handled by the ApprovalTray — exclude from inbox.
+  const nonApproval = interrupts.value.filter(i => i.type !== 'approval')
+  const sorted = [...nonApproval].sort((a, b) => {
     // Pending first
     const aPending = !a.resolution
     const bPending = !b.resolution
@@ -257,15 +260,11 @@ async function confirmMarkAllResolved() {
   markAllDialogOpen.value = false
   markingAll.value = true
   try {
-    const pending = interrupts.value.filter(i => !i.resolution)
-    await Promise.allSettled([
-      ...pending
-        .filter(item => item.type === 'approval')
-        .map(item => api.approveAgent(props.spaceName, item.agent)),
-      ...pending
-        .filter(item => item.type !== 'approval')
-        .map(item => api.resolveInterrupt(props.spaceName, item.id, 'Bulk resolved')),
-    ])
+    // Only non-approval pending items shown in inbox — resolve them all.
+    const pending = interrupts.value.filter(i => !i.resolution && i.type !== 'approval')
+    await Promise.allSettled(
+      pending.map(item => api.resolveInterrupt(props.spaceName, item.id, 'Bulk resolved')),
+    )
     // Optimistically mark all pending items as resolved locally
     const resolvedAt = new Date().toISOString()
     interrupts.value = interrupts.value.map(i => {
@@ -612,7 +611,6 @@ onUnmounted(stopPolling)
         <DialogTitle>Mark all resolved?</DialogTitle>
         <DialogDescription>
           This will resolve all {{ pendingCount }} pending item{{ pendingCount === 1 ? '' : 's' }}.
-          Approval-type items will send an approval signal to the agent.
           This action cannot be undone.
         </DialogDescription>
       </DialogHeader>
