@@ -569,8 +569,11 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, canonical, spaceName)
-		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
+		// Send plain-text ignition prompt — no slash command required.
+		s.mu.RLock()
+		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
+		s.mu.RUnlock()
+		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
 				Msg: fmt.Sprintf("restart: ignite send failed: %v", err)})
 		}
