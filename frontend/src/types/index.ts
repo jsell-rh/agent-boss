@@ -264,6 +264,11 @@ export interface SSEAgentRemoved {
   agent: string
 }
 
+export interface SSEAgentSpawned {
+  space: string
+  agent: string
+}
+
 export interface SSETaskUpdated {
   id: string
   space: string

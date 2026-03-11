@@ -1424,7 +1424,8 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	s.mu.Unlock()
 
 	s.logEvent(fmt.Sprintf("[%s/%s] created via %s backend (session: %s)", spaceName, req.Name, backendName, sessionID))
-	s.broadcastSSE(spaceName, req.Name, "agent_spawned", req.Name)
+	spawnedPayload, _ := json.Marshal(map[string]string{"space": spaceName, "agent": req.Name})
+	s.broadcastSSE(spaceName, req.Name, "agent_spawned", string(spawnedPayload))
 
 	// Capture closure variables before goroutine.
 	initialMsg := req.InitialMessage
@@ -1442,8 +1443,11 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		igniteCmd := fmt.Sprintf(`/boss.ignite "%s" "%s"`, agentNameForIgnite, spaceName)
-		if err := backend.SendInput(sessionID, igniteCmd); err != nil {
+		// Send plain-text ignition prompt directly — no slash command required.
+		s.mu.RLock()
+		igniteText := s.buildIgnitionText(spaceName, agentNameForIgnite, sessionID)
+		s.mu.RUnlock()
+		if err := backend.SendInput(sessionID, igniteText); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, agentNameForIgnite, err))
 		}
 		if initialMsg != "" {
