@@ -208,6 +208,8 @@ func (s *Server) recordDecisionInterrupts(spaceName, agentName string, update *A
 			ctx["phase"] = update.Phase
 		}
 		s.interrupts.Record(spaceName, agentName, InterruptDecision, q, ctx)
+		// Also deliver as a decision message so it appears in conversations.
+		s.deliverDecisionMessage(spaceName, agentName, q)
 	}
 }
 

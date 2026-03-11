@@ -124,180 +124,12 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		}
 	}
 
-	// Apply AgentConfig defaults (unless overridden in req body).
-	var spawnWorkDir string
-	var spawnRepos []SessionRepo
-	var spawnInitialPrompt string
-	var spawnPersonas []PersonaRef
-	if existingKS, hasKS := s.getSpace(spaceName); hasKS {
-		s.mu.RLock()
-		cfgCanonical := resolveAgentName(existingKS, agentName)
-		if cfg := existingKS.agentConfig(cfgCanonical); cfg != nil {
-			if req.Backend == "" && cfg.Backend != "" {
-				req.Backend = cfg.Backend
-			}
-			if req.Command == "" && cfg.Command != "" {
-				req.Command = cfg.Command
-			}
-			spawnWorkDir = cfg.WorkDir
-			spawnRepos = cfg.Repos
-			spawnInitialPrompt = cfg.InitialPrompt
-			spawnPersonas = cfg.Personas
-		}
-		s.mu.RUnlock()
-	}
-
-	backendName := req.Backend
-	backend := s.backendByName(backendName)
-
-	sessionName := req.SessionID
-	if sessionName == "" {
-		sessionName = tmuxDefaultSession(spaceName, agentName)
-	}
-
-	// If the agent already exists with a non-session registration, reject the spawn.
-	if existingKS, ok := s.getSpace(spaceName); ok {
-		s.mu.RLock()
-		canonical := resolveAgentName(existingKS, agentName)
-		existingAgent := existingKS.agentStatus(canonical)
-		s.mu.RUnlock()
-		if isNonSessionAgent(existingAgent) {
-			nonSessionLifecycleError(w, existingAgent.Registration.AgentType)
-			return
-		}
-	}
-
-	// For tmux, check if session already exists. Ambient generates its own IDs.
-	if backend.Name() == "tmux" && backend.SessionExists(sessionName) {
-		http.Error(w, fmt.Sprintf("session %q already exists", sessionName), http.StatusConflict)
-		return
-	}
-
-	ctx := context.Background()
-	// For tmux sessions, apply the global skip-permissions toggle when no explicit
-	// command was provided. This is the only place the flag is injected — individual
-	// agents cannot opt in or out independently.
-	spawnCommand := req.Command
-	if backend.Name() == "tmux" && s.allowSkipPermissions && spawnCommand == "" {
-		spawnCommand = "claude --dangerously-skip-permissions"
-	}
-	var createOpts SessionCreateOpts
-	if backend.Name() == "ambient" {
-		createOpts = SessionCreateOpts{
-			SessionID: sessionName,
-			Command:   req.Command,
-			BackendOpts: AmbientCreateOpts{
-				DisplayName: agentName,
-				Repos:       spawnRepos,
-			},
-		}
-	} else {
-		createOpts = SessionCreateOpts{
-			SessionID: sessionName,
-			Command:   spawnCommand,
-			BackendOpts: TmuxCreateOpts{
-				Width:                req.Width,
-				Height:               req.Height,
-				WorkDir:              spawnWorkDir,
-				MCPServerURL:         s.localURL(),
-				AllowSkipPermissions: s.allowSkipPermissions,
-			},
-		}
-	}
-
-	sessionID, err := backend.CreateSession(ctx, createOpts)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("create session: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Register session on the agent record
-	ks := s.getOrCreateSpace(spaceName)
-	s.mu.Lock()
-	canonical := resolveAgentName(ks, agentName)
-	agent := ks.agentStatus(canonical)
-	if agent == nil {
-		agent = &AgentUpdate{
-			Status:    StatusIdle,
-			Summary:   fmt.Sprintf("%s: spawned", agentName),
-			UpdatedAt: time.Now().UTC(),
-		}
-		ks.setAgentStatus(canonical, agent)
-	}
-	agent.SessionID = sessionID
-	agent.BackendType = backend.Name()
-
-	// Set Parent from the spawner's identity (X-Agent-Name header), if not already set.
 	spawnerName := r.Header.Get("X-Agent-Name")
-	if spawnerName != "" && !strings.EqualFold(spawnerName, agentName) && agent.Parent == "" {
-		agent.Parent = resolveAgentName(ks, spawnerName)
-		rebuildChildren(ks)
+	sessionID, backendName, _, err := s.spawnAgentService(spaceName, agentName, req, spawnerName)
+	if err != nil {
+		writeLifecycleError(w, err)
+		return
 	}
-
-	if err := s.saveSpace(ks); err != nil {
-		s.mu.Unlock()
-		s.emit(DomainEvent{Level: LevelError, EventType: EventServerError, Space: spaceName, Agent: agentName,
-			Msg: fmt.Sprintf("spawn: save failed: %v", err)})
-	} else {
-		s.mu.Unlock()
-	}
-
-	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
-		Msg:    fmt.Sprintf("spawned in session \"%s\" (backend: %s)", sessionID, backend.Name()),
-		Fields: map[string]string{"session_id": sessionID, "backend": backend.Name()}})
-	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
-
-	// Capture closure variables before goroutine.
-	initialMsg := req.InitialMessage
-	cfgInitialPrompt := spawnInitialPrompt
-	// Persona directives are now embedded directly in buildIgnitionText,
-	// so we no longer need to assemble them separately for delivery.
-	_ = spawnPersonas // used during spawn config resolution above
-	spawnerIdentity := r.Header.Get("X-Agent-Name")
-	if spawnerIdentity == "" {
-		spawnerIdentity = "boss"
-	}
-
-	// If task_id was provided, set assigned_to on that task to the spawned agent.
-	if req.TaskID != "" {
-		caller := r.Header.Get("X-Agent-Name")
-		if caller == "" {
-			caller = "boss"
-		}
-		s.assignTaskToAgent(spaceName, req.TaskID, canonical, caller)
-	}
-
-	// Send ignite asynchronously after agent has time to initialize
-	go func() {
-		if ab, ok := backend.(*AmbientSessionBackend); ok {
-			// Poll until the ambient session is running before sending ignite.
-			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
-				s.logEvent(fmt.Sprintf("[%s/%s] spawn: session did not reach running state: %v", spaceName, agentName, err))
-				return
-			}
-		} else {
-			time.Sleep(5 * time.Second)
-		}
-		// Send the full ignition text directly via MCP-aware prompt.
-		// The agent has boss-mcp tools registered and can use them immediately.
-		s.mu.RLock()
-		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)
-		s.mu.RUnlock()
-		if err := backend.SendInput(sessionID, ignitePrompt); err != nil {
-			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
-				Msg: fmt.Sprintf("spawn: ignite send failed: %v (fetch manually: curl %s/spaces/%s/ignition/%s)", err, s.localURL(), spaceName, agentName)})
-		}
-		// Persona directives are now included directly in the ignition text,
-		// so we no longer deliver them as a separate internal message.
-		if initialMsg != "" {
-			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
-		}
-		if cfgInitialPrompt != "" {
-			s.deliverInternalMessage(spaceName, agentName, "boss", cfgInitialPrompt)
-		}
-	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -306,7 +138,7 @@ func (s *Server) handleAgentSpawn(w http.ResponseWriter, r *http.Request, spaceN
 		"agent":      agentName,
 		"session_id": sessionID,
 		"space":      spaceName,
-		"backend":    backend.Name(),
+		"backend":    backendName,
 	})
 }
 
@@ -318,59 +150,11 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request, spaceNa
 		return
 	}
 
-	ks, ok := s.getSpace(spaceName)
-	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+	canonical, err := s.stopAgentService(spaceName, agentName)
+	if err != nil {
+		writeLifecycleError(w, err)
 		return
 	}
-
-	s.mu.RLock()
-	canonical := resolveAgentName(ks, agentName)
-	agent, exists := ks.agentStatusOk(canonical)
-	var sessionName string
-	if exists {
-		sessionName = agent.SessionID
-	}
-	s.mu.RUnlock()
-
-	if !exists {
-		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
-		return
-	}
-	if isNonSessionAgent(agent) {
-		nonSessionLifecycleError(w, agent.Registration.AgentType)
-		return
-	}
-	if sessionName == "" {
-		http.Error(w, fmt.Sprintf("agent %q has no registered session", canonical), http.StatusBadRequest)
-		return
-	}
-
-	backend := s.backendFor(agent)
-	if !backend.SessionExists(sessionName) {
-		http.Error(w, fmt.Sprintf("session %q not found", sessionName), http.StatusNotFound)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
-	defer cancel()
-	if err := backend.KillSession(ctx, sessionName); err != nil {
-		http.Error(w, fmt.Sprintf("kill session: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	s.mu.Lock()
-	agent.Status = StatusDone
-	agent.Summary = fmt.Sprintf("%s: stopped", canonical)
-	agent.SessionID = ""
-	agent.UpdatedAt = time.Now().UTC()
-	s.saveSpace(ks)
-	s.mu.Unlock()
-
-	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStopped, Space: spaceName, Agent: canonical,
-		Msg:    fmt.Sprintf("stopped (session %q killed)", sessionName),
-		Fields: map[string]string{"session_id": sessionName}})
-	s.broadcastSSE(spaceName, canonical, "agent_stopped", canonical)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -456,14 +240,275 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		}
 	}
 
-	ks, ok := s.getSpace(spaceName)
-	if !ok {
-		http.Error(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+	sessionID, canonical, err := s.restartAgentService(spaceName, agentName, req)
+	if err != nil {
+		writeLifecycleError(w, err)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":         true,
+		"agent":      canonical,
+		"session_id": sessionID,
+	})
+}
+
+// lifecycleErr is a structured error returned by lifecycle service methods.
+// HTTP handlers inspect StatusCode to produce the correct HTTP response.
+type lifecycleErr struct {
+	StatusCode int
+	JSONBody   bool // if true, write JSON {"error": msg}; else plain text
+	Msg        string
+}
+
+func (e *lifecycleErr) Error() string { return e.Msg }
+
+// writeLifecycleError writes the appropriate HTTP error response for a lifecycleErr.
+func writeLifecycleError(w http.ResponseWriter, err error) {
+	if le, ok := err.(*lifecycleErr); ok {
+		if le.JSONBody {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(le.StatusCode)
+			json.NewEncoder(w).Encode(map[string]string{"error": le.Msg})
+		} else {
+			http.Error(w, le.Msg, le.StatusCode)
+		}
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// spawnAgentService contains the core business logic for spawning an agent.
+// spawnerName is the identity making the request (used to set the parent relationship).
+func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest, spawnerName string) (sessionID, backendName, canonical string, retErr error) {
+	// Apply AgentConfig defaults (unless overridden in req body).
+	var spawnWorkDir string
+	var spawnRepos []SessionRepo
+	var spawnInitialPrompt string
+	var spawnPersonas []PersonaRef
+	if existingKS, hasKS := s.getSpace(spaceName); hasKS {
+		s.mu.RLock()
+		cfgCanonical := resolveAgentName(existingKS, agentName)
+		if cfg := existingKS.agentConfig(cfgCanonical); cfg != nil {
+			if req.Backend == "" && cfg.Backend != "" {
+				req.Backend = cfg.Backend
+			}
+			if req.Command == "" && cfg.Command != "" {
+				req.Command = cfg.Command
+			}
+			spawnWorkDir = cfg.WorkDir
+			spawnRepos = cfg.Repos
+			spawnInitialPrompt = cfg.InitialPrompt
+			spawnPersonas = cfg.Personas
+		}
+		s.mu.RUnlock()
+	}
+	_ = spawnPersonas // personas are embedded in buildIgnitionText
+
+	backend := s.backendByName(req.Backend)
+	sessionName := req.SessionID
+	if sessionName == "" {
+		sessionName = tmuxDefaultSession(spaceName, agentName)
+	}
+
+	// If the agent already exists with a non-session registration, reject the spawn.
+	if existingKS, ok := s.getSpace(spaceName); ok {
+		s.mu.RLock()
+		can := resolveAgentName(existingKS, agentName)
+		existingAgent := existingKS.agentStatus(can)
+		s.mu.RUnlock()
+		if isNonSessionAgent(existingAgent) {
+			return "", "", "", &lifecycleErr{
+				StatusCode: http.StatusUnprocessableEntity, JSONBody: true,
+				Msg: fmt.Sprintf("lifecycle management via session backend is not available for agent_type %q; manage your agent process externally", existingAgent.Registration.AgentType),
+			}
+		}
+	}
+
+	// For tmux, check if session already exists. Ambient generates its own IDs.
+	if backend.Name() == "tmux" && backend.SessionExists(sessionName) {
+		return "", "", "", &lifecycleErr{StatusCode: http.StatusConflict, Msg: fmt.Sprintf("session %q already exists", sessionName)}
+	}
+
+	ctx := context.Background()
+	spawnCommand := req.Command
+	if backend.Name() == "tmux" && s.allowSkipPermissions && spawnCommand == "" {
+		spawnCommand = "claude --dangerously-skip-permissions"
+	}
+	var createOpts SessionCreateOpts
+	if backend.Name() == "ambient" {
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   req.Command,
+			BackendOpts: AmbientCreateOpts{
+				DisplayName: agentName,
+				Repos:       spawnRepos,
+			},
+		}
+	} else {
+		createOpts = SessionCreateOpts{
+			SessionID: sessionName,
+			Command:   spawnCommand,
+			BackendOpts: TmuxCreateOpts{
+				Width:                req.Width,
+				Height:               req.Height,
+				WorkDir:              spawnWorkDir,
+				MCPServerURL:         s.localURL(),
+				AllowSkipPermissions: s.allowSkipPermissions,
+			},
+		}
+	}
+
+	sessionID, retErr = backend.CreateSession(ctx, createOpts)
+	if retErr != nil {
+		return "", "", "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("create session: %v", retErr)}
+	}
+
+	// Register session on the agent record.
+	ks := s.getOrCreateSpace(spaceName)
+	s.mu.Lock()
+	canonical = resolveAgentName(ks, agentName)
+	agent := ks.agentStatus(canonical)
+	if agent == nil {
+		agent = &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   fmt.Sprintf("%s: spawned", agentName),
+			UpdatedAt: time.Now().UTC(),
+		}
+		ks.setAgentStatus(canonical, agent)
+	}
+	agent.SessionID = sessionID
+	agent.BackendType = backend.Name()
+
+	// Set Parent from spawner identity, if not already set.
+	if spawnerName != "" && !strings.EqualFold(spawnerName, agentName) && agent.Parent == "" {
+		agent.Parent = resolveAgentName(ks, spawnerName)
+		rebuildChildren(ks)
+	}
+
+	if saveErr := s.saveSpace(ks); saveErr != nil {
+		s.mu.Unlock()
+		s.emit(DomainEvent{Level: LevelError, EventType: EventServerError, Space: spaceName, Agent: agentName,
+			Msg: fmt.Sprintf("spawn: save failed: %v", saveErr)})
+	} else {
+		s.mu.Unlock()
+	}
+
+	backendName = backend.Name()
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+		Msg:    fmt.Sprintf("spawned in session \"%s\" (backend: %s)", sessionID, backendName),
+		Fields: map[string]string{"session_id": sessionID, "backend": backendName}})
+	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
+
+	initialMsg := req.InitialMessage
+	cfgInitialPrompt := spawnInitialPrompt
+	spawnerIdentity := spawnerName
+	if spawnerIdentity == "" {
+		spawnerIdentity = "boss"
+	}
+
+	if req.TaskID != "" {
+		caller := spawnerName
+		if caller == "" {
+			caller = "boss"
+		}
+		s.assignTaskToAgent(spaceName, req.TaskID, canonical, caller)
+	}
+
+	go func() {
+		if ab, ok := backend.(*AmbientSessionBackend); ok {
+			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			if err := ab.waitForRunning(pollCtx, sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] spawn: session did not reach running state: %v", spaceName, agentName, err))
+				return
+			}
+		} else {
+			time.Sleep(5 * time.Second)
+		}
+		s.mu.RLock()
+		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)
+		s.mu.RUnlock()
+		if err := backend.SendInput(sessionID, ignitePrompt); err != nil {
+			s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+				Msg: fmt.Sprintf("spawn: ignite send failed: %v (fetch manually: curl %s/spaces/%s/ignition/%s)", err, s.localURL(), spaceName, agentName)})
+		}
+		if initialMsg != "" {
+			s.deliverInternalMessage(spaceName, agentName, spawnerIdentity, initialMsg)
+		}
+		if cfgInitialPrompt != "" {
+			s.deliverInternalMessage(spaceName, agentName, "boss", cfgInitialPrompt)
+		}
+	}()
+
+	return sessionID, backendName, canonical, nil
+}
+
+// stopAgentService contains the core business logic for stopping an agent.
+func (s *Server) stopAgentService(spaceName, agentName string) (canonical string, retErr error) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		return "", &lifecycleErr{StatusCode: http.StatusNotFound, Msg: fmt.Sprintf("space %q not found", spaceName)}
+	}
+
 	s.mu.RLock()
-	canonical := resolveAgentName(ks, agentName)
+	canonical = resolveAgentName(ks, agentName)
+	agent, exists := ks.agentStatusOk(canonical)
+	var sessionName string
+	if exists {
+		sessionName = agent.SessionID
+	}
+	s.mu.RUnlock()
+
+	if !exists {
+		return "", &lifecycleErr{StatusCode: http.StatusNotFound, Msg: fmt.Sprintf("agent %q not found", agentName)}
+	}
+	if isNonSessionAgent(agent) {
+		return "", &lifecycleErr{StatusCode: http.StatusUnprocessableEntity, JSONBody: true,
+			Msg: fmt.Sprintf("lifecycle management via session backend is not available for agent_type %q; manage your agent process externally", agent.Registration.AgentType)}
+	}
+	if sessionName == "" {
+		return "", &lifecycleErr{StatusCode: http.StatusBadRequest, Msg: fmt.Sprintf("agent %q has no registered session", canonical)}
+	}
+
+	backend := s.backendFor(agent)
+	if !backend.SessionExists(sessionName) {
+		return "", &lifecycleErr{StatusCode: http.StatusNotFound, Msg: fmt.Sprintf("session %q not found", sessionName)}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel()
+	if err := backend.KillSession(ctx, sessionName); err != nil {
+		return "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("kill session: %v", err)}
+	}
+
+	s.mu.Lock()
+	agent.Status = StatusDone
+	agent.Summary = fmt.Sprintf("%s: stopped", canonical)
+	agent.SessionID = ""
+	agent.UpdatedAt = time.Now().UTC()
+	s.saveSpace(ks)
+	s.mu.Unlock()
+
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentStopped, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("stopped (session %q killed)", sessionName),
+		Fields: map[string]string{"session_id": sessionName}})
+	s.broadcastSSE(spaceName, canonical, "agent_stopped", canonical)
+
+	return canonical, nil
+}
+
+// restartAgentService contains the core business logic for restarting an agent.
+func (s *Server) restartAgentService(spaceName, agentName string, req spawnRequest) (sessionID, canonical string, retErr error) {
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		return "", "", &lifecycleErr{StatusCode: http.StatusNotFound, Msg: fmt.Sprintf("space %q not found", spaceName)}
+	}
+
+	s.mu.RLock()
+	canonical = resolveAgentName(ks, agentName)
 	agent, exists := ks.agentStatusOk(canonical)
 	var oldSession string
 	if exists {
@@ -487,27 +532,24 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	}
 
 	if !exists {
-		http.Error(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
-		return
+		return "", "", &lifecycleErr{StatusCode: http.StatusNotFound, Msg: fmt.Sprintf("agent %q not found", agentName)}
 	}
 	if isNonSessionAgent(agent) {
-		nonSessionLifecycleError(w, agent.Registration.AgentType)
-		return
+		return "", "", &lifecycleErr{StatusCode: http.StatusUnprocessableEntity, JSONBody: true,
+			Msg: fmt.Sprintf("lifecycle management via session backend is not available for agent_type %q; manage your agent process externally", agent.Registration.AgentType)}
 	}
 	if oldSession == "" {
-		http.Error(w, fmt.Sprintf("agent %q has no registered session", canonical), http.StatusBadRequest)
-		return
+		return "", "", &lifecycleErr{StatusCode: http.StatusBadRequest, Msg: fmt.Sprintf("agent %q has no registered session", canonical)}
 	}
 
 	backend := s.backendFor(agent)
 
-	// Stop the existing session
-	if oldSession != "" && backend.SessionExists(oldSession) {
+	// Stop the existing session.
+	if backend.SessionExists(oldSession) {
 		ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
 		if err := backend.KillSession(ctx, oldSession); err != nil {
 			cancel()
-			http.Error(w, fmt.Sprintf("kill existing session: %v", err), http.StatusInternalServerError)
-			return
+			return "", "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("kill existing session: %v", err)}
 		}
 		cancel()
 		s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
@@ -515,12 +557,12 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		time.Sleep(1 * time.Second)
 	}
 
-	// Clear the session reference so spawn can proceed
+	// Clear the session reference so spawn can proceed.
 	s.mu.Lock()
 	agent.SessionID = ""
 	s.mu.Unlock()
 
-	// Create new session
+	// Create new session.
 	var createOpts SessionCreateOpts
 	if backend.Name() == "ambient" {
 		createOpts = SessionCreateOpts{
@@ -546,10 +588,9 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 	}
 
 	ctx2 := context.Background()
-	sessionID, err := backend.CreateSession(ctx2, createOpts)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("create new session: %v", err), http.StatusInternalServerError)
-		return
+	sessionID, retErr = backend.CreateSession(ctx2, createOpts)
+	if retErr != nil {
+		return "", "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("create new session: %v", retErr)}
 	}
 
 	s.mu.Lock()
@@ -569,7 +610,6 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		Fields: map[string]string{"session_id": sessionID}})
 	s.broadcastSSE(spaceName, canonical, "agent_restarted", canonical)
 
-	// Send ignite asynchronously after agent has time to initialize
 	go func() {
 		if ab, ok := backend.(*AmbientSessionBackend); ok {
 			pollCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -581,7 +621,6 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		} else {
 			time.Sleep(5 * time.Second)
 		}
-		// Send ignition text directly — personas are included by buildIgnitionText.
 		s.mu.RLock()
 		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
 		s.mu.RUnlock()
@@ -594,13 +633,7 @@ func (s *Server) handleAgentRestart(w http.ResponseWriter, r *http.Request, spac
 		}
 	}()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":         true,
-		"agent":      canonical,
-		"session_id": sessionID,
-	})
+	return sessionID, canonical, nil
 }
 
 // introspectResponse is returned by GET /spaces/{space}/agent/{name}/introspect.

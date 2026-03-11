@@ -21,10 +21,14 @@ func (s *Server) registerMCPTools(srv *mcp.Server) {
 	s.addToolCheckMessages(srv)
 	s.addToolSendMessage(srv)
 	s.addToolAckMessage(srv)
+	s.addToolRequestDecision(srv)
 	s.addToolCreateTask(srv)
 	s.addToolListTasks(srv)
 	s.addToolMoveTask(srv)
 	s.addToolUpdateTask(srv)
+	s.addToolSpawnAgent(srv)
+	s.addToolRestartAgent(srv)
+	s.addToolStopAgent(srv)
 }
 
 // jsonSchema builds a JSON Schema object for use as InputSchema.
@@ -68,6 +72,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 			"items":      {"type": "array", "description": "List of completed or in-progress items", "items": map[string]any{"type": "string"}},
 			"next_steps": prop("string", "What you plan to do next"),
 			"session_id": prop("string", "Your tmux session ID (sticky — send once)"),
+			"questions":  {"type": "array", "description": "Questions needing human decision — each creates a decision request visible to the operator", "items": map[string]any{"type": "string"}},
 		}),
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := parseArgs(req)
@@ -99,6 +104,16 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 				for _, item := range arr {
 					if str, ok := item.(string); ok {
 						update.Items = append(update.Items, str)
+					}
+				}
+			}
+		}
+
+		if questions, ok := args["questions"]; ok {
+			if arr, ok := questions.([]any); ok {
+				for _, q := range arr {
+					if str, ok := q.(string); ok {
+						update.Questions = append(update.Questions, str)
 					}
 				}
 			}
@@ -469,6 +484,42 @@ func (s *Server) addToolAckMessage(srv *mcp.Server) {
 	})
 }
 
+// --- request_decision ---
+
+func (s *Server) addToolRequestDecision(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "request_decision",
+		Description: "Request a decision from the human operator. Use this when you need human input to proceed. The operator will see your question in the conversations view and can reply.",
+		InputSchema: jsonSchema([]string{"space", "agent", "question"}, map[string]map[string]any{
+			"space":    prop("string", "The workspace name"),
+			"agent":    prop("string", "Your agent name"),
+			"question": prop("string", "The question or decision you need from the operator"),
+			"context":  prop("string", "Optional context to help the operator understand the situation"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "agent")
+		question := strArg(args, "question")
+		extraContext := strArg(args, "context")
+
+		if strings.TrimSpace(question) == "" {
+			return toolError("question is required"), nil
+		}
+
+		messageText := question
+		if extraContext != "" {
+			messageText = question + "\n\nContext: " + extraContext
+		}
+
+		msg := s.deliverDecisionMessage(spaceName, agentName, messageText)
+		return toolText(fmt.Sprintf("Decision request sent (id: %s). The operator will reply via the conversations view. Continue working on other tasks while waiting.", msg.ID)), nil
+	})
+}
+
 // --- create_task ---
 
 func (s *Server) addToolCreateTask(srv *mcp.Server) {
@@ -831,6 +882,65 @@ func toolJSON(v any) *mcp.CallToolResult {
 	}
 }
 
+// deliverDecisionMessage creates a decision-type message from an agent to "boss".
+// This message appears in the conversations view as a rich message with a reply action.
+func (s *Server) deliverDecisionMessage(spaceName, agentName, question string) AgentMessage {
+	msg := AgentMessage{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Message:   question,
+		Sender:    agentName,
+		Type:      MessageTypeDecision,
+		Priority:  PriorityUrgent,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.mu.Lock()
+	ks := s.getOrCreateSpaceLocked(spaceName)
+	// Deliver to "boss" agent's inbox so it appears in boss conversations.
+	boss := ks.agentStatus("boss")
+	if boss == nil {
+		boss = &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   "boss: operator",
+			Messages:  []AgentMessage{},
+			UpdatedAt: time.Now().UTC(),
+		}
+		ks.setAgentStatus("boss", boss)
+	}
+	if boss.Messages == nil {
+		boss.Messages = []AgentMessage{}
+	}
+	boss.Messages = append(boss.Messages, msg)
+
+	notif := AgentNotification{
+		ID:        fmt.Sprintf("boss-%d", time.Now().UnixNano()),
+		Type:      NotifTypeMessage,
+		Title:     fmt.Sprintf("Decision needed from %s", agentName),
+		Body:      truncateLine(question, 120),
+		From:      agentName,
+		Timestamp: time.Now().UTC(),
+	}
+	boss.Notifications = append(boss.Notifications, notif)
+	pruneNotifications(boss)
+
+	ks.UpdatedAt = time.Now().UTC()
+	s.saveSpace(ks)
+	s.mu.Unlock()
+
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgDelivered, Space: spaceName, Agent: "boss",
+		Msg:    fmt.Sprintf("decision request from %s", agentName),
+		Fields: map[string]string{"sender": agentName, "type": "decision"}})
+	s.journal.Append(spaceName, EventMessageSent, "boss", &msg)
+
+	sseData, _ := json.Marshal(map[string]any{
+		"space": spaceName, "agent": "boss", "sender": agentName,
+		"message": question, "type": "decision",
+	})
+	s.broadcastSSE(spaceName, "boss", "agent_message", string(sseData))
+
+	return msg
+}
+
 // pruneReadMessages caps read messages at 50, keeping all unread.
 func pruneReadMessages(ag *AgentUpdate) {
 	const maxReadMessages = 50
@@ -853,4 +963,144 @@ func pruneReadMessages(ag *AgentUpdate) {
 		}
 		ag.Messages = filtered
 	}
+}
+
+// --- spawn_agent ---
+
+func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "spawn_agent",
+		Description: "Spawn a new agent session in a space. Creates a tmux session, sends the ignition prompt, and returns the session ID.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space":           prop("string", "The workspace name"),
+			"name":            prop("string", "The agent name to spawn"),
+			"command":         prop("string", "Command to run (default: claude or claude --dangerously-skip-permissions based on server setting)"),
+			"work_dir":        prop("string", "Working directory for the session"),
+			"initial_message": prop("string", "First message to deliver to the agent after spawn"),
+			"parent":          prop("string", "Parent agent name (sets hierarchy relationship)"),
+			"task_id":         prop("string", "Task ID to link to this agent (sets assigned_to)"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		spawnReq := spawnRequest{
+			Command:        strArg(args, "command"),
+			InitialMessage: strArg(args, "initial_message"),
+			TaskID:         strArg(args, "task_id"),
+		}
+
+		// work_dir is applied via AgentConfig; for MCP callers we inject it by
+		// temporarily setting a config entry if not already present.
+		workDir := strArg(args, "work_dir")
+		spawnerName := strArg(args, "parent")
+
+		if workDir != "" {
+			// Ensure an AgentConfig entry exists so spawnAgentService picks up the workDir.
+			s.mu.Lock()
+			ks := s.getOrCreateSpaceLocked(spaceName)
+			canonical := resolveAgentName(ks, agentName)
+			rec, ok := ks.Agents[canonical]
+			if !ok || rec == nil {
+				rec = &AgentRecord{}
+				ks.Agents[canonical] = rec
+			}
+			if rec.Config == nil {
+				rec.Config = &AgentConfig{}
+			}
+			if rec.Config.WorkDir == "" {
+				rec.Config.WorkDir = workDir
+			}
+			s.mu.Unlock()
+		}
+
+		sessionID, backendName, canonical, err := s.spawnAgentService(spaceName, agentName, spawnReq, spawnerName)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"session_id": sessionID,
+			"space":      spaceName,
+			"backend":    backendName,
+		}), nil
+	})
+}
+
+// --- restart_agent ---
+
+func (s *Server) addToolRestartAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "restart_agent",
+		Description: "Restart an existing agent: kills the current session and spawns a new one with the same config.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space": prop("string", "The workspace name"),
+			"name":  prop("string", "The agent name to restart"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		sessionID, canonical, err := s.restartAgentService(spaceName, agentName, spawnRequest{})
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"session_id": sessionID,
+			"space":      spaceName,
+		}), nil
+	})
+}
+
+// --- stop_agent ---
+
+func (s *Server) addToolStopAgent(srv *mcp.Server) {
+	srv.AddTool(&mcp.Tool{
+		Name:        "stop_agent",
+		Description: "Stop an agent by killing its session and marking it as done.",
+		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
+			"space": prop("string", "The workspace name"),
+			"name":  prop("string", "The agent name to stop"),
+		}),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, err := parseArgs(req)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+		spaceName := strArg(args, "space")
+		agentName := strArg(args, "name")
+		if strings.TrimSpace(agentName) == "" {
+			return toolError("name is required"), nil
+		}
+
+		canonical, err := s.stopAgentService(spaceName, agentName)
+		if err != nil {
+			return toolError(err.Error()), nil
+		}
+
+		return toolJSON(map[string]any{
+			"ok":         true,
+			"agent_name": canonical,
+			"space":      spaceName,
+		}), nil
+	})
 }
