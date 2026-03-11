@@ -48,25 +48,31 @@ Developer sends message to Manager:
 Developer updates task status via PATCH /spaces/{space}/tasks/{id}
 ```
 
-### 3. Question / Blocker (Any → Manager/Boss)
+### 3. Question / Blocker (Any → Manager)
 
+When work is blocked on a decision:
 ```
+Developer sets task status to `blocked`
 Developer sends message to Manager:
-  "BLOCKED: TASK-{id}: {question}. Continuing with {alternative} while waiting."
-Developer posts status update with next_steps reflecting the blocker
+  "TASK-{id} blocked: {reason}. Waiting on your decision. Continuing with {alternative} in the meantime."
+Developer posts status update with next_steps reflecting the blocker and the alternative
 ```
 
-For boss-level decisions, message the boss agent channel directly.
+If the manager is unresponsive and the blocker is critical, the developer escalates up the chain — see
+the Escalation section below.
 
 ### 4. Peer-to-Peer Coordination
 
-Agents on the same team may communicate directly when pre-authorized by the manager:
+Agents may message any peer directly — no manager authorization is required. Peer communication
+is the default; a manager can explicitly forbid a specific interaction if needed.
+
 ```
 DevA sends message to DevB:
   "DevA → DevB: re TASK-{id}: {coordination detail}"
 ```
 
-Both parties CC the manager in their next status update.
+Peer exchanges that affect shared state or deliverables should be summarized in the next status
+update so the manager has visibility.
 
 ### 5. Escalation
 
@@ -81,7 +87,7 @@ Agent sends message to boss:
 - **Every message must be actionable** — no status messages that duplicate what the dashboard shows
 - **Reference tasks by ID** — always include TASK-{id} in messages about work
 - **One thread per task** — messages about a task are exchanges between the assigned agent and the assigning manager; avoid forwarding chains
-- **Acknowledgment** — managers must ACK assignment messages within 2 check-in cycles (max ~20 min) or be considered blocked
+- **Acknowledgment** — ACK a message after reading it; ACK signals "I have seen this" and serves as a lightweight reaction (thumbs-up) for informational messages. It is not a commitment gate — you can ACK and then continue your current work
 
 ## Reading Messages
 
