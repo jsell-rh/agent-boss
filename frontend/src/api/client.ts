@@ -176,9 +176,10 @@ class ApiClient {
 
   // --------------- Actions ---------------
 
-  approveAgent(space: string, agent: string): Promise<void> {
+  approveAgent(space: string, agent: string, always = false): Promise<void> {
+    const qs = always ? '?always=true' : ''
     return this.requestVoid(
-      `/spaces/${encodeURIComponent(space)}/approve/${encodeURIComponent(agent)}`,
+      `/spaces/${encodeURIComponent(space)}/approve/${encodeURIComponent(agent)}${qs}`,
       { method: 'POST' },
     )
   }

@@ -151,6 +151,10 @@ func (b *TmuxSessionBackend) Approve(sessionID string) error {
 	return tmuxApprove(sessionID)
 }
 
+func (b *TmuxSessionBackend) AlwaysAllow(sessionID string) error {
+	return tmuxAlwaysAllow(sessionID)
+}
+
 func (b *TmuxSessionBackend) Interrupt(ctx context.Context, sessionID string) error {
 	// Claude Code requires two Escape presses to fully cancel a running operation:
 	// the first Escape triggers the "Interrupt?" confirmation prompt, and the second

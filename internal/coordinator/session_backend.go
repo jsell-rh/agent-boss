@@ -51,8 +51,12 @@ type SessionBackend interface {
 	// SendInput sends text to the session.
 	SendInput(sessionID string, text string) error
 
-	// Approve sends an approval response to a pending prompt.
+	// Approve sends an approval response to a pending prompt (option 1: "Yes").
 	Approve(sessionID string) error
+
+	// AlwaysAllow sends the "always allow" response to a pending prompt
+	// (option 2: "Yes, and don't ask again for this command").
+	AlwaysAllow(sessionID string) error
 
 	// Interrupt cancels the session's current work without killing it.
 	Interrupt(ctx context.Context, sessionID string) error

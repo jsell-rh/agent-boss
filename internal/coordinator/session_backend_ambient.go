@@ -442,6 +442,10 @@ func (b *AmbientSessionBackend) Approve(sessionID string) error {
 	return nil // Ambient sessions don't have terminal approval prompts
 }
 
+func (b *AmbientSessionBackend) AlwaysAllow(sessionID string) error {
+	return nil // Ambient sessions don't have terminal approval prompts
+}
+
 func (b *AmbientSessionBackend) Interrupt(ctx context.Context, sessionID string) error {
 	resp, err := b.doRequest(ctx, http.MethodPost, "/sessions/"+sessionID+"/interrupt", nil)
 	if err != nil {

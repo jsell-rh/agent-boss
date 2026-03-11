@@ -43,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   approve: []
+  'always-allow': []
   reply: [text: string]
   broadcast: []
   delete: []
@@ -1133,29 +1134,33 @@ watch(() => props.agentName, () => {
       <section v-if="agent.session_id && agent.backend_type !== 'ambient'" class="space-y-3" aria-label="Tmux session controls">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controls</h2>
 
-        <!-- Approval button -->
+        <!-- Approval buttons -->
         <div v-if="tmuxStatus?.needs_approval" class="space-y-2">
-          <Card class="border-primary/40 bg-primary/5" role="alert">
+          <Card class="border-destructive/60 bg-destructive/5 shadow-sm ring-1 ring-destructive/30" role="alert" aria-live="assertive">
             <CardContent class="p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-medium">Approval Required</p>
-                  <p v-if="tmuxStatus.tool_name" class="text-xs text-muted-foreground font-text mt-0.5">
-                    Tool: <span class="font-mono">{{ tmuxStatus.tool_name }}</span>
-                  </p>
-                  <p v-if="tmuxStatus.prompt_text" class="text-xs text-muted-foreground font-text mt-1 line-clamp-2">
-                    {{ tmuxStatus.prompt_text }}
-                  </p>
-                </div>
+              <p class="text-sm font-semibold text-destructive mb-1">⚠ Approval Required</p>
+              <p v-if="tmuxStatus.tool_name" class="text-xs text-muted-foreground font-text mb-0.5">
+                Tool: <span class="font-mono">{{ tmuxStatus.tool_name }}</span>
+              </p>
+              <p v-if="tmuxStatus.prompt_text" class="text-xs text-muted-foreground font-text mb-3 line-clamp-3">
+                {{ tmuxStatus.prompt_text }}
+              </p>
+              <div class="flex gap-2">
                 <Tooltip>
                   <TooltipTrigger as-child>
-                    <Button @click="emit('approve')" aria-label="Approve tool execution">
+                    <Button size="sm" @click="emit('approve')" aria-label="Approve tool execution once">
                       <ShieldCheck class="size-4" /> Approve
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    Allow the agent to proceed by sending 'y' to its tmux session
-                  </TooltipContent>
+                  <TooltipContent>Allow once (option 1: Yes)</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button size="sm" variant="outline" @click="emit('always-allow')" aria-label="Always allow this command">
+                      <ShieldCheck class="size-4" /> Always Allow
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Allow and don't ask again for this command (option 2)</TooltipContent>
                 </Tooltip>
               </div>
             </CardContent>

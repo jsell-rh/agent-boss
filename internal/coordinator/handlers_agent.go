@@ -1103,22 +1103,33 @@ func (s *Server) handleApproveAgent(w http.ResponseWriter, r *http.Request, spac
 	// not match on a second read even though the agent is still waiting.
 	// We send the approval keystroke regardless and let the liveness monitor
 	// clear the interrupt on the next poll.
+	always := r.URL.Query().Get("always") == "true"
 	approval := backend.CheckApproval(sessionID)
-	if err := backend.Approve(sessionID); err != nil {
-		writeJSONError(w, canonical+": approve failed: "+err.Error(), http.StatusInternalServerError)
+	var approveErr error
+	if always {
+		approveErr = backend.AlwaysAllow(sessionID)
+	} else {
+		approveErr = backend.Approve(sessionID)
+	}
+	if approveErr != nil {
+		writeJSONError(w, canonical+": approve failed: "+approveErr.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.logEvent(fmt.Sprintf("[%s/%s] approval granted via dashboard (tool: %s)", spaceName, canonical, approval.ToolName))
+	mode := "approved"
+	if always {
+		mode = "always_allowed"
+	}
+	s.logEvent(fmt.Sprintf("[%s/%s] approval %s via dashboard (tool: %s)", spaceName, canonical, mode, approval.ToolName))
 	key := spaceName + "/" + canonical
-	approvalCtx := map[string]string{"tool": approval.ToolName}
+	approvalCtx := map[string]string{"tool": approval.ToolName, "mode": mode}
 	if started, was := s.approvalTracked[key]; was {
 		delete(s.approvalTracked, key)
 		approvalCtx["wait_seconds"] = fmt.Sprintf("%.1f", time.Since(started).Seconds())
 	}
 	s.interrupts.RecordResolved(spaceName, canonical, InterruptApproval,
-		approval.PromptText, "human", "approved", approvalCtx)
+		approval.PromptText, "human", mode, approvalCtx)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "approved", "agent": canonical, "tool": approval.ToolName})
+	json.NewEncoder(w).Encode(map[string]string{"status": mode, "agent": canonical, "tool": approval.ToolName})
 }
 
 func (s *Server) handleReplyAgent(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {

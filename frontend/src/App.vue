@@ -108,6 +108,13 @@ const currentAgentNames = computed<string[]>(() =>
   Object.keys(currentSpace.value?.agents ?? {}),
 )
 
+// Agents in the current space that have a pending approval
+const agentsNeedingApproval = computed<string[]>(() =>
+  Object.entries(tmuxStatus.value)
+    .filter(([, s]) => s.needs_approval)
+    .map(([name]) => name),
+)
+
 // Build hierarchy from agent parent fields so done/idle agents are included.
 // Merges API hierarchy data (role) with the complete agent roster.
 const effectiveHierarchy = computed<HierarchyTree | null>(() => {
@@ -279,16 +286,20 @@ async function handleBroadcastSpace() {
   }
 }
 
-async function handleApproveAgent() {
+async function handleApproveAgent(always = false) {
   if (!selectedSpace.value || !selectedAgent.value) return
   try {
-    await api.approveAgent(selectedSpace.value, selectedAgent.value)
+    await api.approveAgent(selectedSpace.value, selectedAgent.value, always)
     await loadSessionStatus(selectedSpace.value)
-    showStatus(`Approved ${selectedAgent.value}`)
+    showStatus(always ? `Always allowed for ${selectedAgent.value}` : `Approved ${selectedAgent.value}`)
   } catch (err) {
     console.error('Approve failed:', err)
     showError('Approval failed. Please try again.')
   }
+}
+
+async function handleAlwaysAllowAgent() {
+  return handleApproveAgent(true)
 }
 
 async function handleReplyAgent(text: string) {
@@ -822,6 +833,27 @@ onUnmounted(() => {
         @archive-space="handleArchiveSpace"
       />
       <SidebarInset class="flex flex-col h-dvh">
+        <!-- Global approval banner — shown whenever any agent in the current space needs approval -->
+        <div
+          v-if="agentsNeedingApproval.length > 0"
+          class="shrink-0 bg-destructive text-destructive-foreground px-4 py-2 flex items-center justify-between gap-3 text-sm font-text"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span class="font-semibold">
+            ⚠ {{ agentsNeedingApproval.length === 1 ? agentsNeedingApproval[0] : agentsNeedingApproval.length + ' agents' }} waiting for approval
+          </span>
+          <div class="flex gap-2">
+            <button
+              v-for="name in agentsNeedingApproval"
+              :key="name"
+              class="underline underline-offset-2 hover:no-underline cursor-pointer"
+              @click="handleSelectAgent(name)"
+            >
+              {{ agentsNeedingApproval.length > 1 ? name : 'View' }}
+            </button>
+          </div>
+        </div>
         <!-- Header -->
         <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4 overflow-hidden">
           <SidebarTrigger class="-ml-1" />
@@ -995,6 +1027,7 @@ onUnmounted(() => {
             :space-name="selectedSpace"
             :tmux-status="selectedAgentTmux"
             @approve="handleApproveAgent"
+            @always-allow="handleAlwaysAllowAgent"
             @reply="handleReplyAgent"
             @broadcast="handleBroadcastAgent"
             @delete="handleDeleteAgent()"

@@ -214,6 +214,19 @@ func tmuxApprove(session string) error {
 	return exec.CommandContext(ctx2, "tmux", "send-keys", "-t", session, "Enter").Run()
 }
 
+func tmuxAlwaysAllow(session string) error {
+	// Send "2" to select "Yes, and don't ask again for this command" (option 2
+	// in the approval dialog), then Enter to confirm.
+	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", session, "2").Run(); err != nil {
+		return err
+	}
+	ctx2, cancel2 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel2()
+	return exec.CommandContext(ctx2, "tmux", "send-keys", "-t", session, "Enter").Run()
+}
+
 // tmuxIsIdle reports whether the tmux session appears to be waiting for input
 // (i.e., no agent or process is actively running). It is intentionally generous:
 // a session is "busy" only when there is positive evidence of activity.
