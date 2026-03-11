@@ -7,7 +7,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShieldCheck } from 'lucide-vue-next'
 
@@ -95,21 +94,20 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
             </div>
           </div>
           <div class="flex gap-2">
-            <Button
-              size="sm"
-              class="flex-1 h-7 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              @click="emit('approve', agentName, false)"
+            <button
+              type="button"
+              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors bg-destructive hover:bg-destructive/90 text-destructive-foreground px-3"
+              @click.stop="emit('approve', agentName, false)"
             >
               Approve once
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              class="flex-1 h-7 text-xs"
-              @click="emit('approve', agentName, true)"
+            </button>
+            <button
+              type="button"
+              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors border bg-background hover:bg-accent hover:text-accent-foreground px-3"
+              @click.stop="emit('approve', agentName, true)"
             >
               Always allow
-            </Button>
+            </button>
           </div>
         </div>
       </div>
