@@ -13,6 +13,8 @@ import type {
   TaskStatus,
   TaskPriority,
   Persona,
+  PersonaVersion,
+  PersonaAgentInfo,
 } from '@/types'
 
 /**
@@ -479,6 +481,29 @@ class ApiClient {
 
   deletePersona(id: string): Promise<void> {
     return this.requestVoid(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  fetchPersonaHistory(id: string): Promise<PersonaVersion[]> {
+    return this.request<PersonaVersion[]>(`/personas/${encodeURIComponent(id)}/history`)
+  }
+
+  revertPersona(id: string, version: number): Promise<Persona> {
+    return this.request<Persona>(`/personas/${encodeURIComponent(id)}/revert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    })
+  }
+
+  fetchPersonaAgents(id: string): Promise<PersonaAgentInfo[]> {
+    return this.request<PersonaAgentInfo[]>(`/personas/${encodeURIComponent(id)}/agents`)
+  }
+
+  restartOutdatedPersonaAgents(id: string): Promise<{ restarted: string[]; errors: string[]; total: number }> {
+    return this.request<{ restarted: string[]; errors: string[]; total: number }>(
+      `/personas/${encodeURIComponent(id)}/restart-outdated`,
+      { method: 'POST' },
+    )
   }
 
   // --------------- Settings ---------------

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { KnowledgeSpace, SessionAgentStatus, HierarchyTree } from '@/types'
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTime } from '@/composables/useTime'
 import { Card, CardContent } from '@/components/ui/card'
@@ -53,6 +53,7 @@ import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
 import AgentCreateDialog from './AgentCreateDialog.vue'
 import { prLink } from '@/lib/utils'
+import api from '@/api/client'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -71,6 +72,39 @@ const emit = defineEmits<{
   'archive-space': []
   'clear-done-agents': [names: string[]]
 }>()
+
+// Persona version tracking for outdated badge
+const personaVersions = ref<Record<string, number>>({})
+async function loadPersonaVersions() {
+  try {
+    const personas = await api.fetchPersonas()
+    const versions: Record<string, number> = {}
+    for (const p of personas) versions[p.id] = p.version
+    personaVersions.value = versions
+  } catch { /* non-critical */ }
+}
+function isPersonaOutdated(agent: any): boolean {
+  const config = agent?.config || (agent as any)?.Config
+  if (!config?.personas?.length) return false
+  for (const ref of config.personas) {
+    const current = personaVersions.value[ref.id]
+    if (current && ref.pinned_version && ref.pinned_version < current) return true
+  }
+  return false
+}
+function personaOutdatedTooltip(agent: any): string {
+  const config = agent?.config || (agent as any)?.Config
+  if (!config?.personas?.length) return ''
+  const parts: string[] = []
+  for (const ref of config.personas) {
+    const current = personaVersions.value[ref.id]
+    if (current && ref.pinned_version && ref.pinned_version < current) {
+      parts.push(`${ref.id}: v${ref.pinned_version} → v${current}`)
+    }
+  }
+  return parts.join(', ')
+}
+onMounted(loadPersonaVersions)
 
 const agentSearch = ref('')
 const activeTab = ref('agents')
@@ -536,6 +570,17 @@ const activeSections = computed(() => [
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                           <StatusBadge :status="agent.status" />
+                          <Tooltip v-if="isPersonaOutdated(agent)">
+                            <TooltipTrigger as-child>
+                              <Badge
+                                variant="outline"
+                                class="border-amber-500/50 text-amber-500 text-[10px] h-5 px-1.5"
+                              >
+                                Persona
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>Outdated persona: {{ personaOutdatedTooltip(agent) }}. Restart to update.</TooltipContent>
+                          </Tooltip>
                           <Tooltip v-if="agent.stale">
                             <TooltipTrigger as-child>
                               <Badge

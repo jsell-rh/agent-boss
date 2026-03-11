@@ -71,6 +71,21 @@ export interface Persona {
   updated_at: string
 }
 
+export interface PersonaVersion {
+  version: number
+  prompt: string
+  updated_at: string
+}
+
+export interface PersonaAgentInfo {
+  space: string
+  agent: string
+  pinned_version: number
+  current_version: number
+  outdated: boolean
+  session_id?: string
+}
+
 export interface PersonaRef {
   id: string
   pinned_version?: number
