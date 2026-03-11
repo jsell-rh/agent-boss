@@ -1392,13 +1392,19 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		}
 	} else {
 		sessionName := tmuxDefaultSession(spaceName, req.Name)
+		spawnCommand := req.Command
+		if s.allowSkipPermissions && spawnCommand == "" {
+			spawnCommand = "claude --dangerously-skip-permissions"
+		}
 		createOpts = SessionCreateOpts{
 			SessionID: sessionName,
-			Command:   req.Command,
+			Command:   spawnCommand,
 			BackendOpts: TmuxCreateOpts{
-				WorkDir: req.WorkDir,
-				Width:   req.Width,
-				Height:  req.Height,
+				WorkDir:              req.WorkDir,
+				Width:                req.Width,
+				Height:               req.Height,
+				MCPServerURL:         s.localURL(),
+				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
 	}
