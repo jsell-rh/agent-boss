@@ -7,7 +7,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShieldCheck } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -34,32 +33,26 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
 
 <template>
   <DropdownMenu>
-    <Tooltip>
-      <TooltipTrigger as-child>
-        <DropdownMenuTrigger as-child>
-          <button
-            type="button"
-            class="relative flex items-center justify-center size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            :aria-label="`${count} agent${count !== 1 ? 's' : ''} waiting for approval`"
-          >
-            <ShieldCheck class="size-4" />
-            <!-- Pulsing badge -->
-            <span
-              class="absolute -top-1 -right-1 flex size-4 items-center justify-center"
-              aria-hidden="true"
-            >
-              <span class="absolute inline-flex size-full rounded-full bg-destructive opacity-75 animate-ping" />
-              <span class="relative inline-flex size-3.5 rounded-full bg-destructive text-white text-[8px] font-bold leading-none items-center justify-center">
-                {{ count > 9 ? '9+' : count }}
-              </span>
-            </span>
-          </button>
-        </DropdownMenuTrigger>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {{ count }} pending approval{{ count !== 1 ? 's' : '' }}
-      </TooltipContent>
-    </Tooltip>
+    <DropdownMenuTrigger as-child>
+      <button
+        type="button"
+        class="relative flex items-center justify-center size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        :aria-label="`${count} agent${count !== 1 ? 's' : ''} waiting for approval`"
+        :title="`${count} pending approval${count !== 1 ? 's' : ''}`"
+      >
+        <ShieldCheck class="size-4" />
+        <!-- Pulsing badge -->
+        <span
+          class="absolute -top-1 -right-1 flex size-4 items-center justify-center"
+          aria-hidden="true"
+        >
+          <span class="absolute inline-flex size-full rounded-full bg-destructive opacity-75 animate-ping" />
+          <span class="relative inline-flex size-3.5 rounded-full bg-destructive text-white text-[8px] font-bold leading-none items-center justify-center">
+            {{ count > 9 ? '9+' : count }}
+          </span>
+        </span>
+      </button>
+    </DropdownMenuTrigger>
 
     <DropdownMenuContent align="end" class="w-80 p-0">
       <DropdownMenuLabel class="px-4 py-3 flex items-center gap-2 border-b">
