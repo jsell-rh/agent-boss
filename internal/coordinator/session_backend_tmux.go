@@ -152,6 +152,14 @@ func (b *TmuxSessionBackend) Approve(sessionID string) error {
 }
 
 func (b *TmuxSessionBackend) Interrupt(ctx context.Context, sessionID string) error {
+	// Claude Code requires two Escape presses to fully cancel a running operation:
+	// the first Escape triggers the "Interrupt?" confirmation prompt, and the second
+	// confirms the cancellation. Sending both with a short delay makes a single
+	// "Interrupt" button press work end-to-end without needing a second click.
+	if err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", sessionID, "Escape").Run(); err != nil {
+		return err
+	}
+	time.Sleep(500 * time.Millisecond)
 	return exec.CommandContext(ctx, "tmux", "send-keys", "-t", sessionID, "Escape").Run()
 }
 
