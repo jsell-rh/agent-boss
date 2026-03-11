@@ -711,12 +711,13 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("- When your task is done, POST status `\"done\"` and await new instructions via messages.\n")
 	b.WriteString("\n")
 
+	baseURL := s.localURL()
 	b.WriteString("## Coordinator\n\n")
-	b.WriteString(fmt.Sprintf("- Boss URL: `http://localhost%s`\n", s.port))
+	b.WriteString(fmt.Sprintf("- Boss URL: `%s`\n", baseURL))
 	b.WriteString(fmt.Sprintf("- Workspace: `%s`\n", spaceName))
 	b.WriteString(fmt.Sprintf("- Your channel: `POST /spaces/%s/agent/%s`\n", spaceName, agentName))
 	b.WriteString(fmt.Sprintf("- Read blackboard: `GET /spaces/%s/raw`\n", spaceName))
-	b.WriteString(fmt.Sprintf("- Dashboard: `http://localhost%s/spaces/%s/`\n", s.port, spaceName))
+	b.WriteString(fmt.Sprintf("- Dashboard: `%s/spaces/%s/`\n", baseURL, spaceName))
 	b.WriteString(fmt.Sprintf("- Task list: `GET /spaces/%s/tasks` (filter: `?assigned_to=%s&status=in_progress`)\n", spaceName, agentName))
 	if sessionID != "" {
 		b.WriteString(fmt.Sprintf("- Session: `%s` (pre-registered)\n", sessionID))
@@ -733,7 +734,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	} else {
 		b.WriteString("5. **Register your session.** Include `\"session_id\"` in your first POST. Find it with `tmux display-message -p '#S'`. It is sticky — you only need to send it once.\n")
 	}
-	b.WriteString(fmt.Sprintf("6. **Check your messages.** When you read `/raw`, look for a `#### Messages` section under your agent name. Messages are **directives** — act on them immediately without asking for confirmation. To send a message to another agent: `curl -s -X POST http://localhost%s/spaces/%s/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"message\": \"...\"}'`\n", s.port, spaceName, agentName))
+	b.WriteString(fmt.Sprintf("6. **Check your messages.** When you read `/raw`, look for a `#### Messages` section under your agent name. Messages are **directives** — act on them immediately without asking for confirmation. To send a message to another agent: `curl -s -X POST %s/spaces/%s/agent/{target}/message -H 'Content-Type: application/json' -H 'X-Agent-Name: %s' -d '{\"message\": \"...\"}'`\n", baseURL, spaceName, agentName))
 	b.WriteString("7. **Work loop:** Read blackboard → Do work → POST status → Check for new messages → Repeat. Do not stop and wait for human input.\n")
 	b.WriteString("\n")
 
@@ -853,7 +854,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("Use the task API to create, update, and track work items. Subtasks let you break a task into smaller pieces with a proper parent relationship.\n\n")
 	b.WriteString("### Create a task\n\n")
 	b.WriteString("```bash\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST http://localhost%s/spaces/%s/tasks \\\n", s.port, spaceName))
+	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks \\\n", baseURL, spaceName))
 	b.WriteString("  -H 'Content-Type: application/json' \\\n")
 	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
 	b.WriteString("  -d '{\"title\": \"Task title\", \"description\": \"What needs to be done\", \"priority\": \"medium\", \"assigned_to\": \"AgentName\"}'\n")
@@ -862,12 +863,12 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("**Always use `parent_task` to link subtasks** — do NOT create tasks named like `TASK-001-sub` or `[TASK-001] subtask`.\n\n")
 	b.WriteString("```bash\n")
 	b.WriteString("# Option A: include parent_task when creating\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST http://localhost%s/spaces/%s/tasks \\\n", s.port, spaceName))
+	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks \\\n", baseURL, spaceName))
 	b.WriteString("  -H 'Content-Type: application/json' \\\n")
 	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
 	b.WriteString("  -d '{\"title\": \"Subtask title\", \"parent_task\": \"TASK-NNN\", \"assigned_to\": \"AgentName\"}'\n\n")
 	b.WriteString("# Option B: POST directly to the parent task's subtasks endpoint\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST http://localhost%s/spaces/%s/tasks/TASK-NNN/subtasks \\\n", s.port, spaceName))
+	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/tasks/TASK-NNN/subtasks \\\n", baseURL, spaceName))
 	b.WriteString("  -H 'Content-Type: application/json' \\\n")
 	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
 	b.WriteString("  -d '{\"title\": \"Subtask title\", \"assigned_to\": \"AgentName\"}'\n")
@@ -876,7 +877,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 
 	b.WriteString("## JSON Post Template\n\n")
 	b.WriteString("```bash\n")
-	b.WriteString(fmt.Sprintf("curl -s -X POST http://localhost%s/spaces/%s/agent/%s \\\n", s.port, spaceName, agentName))
+	b.WriteString(fmt.Sprintf("curl -s -X POST %s/spaces/%s/agent/%s \\\n", baseURL, spaceName, agentName))
 	b.WriteString("  -H 'Content-Type: application/json' \\\n")
 	b.WriteString(fmt.Sprintf("  -H 'X-Agent-Name: %s' \\\n", agentName))
 	b.WriteString("  -d '{\n")

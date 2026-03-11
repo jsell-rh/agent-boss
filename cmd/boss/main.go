@@ -73,10 +73,11 @@ Examples:
   boss broadcast --space sdk-backend-replacement
 
 Environment:
-  BOSS_URL          Server URL (default: http://localhost:8899)
-  COORDINATOR_PORT  Server port (serve only, default: 8899)
-  DATA_DIR          Data directory (serve only, default: ./data)
-  FRONTEND_DIR      Vue frontend dist directory (serve only, optional)
+  BOSS_URL           Server URL (default: http://localhost:8899)
+  COORDINATOR_PORT   Server port (serve only, default: 8899)
+  COORDINATOR_HOST   Hostname used in agent-facing URLs (serve only, default: localhost)
+  DATA_DIR           Data directory (serve only, default: ./data)
+  FRONTEND_DIR       Vue frontend dist directory (serve only, optional)
 `)
 }
 

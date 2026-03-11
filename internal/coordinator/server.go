@@ -39,6 +39,7 @@ type sseEvent struct {
 
 type Server struct {
 	port            string
+	host            string // hostname used in URLs sent to agents (COORDINATOR_HOST, default "localhost")
 	dataDir         string
 	frontendDir     string
 	spaces          map[string]*KnowledgeSpace
@@ -89,8 +90,13 @@ func NewServer(port, dataDir string) *Server {
 			thresh = d
 		}
 	}
+	host := os.Getenv("COORDINATOR_HOST")
+	if host == "" {
+		host = "localhost"
+	}
 	s := &Server{
 		port:               port,
+		host:               host,
 		dataDir:            dataDir,
 		spaces:             make(map[string]*KnowledgeSpace),
 		stopLiveness:       make(chan struct{}),
@@ -258,9 +264,10 @@ func (s *Server) Start() error {
 }
 
 // localURL returns the base URL of this server (e.g. "http://localhost:8899").
+// The hostname comes from COORDINATOR_HOST (default "localhost").
 func (s *Server) localURL() string {
 	port := strings.TrimPrefix(s.port, ":")
-	return "http://localhost:" + port
+	return "http://" + s.host + ":" + port
 }
 
 func (s *Server) Stop() error {
