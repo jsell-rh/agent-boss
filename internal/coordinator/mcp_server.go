@@ -121,10 +121,22 @@ func (s *Server) buildMCPHandler() http.Handler {
 		}, nil
 	})
 
-	return mcp.NewStreamableHTTPHandler(
+	handler := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server { return srv },
 		nil,
 	)
+
+	// Wrap with CORS headers so browser-based and cross-origin MCP clients can connect.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 // handleSettings handles GET and PATCH /settings.
