@@ -43,6 +43,11 @@ const router = createRouter({
       name: 'personas',
       component: Empty,
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: Empty,
+    },
   ],
 })
 

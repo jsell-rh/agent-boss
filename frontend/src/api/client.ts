@@ -480,6 +480,20 @@ class ApiClient {
   deletePersona(id: string): Promise<void> {
     return this.requestVoid(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
+
+  // --------------- Settings ---------------
+
+  getSettings(): Promise<{ allow_skip_permissions: boolean }> {
+    return this.request<{ allow_skip_permissions: boolean }>('/settings')
+  }
+
+  updateSettings(patch: { allow_skip_permissions: boolean }): Promise<{ allow_skip_permissions: boolean }> {
+    return this.request<{ allow_skip_permissions: boolean }>('/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  }
 }
 
 export const api = new ApiClient()

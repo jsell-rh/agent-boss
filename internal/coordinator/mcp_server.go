@@ -8,11 +8,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
+
+const settingsFile = "settings.json"
+
+type serverSettings struct {
+	AllowSkipPermissions bool `json:"allow_skip_permissions"`
+}
+
+func (s *Server) settingsPath() string {
+	return filepath.Join(s.dataDir, settingsFile)
+}
+
+// loadSettings reads settings.json from DATA_DIR and applies stored values.
+// Called once at server startup; missing file is silently ignored.
+func (s *Server) loadSettings() {
+	data, err := os.ReadFile(s.settingsPath())
+	if err != nil {
+		return // first run or file missing — use defaults
+	}
+	var stored serverSettings
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return
+	}
+	s.mu.Lock()
+	s.allowSkipPermissions = stored.AllowSkipPermissions
+	s.mu.Unlock()
+}
+
+// saveSettings writes the current settings to settings.json in DATA_DIR.
+func (s *Server) saveSettings() error {
+	s.mu.RLock()
+	snap := serverSettings{AllowSkipPermissions: s.allowSkipPermissions}
+	s.mu.RUnlock()
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.settingsPath(), data, 0644)
+}
 
 // buildMCPHandler creates the MCP server and returns an http.Handler for mounting at /mcp.
 func (s *Server) buildMCPHandler() http.Handler {
@@ -143,12 +183,19 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 			return
 		}
+		s.mu.Lock()
 		s.allowSkipPermissions = patch.AllowSkipPermissions
-		s.logEvent(fmt.Sprintf("settings updated: allow_skip_permissions=%v", s.allowSkipPermissions))
+		s.mu.Unlock()
+		if err := s.saveSettings(); err != nil {
+			s.logEvent(fmt.Sprintf("settings save failed: %v", err))
+		}
+		s.logEvent(fmt.Sprintf("settings updated: allow_skip_permissions=%v", patch.AllowSkipPermissions))
 		w.Header().Set("Content-Type", "application/json")
+		s.mu.RLock()
 		json.NewEncoder(w).Encode(settingsPayload{
 			AllowSkipPermissions: s.allowSkipPermissions,
 		})
+		s.mu.RUnlock()
 
 	default:
 		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
