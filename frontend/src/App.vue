@@ -28,6 +28,7 @@ import KanbanView from '@/components/KanbanView.vue'
 import PersonasView from '@/components/PersonasView.vue'
 import SettingsView from '@/components/SettingsView.vue'
 import ApprovalTray from '@/components/ApprovalTray.vue'
+import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 
@@ -56,7 +57,6 @@ const eventLogRef = ref<InstanceType<typeof EventLog> | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // ── Component refs ──────────────────────────────────────────────────
-const spaceOverviewRef = ref<InstanceType<typeof SpaceOverview> | null>(null)
 const sidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null)
 
 // ── Keyboard shortcut state ────────────────────────────────────────
@@ -97,6 +97,20 @@ const showConversations = computed(() =>
 const showKanban = computed(() => route.name === 'kanban')
 const showPersonas = computed(() => route.name === 'personas')
 const showSettings = computed(() => route.name === 'settings')
+
+// Pending decision count across all agents in current space
+const pendingDecisionCount = computed(() => {
+  if (!currentSpace.value) return 0
+  let count = 0
+  for (const agent of Object.values(currentSpace.value.agents)) {
+    const a = agent as any
+    const messages = a?.messages || a?.Messages || []
+    for (const msg of messages) {
+      if (msg.type === 'decision' && !msg.resolved) count++
+    }
+  }
+  return count
+})
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {
   if (!currentSpace.value || !selectedAgent.value || showConversations.value || showKanban.value || showPersonas.value || showSettings.value) return null
@@ -363,7 +377,7 @@ async function handleDismissQuestion(index: number) {
   try {
     await api.dismissItem(selectedSpace.value, selectedAgent.value, index, 'question')
     await loadSpace(selectedSpace.value)
-    spaceOverviewRef.value?.refreshInbox()
+    // Decision requests now surface in conversations view (auto-refreshes via SSE)
     showStatus('Question dismissed')
   } catch (err) {
     console.error('Dismiss question failed:', err)
@@ -376,7 +390,7 @@ async function handleDismissBlocker(index: number) {
   try {
     await api.dismissItem(selectedSpace.value, selectedAgent.value, index, 'blocker')
     await loadSpace(selectedSpace.value)
-    spaceOverviewRef.value?.refreshInbox()
+    // Decision requests now surface in conversations view (auto-refreshes via SSE)
     showStatus('Blocker dismissed')
   } catch (err) {
     console.error('Dismiss blocker failed:', err)
@@ -505,7 +519,7 @@ async function handleReplyToQuestion(agentName: string, questionIndex: number, q
     await api.broadcastAgent(selectedSpace.value, agentName)
     // 4. Reload space data
     await loadSpace(selectedSpace.value)
-    spaceOverviewRef.value?.refreshInbox()
+    // Decision requests now surface in conversations view (auto-refreshes via SSE)
     showStatus(`Reply sent to ${agentName} — nudge triggered`)
   } catch (err) {
     console.error('Reply to question failed:', err)
@@ -524,7 +538,7 @@ async function handleReplyToBlocker(agentName: string, blockerIndex: number, blo
     await api.broadcastAgent(selectedSpace.value, agentName)
     // 4. Reload space data
     await loadSpace(selectedSpace.value)
-    spaceOverviewRef.value?.refreshInbox()
+    // Decision requests now surface in conversations view (auto-refreshes via SSE)
     showStatus(`Reply sent to ${agentName} — nudge triggered`)
   } catch (err) {
     console.error('Reply to blocker failed:', err)
@@ -745,11 +759,11 @@ function handleKeydown(e: KeyboardEvent) {
     return
   }
 
-  // 'i' — switch to inbox tab in space overview
-  if (e.key === 'i') {
-    if (!selectedSpace.value || selectedAgent.value) return
+  // 'd' — go to conversations (decisions are shown there now)
+  if (e.key === 'd') {
+    if (!selectedSpace.value) return
     e.preventDefault()
-    spaceOverviewRef.value?.switchToInbox()
+    router.push('/' + selectedSpace.value + '/conversations')
     return
   }
 
@@ -937,6 +951,12 @@ onUnmounted(() => {
           </template>
           <!-- SSE connection indicator + theme toggle -->
           <div class="ml-auto flex items-center gap-3">
+            <!-- Decision bell — shows pending human decisions from agents -->
+            <DecisionBell
+              v-if="selectedSpace"
+              :count="pendingDecisionCount"
+              @click="router.push('/' + selectedSpace + '/conversations')"
+            />
             <!-- Approval tray — visible when any agent in the current space needs approval -->
             <ApprovalTray
               v-if="agentsNeedingApproval.length > 0"
@@ -1078,7 +1098,6 @@ onUnmounted(() => {
 
           <!-- Space overview -->
           <SpaceOverview
-            ref="spaceOverviewRef"
             v-else-if="currentSpace"
             :space="currentSpace"
             :tmux-status="tmuxStatus"

@@ -52,7 +52,6 @@ import {
   Loader2,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
-import InterruptTracker from './InterruptTracker.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import GanttTimeline from './GanttTimeline.vue'
@@ -254,15 +253,7 @@ function handleCardKeydown(e: KeyboardEvent, name: string) {
   }
 }
 
-function switchToInbox() {
-  activeTab.value = 'inbox'
-}
-
-function refreshInbox() {
-  inboxRef.value?.refresh()
-}
-
-defineExpose({ switchToInbox, refreshInbox })
+defineExpose({})
 
 const sortedAgents = computed(() => {
   return Object.entries(props.space.agents).sort(([, a], [, b]) => {
@@ -304,16 +295,6 @@ const hasSpawnedSession = computed(() =>
   Object.values(props.space.agents).some((a) => (a as any).session_id)
 )
 
-const inboxRef = ref<InstanceType<typeof InterruptTracker> | null>(null)
-
-const attentionCount = computed(() => {
-  let count = 0
-  for (const agent of Object.values(props.space.agents)) {
-    count += (agent.questions?.length ?? 0) + (agent.blockers?.length ?? 0)
-  }
-  return count
-})
-
 const needsAttentionCount = computed(() => {
   let count = 0
   for (const agent of Object.values(props.space.agents)) {
@@ -333,7 +314,7 @@ const headerSummary = computed(() => {
   return `${total} ${agentWord} — ${attn} need${attn === 1 ? 's' : ''} attention`
 })
 
-const inboxPending = computed(() => inboxRef.value?.pendingCount ?? attentionCount.value)
+// inboxPending removed — decisions now surface in conversations view
 
 /** Returns Tailwind bg class for the freshness dot on the avatar */
 function freshnessDotClass(dateStr: string): string {
@@ -364,8 +345,7 @@ watch(agentTimestamps, (timestamps, prev) => {
       setTimeout(() => {
         recentlyUpdated.value.delete(name)
       }, 2000)
-      // Refresh inbox when an agent updates — new questions/blockers may have arrived
-      inboxRef.value?.refresh()
+      // Decision requests now surface in conversations view (auto-refreshes via SSE)
     }
   }
 })
@@ -610,16 +590,6 @@ const activeSections = computed(() => [
       <Tabs v-model="activeTab">
         <TabsList>
           <TabsTrigger value="agents">Agents</TabsTrigger>
-          <TabsTrigger value="inbox" class="gap-1.5" :aria-label="inboxPending > 0 ? 'Inbox, ' + inboxPending + ' pending items' : 'Inbox'">
-            Inbox
-            <Badge
-              v-if="inboxPending > 0"
-              variant="destructive"
-              class="h-5 min-w-5 px-1 text-[10px] font-semibold tabular-nums"
-            >
-              {{ inboxPending }}
-            </Badge>
-          </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="hierarchy">Hierarchy</TabsTrigger>
           <TabsTrigger value="protocol" class="gap-1.5">
@@ -1048,9 +1018,7 @@ const activeSections = computed(() => [
           </div>
         </TabsContent>
 
-        <TabsContent value="inbox">
-          <InterruptTracker ref="inboxRef" :space-name="space.name" />
-        </TabsContent>
+
 
         <TabsContent value="timeline">
           <GanttTimeline :space-name="space.name" :agents="space.agents" @select-agent="emit('select-agent', $event)" />

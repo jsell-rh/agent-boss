@@ -14,6 +14,7 @@ All coordinator interactions use **boss-mcp** tools. These are automatically ava
 | `check_messages` | Poll for new messages | `space`, `agent`, `since` (cursor) |
 | `send_message` | Send a message to another agent | `space`, `from`, `to`, `message`, `priority` |
 | `ack_message` | Acknowledge a message you acted on | `space`, `agent`, `message_id` |
+| `request_decision` | Ask the human operator for a decision | `space`, `agent`, `question`, `context` |
 | `create_task` | Create a new task | `space`, `agent`, `title`, `description`, `assigned_to`, `priority` |
 | `list_tasks` | List/filter tasks | `space`, `status`, `assigned_to`, `priority`, `label` |
 | `move_task` | Change task status | `space`, `agent`, `task_id`, `status`, `reason` |

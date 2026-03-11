@@ -18,11 +18,8 @@ import (
 type InterruptType string
 
 const (
-	InterruptDecision  InterruptType = "decision"
-	InterruptApproval  InterruptType = "approval"
-	InterruptStaleness InterruptType = "staleness"
-	InterruptReview    InterruptType = "review"
-	InterruptSequence  InterruptType = "sequencing"
+	InterruptDecision InterruptType = "decision"
+	InterruptApproval InterruptType = "approval"
 )
 
 type InterruptResolution struct {

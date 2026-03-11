@@ -11,7 +11,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2 } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -30,6 +30,9 @@ interface ConversationMessage {
   recipient: string
   timestamp: string
   priority?: import('@/types').MessagePriority
+  type?: import('@/types').MessageType
+  resolved?: boolean
+  resolution?: string
   read?: boolean
 }
 
@@ -61,6 +64,9 @@ const conversations = computed((): Conversation[] => {
         recipient: agentName,
         timestamp: msg.timestamp,
         priority: msg.priority,
+        type: msg.type,
+        resolved: msg.resolved,
+        resolution: msg.resolution,
         read: msg.read,
       })
     }
@@ -306,6 +312,50 @@ function handleComposeKeydown(e: KeyboardEvent) {
   }
 }
 
+// ── Decision reply ───────────────────────────────────────────────────
+const decisionReplyTexts = ref<Record<string, string>>({})
+const decisionReplying = ref<Record<string, boolean>>({})
+const decisionFeedback = ref<Record<string, { ok: boolean; msg: string }>>({})
+
+// Count of unresolved decision messages across all conversations
+const pendingDecisionCount = computed(() => {
+  let count = 0
+  for (const conv of conversations.value) {
+    for (const msg of conv.messages) {
+      if (msg.type === 'decision' && !msg.resolved) count++
+    }
+  }
+  return count
+})
+
+defineExpose({ pendingDecisionCount })
+
+async function replyToDecision(msgId: string, agentName: string) {
+  const text = (decisionReplyTexts.value[msgId] ?? '').trim()
+  if (!text) return
+  decisionReplying.value[msgId] = true
+  decisionFeedback.value[msgId] = { ok: true, msg: '' }
+  try {
+    // Send the reply as a regular message to the agent
+    await api.sendMessage(props.space.name, agentName, text, 'boss')
+    decisionReplyTexts.value[msgId] = ''
+    decisionFeedback.value[msgId] = { ok: true, msg: 'Reply sent' }
+    setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
+  } catch (err) {
+    decisionFeedback.value[msgId] = { ok: false, msg: err instanceof Error ? err.message : 'Failed' }
+    setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
+  } finally {
+    decisionReplying.value[msgId] = false
+  }
+}
+
+function handleDecisionKeydown(e: KeyboardEvent, msgId: string, agentName: string) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    replyToDecision(msgId, agentName)
+  }
+}
+
 // ── Task widget ──────────────────────────────────────────────────────
 const agentTasks = ref<Task[]>([])
 const tasksLoading = ref(false)
@@ -472,6 +522,12 @@ watch(composeRecipient, async (agent) => {
                       v-else-if="conv.messages.some(m => m.priority === 'directive')"
                       class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
                     >directive</span>
+                    <!-- Decision pending badge -->
+                    <span
+                      v-if="conv.messages.some(m => m.type === 'decision' && !m.resolved)"
+                      class="inline-flex items-center justify-center rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-bold min-w-[16px] h-4 px-1"
+                      title="Pending decision"
+                    >!</span>
                     <!-- Unread badge (boss conversations only) -->
                     <span
                       v-if="unreadCount(conv) > 0"
@@ -630,7 +686,55 @@ watch(composeRecipient, async (agent) => {
                       class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
                     >directive</span>
                   </div>
+                  <!-- Decision message card -->
                   <div
+                    v-if="msg.type === 'decision'"
+                    class="border rounded-lg overflow-hidden"
+                    :class="msg.resolved ? 'border-muted bg-muted/30' : 'border-amber-500/40 bg-amber-500/5'"
+                  >
+                    <div class="flex items-center gap-2 px-3 py-1.5 border-b" :class="msg.resolved ? 'border-muted' : 'border-amber-500/20 bg-amber-500/10'">
+                      <HelpCircle class="size-3.5" :class="msg.resolved ? 'text-muted-foreground' : 'text-amber-500'" />
+                      <span class="text-[10px] font-semibold uppercase tracking-wider" :class="msg.resolved ? 'text-muted-foreground' : 'text-amber-500'">
+                        {{ msg.resolved ? 'Decision — Resolved' : 'Decision Requested' }}
+                      </span>
+                      <CheckCircle2 v-if="msg.resolved" class="size-3.5 text-success ml-auto" />
+                    </div>
+                    <div class="px-3 py-2">
+                      <div class="text-sm break-words leading-relaxed md-content" v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))" />
+                      <!-- Resolution text -->
+                      <div v-if="msg.resolved && msg.resolution" class="mt-2 pt-2 border-t border-muted">
+                        <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Reply</p>
+                        <p class="text-sm text-muted-foreground">{{ msg.resolution }}</p>
+                      </div>
+                      <!-- Reply form (only for unresolved, and only when boss can interact) -->
+                      <div v-if="!msg.resolved" class="mt-2 pt-2 border-t border-amber-500/20">
+                        <textarea
+                          v-model="decisionReplyTexts[msg.id]"
+                          class="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 min-h-[48px] resize-y focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                          placeholder="Type your decision... (Enter to send)"
+                          @keydown="handleDecisionKeydown($event, msg.id, msg.sender)"
+                        />
+                        <div class="flex items-center gap-2 mt-1.5">
+                          <Button
+                            size="sm"
+                            class="h-7 text-xs gap-1"
+                            :disabled="decisionReplying[msg.id] || !(decisionReplyTexts[msg.id] ?? '').trim()"
+                            @click="replyToDecision(msg.id, msg.sender)"
+                          >
+                            <Loader2 v-if="decisionReplying[msg.id]" class="size-3 animate-spin" />
+                            <SendHorizontal v-else class="size-3" />
+                            Reply
+                          </Button>
+                          <span v-if="decisionFeedback[msg.id]" class="text-xs" :class="decisionFeedback[msg.id]?.ok ? 'text-success' : 'text-destructive'">
+                            {{ decisionFeedback[msg.id]?.msg }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Regular message bubble -->
+                  <div
+                    v-else
                     class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
                     v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))"
                   />

@@ -163,11 +163,22 @@ const (
 	PriorityUrgent    MessagePriority = "urgent"
 )
 
+// MessageType distinguishes plain text messages from rich interactive messages.
+type MessageType string
+
+const (
+	MessageTypeText     MessageType = "text"
+	MessageTypeDecision MessageType = "decision"
+)
+
 type AgentMessage struct {
 	ID        string          `json:"id"`
 	Message   string          `json:"message"`
 	Sender    string          `json:"sender"`
 	Priority  MessagePriority `json:"priority,omitempty"`
+	Type      MessageType     `json:"type,omitempty"`       // "text" (default) or "decision"
+	Resolved  bool            `json:"resolved,omitempty"`   // for decision messages: has it been answered?
+	Resolution string         `json:"resolution,omitempty"` // the human's reply text
 	Timestamp time.Time       `json:"timestamp"`
 	Read      bool            `json:"read,omitempty"`
 	ReadAt    *time.Time      `json:"read_at,omitempty"`

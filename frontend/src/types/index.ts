@@ -21,11 +21,16 @@ export interface AgentDocument {
 
 export type MessagePriority = 'info' | 'directive' | 'urgent'
 
+export type MessageType = 'text' | 'decision'
+
 export interface AgentMessage {
   id: string
   message: string
   sender: string
   priority?: MessagePriority
+  type?: MessageType
+  resolved?: boolean
+  resolution?: string
   timestamp: string
   read?: boolean
   read_at?: string
