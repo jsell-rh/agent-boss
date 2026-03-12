@@ -1,6 +1,6 @@
 # Agent Boss — Quality Grades
 
-Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
+Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
 
 ---
 
@@ -19,7 +19,7 @@ Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/t
 
 ### `internal/coordinator/server.go` — **B+**
 
-- **334 LOC.** Properly decomposed after the TASK-014 refactor.
+- **350 LOC.** Properly decomposed after the TASK-014 refactor.
 - Handles Server struct definition, routing, and Start/Stop lifecycle only.
 - Positive: routing is clear, SSE clients and liveness loop are well-separated.
 - Concern: Server struct has ~20 fields spanning multiple concerns (nudge state, SSE state, registration, liveness, backends). A config struct would clarify initialization.
@@ -35,7 +35,7 @@ Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/t
 
 ### `internal/coordinator/handlers_agent.go` — **C+**
 
-- **1680 LOC.** The new monolith after the server.go split.
+- **1682 LOC.** The new monolith after the server.go split.
 - Handles agent status POST, spawn, kill, restart, messages, register, interrupt, approval — all in one file.
 - Positive: each handler function is focused; no global state mutation outside server methods.
 - Concern: file is too large to review comfortably. Should be split by concern: `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go`.
@@ -43,11 +43,12 @@ Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/t
 
 ### `frontend/` Vue SPA — **B-**
 
-- **~11,270 LOC** across 20+ components.
+- **~11,400 LOC** across 20+ components.
 - Positive: Vue 3 + TypeScript with strong typing (`frontend/src/types/index.ts`). SSE composable is clean. `api/client.ts` is well-organized.
-- Concern: `SpaceOverview.vue` (1246 LOC) and `AgentDetail.vue` (1243 LOC) are far too large. Each should be decomposed into smaller sub-components.
+- PR #146 (UX overhaul) and PR #147 (messaging UX) improved visual consistency and added the `useNotifications.ts` composable, but did not reduce component sizes.
+- Concern: `SpaceOverview.vue` (1248 LOC) and `AgentDetail.vue` (1243 LOC) are far too large. Each should be decomposed into smaller sub-components.
+- Concern: `ConversationsView.vue` grew from 997 → 1079 LOC after PR #147, now also over the 1000-LOC threshold.
 - Concern: no frontend unit tests. Only tested via manual QA and `server_test.go` integration tests on the API layer.
-- `ConversationsView.vue` (997 LOC) is also a refactoring candidate.
 
 ### Task System (`handlers_task.go` + task fields in `types.go`) — **A-**
 
@@ -66,13 +67,21 @@ Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/t
 
 ### Test Coverage — **A**
 
-- **244 tests** pass with `-race`. Multiple dedicated test files by subsystem:
+- **244 tests** pass with `-race` in `internal/coordinator/`. Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline` (1 test, currently a baseline check acknowledging Phase 2 adapters don't yet exist). Multiple dedicated test files by subsystem:
   - `server_test.go` (4169 LOC) — HTTP integration tests, the primary coverage driver
   - `hierarchy_test.go`, `lifecycle_test.go`, `journal_test.go` — focused unit tests
   - `protocol_test.go`, `sqlite_test.go`, `integration_test.go`
   - `session_backend_ambient_test.go` — ambient backend coverage
+  - `internal/domain/architecture_test.go` — hexagonal architecture isolation test (PR #145)
 - Race detector enabled by default in CI.
 - Gap: no frontend tests. No chaos/load tests.
+
+### `internal/domain/` Hexagonal Foundation — **B** _(new, PR #145)_
+
+- PR #145 planted the hexagonal architecture foundation: `internal/domain/types.go` (domain entities), `internal/domain/ports/storage.go` (storage interface), and `internal/domain/architecture_test.go` (isolation guard).
+- Positive: clean separation of domain types from coordinator implementation; `architecture_test.go` will enforce adapter isolation when Phase 2 creates `internal/adapters/`.
+- Concern: Phase 2 (extracting `internal/adapters/sqlite`, `internal/adapters/http`, `internal/adapters/mcp`) is not yet started. The coordinator still holds all business logic.
+- See [docs/design-docs/hexagonal-architecture.md](design-docs/hexagonal-architecture.md) for the full plan.
 
 ---
 
@@ -82,8 +91,9 @@ Snapshot as of 2026-03-12. Grades A–D. See [tech-debt-tracker.md](exec-plans/t
 |-----------|-------|-------------|
 | `server.go` | B+ | Server struct sprawl |
 | `types.go` | B | Rendering mixed with types; deprecated field |
-| `handlers_agent.go` | C+ | 1680-LOC monolith handler |
-| Frontend Vue | B- | Components >1000 LOC; no unit tests |
+| `handlers_agent.go` | C+ | 1682-LOC monolith handler |
+| Frontend Vue | B- | Three components >1000 LOC; no unit tests |
 | Task system | A- | Minor: stale logic undocumented |
 | SSE / Events | B | Mutex lock-order discipline |
 | Test coverage | A | No frontend tests |
+| `internal/domain/` (hexagonal) | B | Phase 2 adapter extraction not yet started |

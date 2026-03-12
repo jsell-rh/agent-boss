@@ -23,6 +23,8 @@ Core design decisions and specifications that shaped the system.
 | [resolve-agent-name-audit.md](resolve-agent-name-audit.md) | resolveAgentName Lock Audit | **implemented** |
 | [agent-names.md](agent-names.md) | Agent Names — Supported Characters | **implemented** |
 | [paude.md](paude.md) | Paude Integration for Agent Boss | **proposed** |
+| [design-docs/hexagonal-architecture.md](design-docs/hexagonal-architecture.md) | Hexagonal Architecture Migration Plan | **in-progress** |
+| [design-docs/auth-model.md](design-docs/auth-model.md) | Auth Model ADR — Phase 1 static token + Phase 2 per-agent tokens | **proposed** |
 
 ---
 
@@ -66,6 +68,7 @@ End-user and operator documentation.
 | Status | Meaning |
 |--------|---------|
 | **proposed** | Design or proposal not yet implemented; may be aspirational |
+| **in-progress** | Partially implemented; work is actively ongoing |
 | **active** | Living reference document, kept up to date |
 | **implemented** | Feature built; doc is historical reference |
 | **superseded** | Replaced by a newer document or implementation |

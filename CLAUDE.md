@@ -105,6 +105,10 @@ Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.
 ## Knowledge Base
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — System map: domain layers, key files, invariants, data flows. Start here for a new contributor orientation.
-- **[docs/index.md](docs/index.md)** — Table of contents for all 21 docs grouped by type (design-docs, exec-plans, product-specs) with implementation status.
+- **[docs/index.md](docs/index.md)** — Table of contents for all docs grouped by type (design-docs, exec-plans, product-specs) with implementation status.
 - **[docs/QUALITY.md](docs/QUALITY.md)** — Quality grades (A–D) for each major subsystem.
-- **[docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)** — Prioritized list of known tech debt items (TD-001 through TD-014).
+- **[docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)** — Prioritized list of known tech debt items.
+
+## Doc Gardening
+
+The `garden` agent keeps the knowledge base current after every sprint. See **[docs/exec-plans/doc-gardening-agent.md](docs/exec-plans/doc-gardening-agent.md)** for the standing instructions — what to check, how to update grades, and how to open the PR.
