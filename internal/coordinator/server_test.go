@@ -4352,6 +4352,9 @@ func TestCORSAllowlistNarrowsWildcard(t *testing.T) {
 		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:8899" {
 			t.Errorf("want %q, got %q", "http://localhost:8899", got)
 		}
+		if got := rw.Header().Get("Vary"); got != "Origin" {
+			t.Errorf("Vary: want %q, got %q", "Origin", got)
+		}
 	})
 
 	t.Run("vite_devserver_allowed", func(t *testing.T) {
