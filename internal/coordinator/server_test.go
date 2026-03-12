@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -4325,4 +4326,70 @@ func TestSEC003AllowSkipPermissionsField(t *testing.T) {
 	if srv.allowSkipPermissions {
 		t.Error("allowSkipPermissions should default to false (BOSS_ALLOW_SKIP_PERMISSIONS not set)")
 	}
+}
+
+// TestCORSAllowlistNarrowsWildcard verifies that setCORSOriginHeader reflects
+// allowed origins and leaves the header absent for disallowed ones (SEC-002 / TASK-011).
+func TestCORSAllowlistNarrowsWildcard(t *testing.T) {
+	// Reset the sync.Once so each sub-test can re-initialise with a clean env.
+	reset := func() { corsOnce = sync.Once{} }
+	reset()
+	defer reset()
+
+	makeReq := func(origin string) *http.Request {
+		r, _ := http.NewRequest(http.MethodGet, "/", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		return r
+	}
+
+	t.Run("allowed_origin_reflected", func(t *testing.T) {
+		reset()
+		t.Setenv("BOSS_ALLOWED_ORIGINS", "")
+		rw := httptest.NewRecorder()
+		setCORSOriginHeader(rw, makeReq("http://localhost:8899"))
+		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:8899" {
+			t.Errorf("want %q, got %q", "http://localhost:8899", got)
+		}
+	})
+
+	t.Run("vite_devserver_allowed", func(t *testing.T) {
+		reset()
+		t.Setenv("BOSS_ALLOWED_ORIGINS", "")
+		rw := httptest.NewRecorder()
+		setCORSOriginHeader(rw, makeReq("http://localhost:5173"))
+		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+			t.Errorf("want %q, got %q", "http://localhost:5173", got)
+		}
+	})
+
+	t.Run("disallowed_origin_absent", func(t *testing.T) {
+		reset()
+		t.Setenv("BOSS_ALLOWED_ORIGINS", "")
+		rw := httptest.NewRecorder()
+		setCORSOriginHeader(rw, makeReq("http://evil.example.com"))
+		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("want empty header, got %q", got)
+		}
+	})
+
+	t.Run("extra_origin_from_env", func(t *testing.T) {
+		reset()
+		t.Setenv("BOSS_ALLOWED_ORIGINS", "https://my-dashboard.example.com")
+		rw := httptest.NewRecorder()
+		setCORSOriginHeader(rw, makeReq("https://my-dashboard.example.com"))
+		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "https://my-dashboard.example.com" {
+			t.Errorf("want %q, got %q", "https://my-dashboard.example.com", got)
+		}
+	})
+
+	t.Run("no_origin_header_noop", func(t *testing.T) {
+		reset()
+		rw := httptest.NewRecorder()
+		setCORSOriginHeader(rw, makeReq(""))
+		if got := rw.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("want empty header when no Origin sent, got %q", got)
+		}
+	})
 }

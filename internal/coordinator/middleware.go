@@ -3,8 +3,48 @@ package coordinator
 import (
 	"crypto/hmac"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 )
+
+// corsOrigins caches the computed allowed-origins list (init on first use).
+var (
+	corsOnce    sync.Once
+	corsOrigins []string
+)
+
+func initCORSOrigins() {
+	corsOrigins = []string{"http://localhost:8899", "http://localhost:5173"}
+	if ext := os.Getenv("BOSS_ALLOWED_ORIGINS"); ext != "" {
+		for _, o := range strings.Split(ext, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				corsOrigins = append(corsOrigins, o)
+			}
+		}
+	}
+}
+
+// setCORSOriginHeader reflects the request Origin back if it is in the
+// allowed-origins allowlist (defaults: localhost:8899 and localhost:5173;
+// extended via BOSS_ALLOWED_ORIGINS env var, comma-separated).
+// Call this instead of setting "Access-Control-Allow-Origin: *".
+// Vary: Origin is always set so caching proxies do not serve one user's
+// CORS response to a different origin.
+func setCORSOriginHeader(w http.ResponseWriter, r *http.Request) {
+	corsOnce.Do(initCORSOrigins)
+	w.Header().Add("Vary", "Origin")
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return
+	}
+	for _, o := range corsOrigins {
+		if strings.EqualFold(origin, o) {
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			return
+		}
+	}
+}
 
 // securityHeadersMiddleware adds standard security headers to every response.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
