@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -3903,4 +3904,78 @@ func TestSubtaskLinkPersistence(t *testing.T) {
 	if child.ParentTask != "TASK-001" {
 		t.Errorf("child.ParentTask after restart = %q, want TASK-001", child.ParentTask)
 	}
+}
+
+// TestSpawnGuardBlocksConcurrentSpawn verifies that the spawnInProgress guard
+// correctly rejects a second spawn request for the same agent while one is
+// already in progress (TASK-133: fix TOCTOU race).
+func TestSpawnGuardBlocksConcurrentSpawn(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	// Pre-inject the guard as if a spawn is already running for "bot1".
+	spawnKey := "spawn-guard-test/bot1"
+	srv.spawnInProgress.Store(spawnKey, struct{}{})
+	defer srv.spawnInProgress.Delete(spawnKey)
+
+	_, _, _, err := srv.spawnAgentService(
+		"spawn-guard-test", "bot1",
+		spawnRequest{Backend: "tmux"},
+		"tester",
+	)
+
+	lErr, ok := err.(*lifecycleErr)
+	if !ok {
+		t.Fatalf("expected *lifecycleErr, got %T: %v", err, err)
+	}
+	if lErr.StatusCode != http.StatusConflict {
+		t.Errorf("expected 409 Conflict, got %d: %s", lErr.StatusCode, lErr.Msg)
+	}
+	if !strings.Contains(lErr.Msg, "already in progress") {
+		t.Errorf("expected 'already in progress' in error message, got: %s", lErr.Msg)
+	}
+}
+
+// TestConcurrentSpawnSameAgentRace fires N goroutines all attempting to spawn
+// the same agent simultaneously. With -race, the race detector verifies that
+// no unsynchronized access to shared state occurs (TASK-133).
+func TestConcurrentSpawnSameAgentRace(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	const n = 8
+	var wg sync.WaitGroup
+	type result struct{ err error }
+	results := make(chan result, n)
+
+	// barrier synchronizes all goroutines to maximise contention.
+	barrier := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-barrier
+			_, _, _, err := srv.spawnAgentService(
+				"race-test", "concurrent-agent",
+				spawnRequest{Backend: "tmux"},
+				"tester",
+			)
+			results <- result{err}
+		}()
+	}
+	close(barrier) // release all goroutines at once
+	wg.Wait()
+	close(results)
+
+	inProgress := 0
+	for r := range results {
+		if lErr, ok := r.err.(*lifecycleErr); ok &&
+			lErr.StatusCode == http.StatusConflict &&
+			strings.Contains(lErr.Msg, "already in progress") {
+			inProgress++
+		}
+	}
+	// The guard serialises spawns; at least some should be rejected as in-progress
+	// when n > 1 goroutines race. (Exact count depends on scheduling timing.)
+	t.Logf("%d/%d concurrent spawns rejected as 'already in progress'", inProgress, n)
 }

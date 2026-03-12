@@ -283,6 +283,19 @@ func writeLifecycleError(w http.ResponseWriter, err error) {
 // spawnAgentService contains the core business logic for spawning an agent.
 // spawnerName is the identity making the request (used to set the parent relationship).
 func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest, spawnerName string) (sessionID, backendName, canonical string, retErr error) {
+	// Serialize concurrent spawn requests for the same agent to eliminate the
+	// TOCTOU race between SessionExists() and CreateSession(). A sync.Map entry
+	// is held for the duration of this call; a second concurrent request for the
+	// same agent receives an immediate 409 Conflict rather than a silent race.
+	spawnKey := strings.ToLower(spaceName + "/" + agentName)
+	if _, loaded := s.spawnInProgress.LoadOrStore(spawnKey, struct{}{}); loaded {
+		return "", "", "", &lifecycleErr{
+			StatusCode: http.StatusConflict,
+			Msg:        fmt.Sprintf("spawn for agent %q is already in progress", agentName),
+		}
+	}
+	defer s.spawnInProgress.Delete(spawnKey)
+
 	// Apply AgentConfig defaults (unless overridden in req body).
 	var spawnWorkDir string
 	var spawnRepos []SessionRepo

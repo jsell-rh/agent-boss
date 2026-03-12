@@ -78,6 +78,10 @@ type Server struct {
 	// one decision applies to all agents uniformly.
 	allowSkipPermissions bool
 	personas             *PersonaStore
+	// spawnInProgress serializes concurrent spawn requests for the same agent.
+	// Keyed by "space/agent" (lowercase). LoadOrStore guards the TOCTOU window
+	// between SessionExists() and CreateSession().
+	spawnInProgress sync.Map
 }
 
 func NewServer(port, dataDir string) *Server {
