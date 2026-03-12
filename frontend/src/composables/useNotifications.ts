@@ -30,6 +30,45 @@ watch(notificationsEnabled, (v) => localStorage.setItem(LS_NOTIF, String(v)))
 watch(soundEnabled,         (v) => localStorage.setItem(LS_SOUND, String(v)))
 watch(soundTheme,           (v) => localStorage.setItem(LS_THEME, v))
 
+// ── Volume ─────────────────────────────────────────────────────────────────
+const LS_VOLUME = 'boss_sound_volume'
+export const soundVolume = ref<number>(
+  parseFloat(localStorage.getItem(LS_VOLUME) ?? '0.7'),
+)
+watch(soundVolume, (v) => localStorage.setItem(LS_VOLUME, String(v)))
+
+// ── Per-category toggles ───────────────────────────────────────────────────
+const LS_CATEGORIES = 'boss_sound_categories'
+
+export type SoundCategory = 'urgent' | 'events' | 'celebrations' | 'ambient' | 'social'
+
+export const SOUND_CATEGORY_META: { id: SoundCategory; label: string; description: string; defaultOn: boolean }[] = [
+  { id: 'urgent',       label: 'Urgent',       description: 'Blocked/error alerts',                      defaultOn: true  },
+  { id: 'events',       label: 'Events',       description: 'Task transitions, spawn, PR shipped',        defaultOn: true  },
+  { id: 'celebrations', label: 'Celebrations', description: 'Task done, sprint complete',                 defaultOn: true  },
+  { id: 'ambient',      label: 'Ambient',      description: 'Activity ticks (server-room ambience)',       defaultOn: false },
+  { id: 'social',       label: 'Social',       description: 'Messages, @mention pings, collaboration',    defaultOn: true  },
+]
+
+const defaultCategories: Record<SoundCategory, boolean> = {
+  urgent: true, events: true, celebrations: true, ambient: false, social: true,
+}
+
+function loadCategories(): Record<SoundCategory, boolean> {
+  try {
+    const stored = localStorage.getItem(LS_CATEGORIES)
+    if (stored) return { ...defaultCategories, ...(JSON.parse(stored) as Partial<Record<SoundCategory, boolean>>) }
+  } catch { /* ignore */ }
+  return { ...defaultCategories }
+}
+
+export const soundCategories = ref<Record<SoundCategory, boolean>>(loadCategories())
+watch(soundCategories, (v) => localStorage.setItem(LS_CATEGORIES, JSON.stringify(v)), { deep: true })
+
+export function isCategoryEnabled(cat: SoundCategory): boolean {
+  return soundEnabled.value && soundCategories.value[cat]
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false
   if (Notification.permission === 'granted') return true
@@ -54,7 +93,7 @@ function tone(
   gain.connect(ctx.destination)
   osc.type = type
   osc.frequency.setValueAtTime(freq, startAt)
-  gain.gain.setValueAtTime(volume, startAt)
+  gain.gain.setValueAtTime(volume * soundVolume.value, startAt)
   gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration)
   osc.start(startAt)
   osc.stop(startAt + duration + 0.05)
@@ -76,7 +115,7 @@ function sweep(
   osc.type = type
   osc.frequency.setValueAtTime(freqStart, startAt)
   osc.frequency.exponentialRampToValueAtTime(freqEnd, startAt + duration)
-  gain.gain.setValueAtTime(volume, startAt)
+  gain.gain.setValueAtTime(volume * soundVolume.value, startAt)
   gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration)
   osc.start(startAt)
   osc.stop(startAt + duration + 0.05)
@@ -108,7 +147,7 @@ export function playChime(): void {
       osc.type = 'sine'
       osc.frequency.setValueAtTime(880, t)
       osc.frequency.exponentialRampToValueAtTime(660, t + 0.15)
-      gain.gain.setValueAtTime(0.08, t)
+      gain.gain.setValueAtTime(0.08 * soundVolume.value, t)
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
       osc.start(t)
       osc.stop(t + 0.45)
@@ -122,7 +161,7 @@ export function playChime(): void {
 
 // Task-done success chord
 export function playSuccess(): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('celebrations')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -156,7 +195,7 @@ export function playSuccess(): void {
 
 // All-agents-idle "sprint complete" fanfare
 export function playSprintComplete(): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('celebrations')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -234,7 +273,7 @@ function _playAgentVoice(agentName: string): void {
 }
 
 export function playAgentSignatureChime(agentName: string): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('social')) return
   if (_chimePlayed.has(agentName)) return
   _chimePlayed.add(agentName)
   try { _playAgentVoice(agentName) } catch { /* AudioContext not available */ }
@@ -292,7 +331,7 @@ function effectiveVolume(base: number): number {
 // ── #2 Dissonance Flag — blocked/error alert ───────────────────────────────
 // Minor second interval (two adjacent semitones) — tense but not alarming.
 export function playBlockedAlert(): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('urgent')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -305,7 +344,7 @@ export function playBlockedAlert(): void {
 
 // ── #6 Warp Arrival — agent spawned ───────────────────────────────────────
 export function playAgentSpawn(): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('events')) return
   if (prefersReducedMotion) return // skip sweeps in reduced-motion mode
   try {
     const ctx = new AudioContext()
@@ -321,7 +360,7 @@ export function playAgentSpawn(): void {
 // in_progress→review: suspended 2nd chord ("waiting")
 // review→done / any→done: playSuccess() (already wired at call site)
 export function playTaskTransition(toStatus: string): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('events')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -342,7 +381,7 @@ export function playTaskTransition(toStatus: string): void {
 // ── #9 @mention ping ───────────────────────────────────────────────────────
 // Distinct short ping — higher pitch than message chime, percussive attack.
 export function playMentionPing(): void {
-  if (!soundEnabled.value) return
+  if (!isCategoryEnabled('social')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -352,7 +391,7 @@ export function playMentionPing(): void {
 }
 
 export function notifyBossMessage(from: string, spaceName: string): void {
-  if (soundEnabled.value) playChime()
+  if (isCategoryEnabled('social')) playChime()
 
   if (!notificationsEnabled.value) return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
@@ -363,4 +402,33 @@ export function notifyBossMessage(from: string, spaceName: string): void {
     icon: '/favicon.ico',
     tag: `boss-msg-${from}`,
   })
+}
+
+// ── #10 PR Shipped — agent sets a PR link ──────────────────────────────────
+// Descending whoosh (600→300Hz) + brief landing tone. "Code out the door."
+export function playPRShipped(): void {
+  if (!isCategoryEnabled('events')) return
+  if (prefersReducedMotion) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    sweep(ctx, 700, 350, t,       0.2, effectiveVolume(0.07), 'sine')
+    tone(ctx,  350, t + 0.22, 0.25, effectiveVolume(0.04), 'triangle')
+    setTimeout(() => ctx.close(), 600)
+  } catch { /* AudioContext not available */ }
+}
+
+// ── #8 Collaboration Harmony — two agents conversing ──────────────────────
+// Both agents' pentatonic voices play as a chord with a slight timing offset.
+export function playCollaborationChord(senderName: string, receiverName: string): void {
+  if (!isCategoryEnabled('social')) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const freqA = PENTATONIC_HZ[hashName(senderName)   % PENTATONIC_HZ.length]!
+    const freqB = PENTATONIC_HZ[hashName(receiverName) % PENTATONIC_HZ.length]!
+    tone(ctx, freqA, t,        0.3, effectiveVolume(0.04), 'sine')
+    tone(ctx, freqB, t + 0.02, 0.3, effectiveVolume(0.04), 'triangle') // slight offset = conversation feel
+    setTimeout(() => ctx.close(), 600)
+  } catch { /* AudioContext not available */ }
 }
