@@ -426,7 +426,8 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	s.emit(DomainEvent{Level: LevelInfo, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
 		Msg:    fmt.Sprintf("spawned in session \"%s\" (backend: %s)", sessionID, backendName),
 		Fields: map[string]string{"session_id": sessionID, "backend": backendName}})
-	s.broadcastSSE(spaceName, agentName, "agent_spawned", agentName)
+	spawnedPayload, _ := json.Marshal(map[string]string{"space": spaceName, "agent": agentName})
+	s.broadcastSSE(spaceName, agentName, "agent_spawned", string(spawnedPayload))
 
 	initialMsg := req.InitialMessage
 	cfgInitialPrompt := spawnInitialPrompt
