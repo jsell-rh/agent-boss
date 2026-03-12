@@ -257,3 +257,54 @@ The dev instance uses `data-dev/boss.db` (separate from the production `data/bos
 | `data-dev/boss.pid` | PID of the running process |
 | `data-dev/boss.log` | Server log output |
 | `data-dev/boss.db` | Isolated SQLite database |
+
+## E2E Testing & Agent Frontend Visibility
+
+### Run the full Playwright suite
+
+```bash
+make e2e           # build + start server + run all 15 specs + teardown
+make e2e-ui        # same, headed (opens browser)
+make e2e-report    # open the HTML report from the last run
+```
+
+### Validate changes against a running dev instance
+
+```bash
+# Start dev instance on a custom port (e.g. 9000):
+DATA_DIR=./data COORDINATOR_PORT=9000 /tmp/boss serve
+
+# In another terminal — run e2e without rebuilding:
+DEV_PORT=9000 make e2e-dev
+```
+
+`make e2e-dev` sets `BASE_URL=http://localhost:${DEV_PORT:-9000}` and `SKIP_BUILD=1`, so it
+tests against your live instance without rebuilding the binary.
+
+### Visual snapshots — see the current UI state
+
+```bash
+make e2e-screenshots          # capture key pages from http://localhost:8899
+BOSS_URL=http://localhost:9000 make e2e-screenshots   # custom URL
+```
+
+This runs `e2e/scripts/screenshots.ts` and saves PNGs to `e2e/snapshots/`:
+
+- `01-home.png` — landing page
+- `02-space.png` — first space overview
+- `03-kanban.png` — task kanban board
+- `04-conversations.png` — conversation log
+- `05-agent-detail.png` — agent detail panel
+
+Agents can read these images to understand current UI state without a browser.
+
+### Interactive browser control via Playwright MCP
+
+Add the Playwright MCP server to give Claude direct browser access to your dev instance:
+
+```bash
+claude mcp add playwright npx @playwright/mcp --browser chromium
+```
+
+Then in a Claude session you can navigate, click, fill forms, and take screenshots
+against the running dev instance to validate UI changes interactively.
