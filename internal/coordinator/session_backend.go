@@ -118,7 +118,7 @@ type TmuxCreateOpts struct {
 	Height               int    // terminal height (default 50)
 	MCPServerURL         string // if set, run "claude mcp add" before launching
 	MCPServerName        string // MCP server name (e.g. "boss-mcp", "boss-mcp-8889"); defaults to "boss-mcp"
-	AgentToken           string // bearer token to inject for MCP auth (BOSS_API_TOKEN value)
+	AgentToken           string // bearer token embedded inline in --mcp-config JSON for MCP auth; never written to ~/.claude.json
 	AllowSkipPermissions bool   // if true, append --dangerously-skip-permissions to command
 }
 
