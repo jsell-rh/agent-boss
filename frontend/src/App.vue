@@ -37,6 +37,7 @@ import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
+import { notifyBossMessage } from '@/composables/useNotifications'
 
 const { theme, toggle: toggleTheme } = useTheme()
 
@@ -699,6 +700,10 @@ function setupSSE() {
     // Messages require a full reload since SSE doesn't carry message body content
     if (selectedSpace.value && selectedSpace.value === data.space) {
       loadSpace(selectedSpace.value)
+    }
+    // Notify boss when a message is directed to them
+    if (data.agent === 'boss') {
+      notifyBossMessage(data.sender, data.space)
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })

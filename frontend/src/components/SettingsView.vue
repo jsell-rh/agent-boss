@@ -2,11 +2,27 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import { AlertTriangle } from 'lucide-vue-next'
+import {
+  notificationsEnabled,
+  soundEnabled,
+  requestNotificationPermission,
+  playChime,
+} from '@/composables/useNotifications'
 
 const allowSkipPermissions = ref(false)
 const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
+const notifPermission = ref(typeof Notification !== 'undefined' ? Notification.permission : 'denied')
+
+async function toggleNotifications(value: boolean) {
+  notificationsEnabled.value = value
+  if (value) {
+    const granted = await requestNotificationPermission()
+    notifPermission.value = granted ? 'granted' : 'denied'
+    if (!granted) notificationsEnabled.value = false
+  }
+}
 
 onMounted(async () => {
   try {
@@ -92,6 +108,82 @@ async function toggleSkipPermissions(value: boolean) {
       </div>
 
       <p v-if="errorMsg" class="text-xs text-destructive">{{ errorMsg }}</p>
+
+      <!-- Notifications section -->
+      <div>
+        <h2 class="text-base font-semibold mb-1">Notifications</h2>
+        <p class="text-xs text-muted-foreground mb-3">Controls browser notifications and sounds when new messages arrive for boss.</p>
+
+        <!-- Browser notifications toggle -->
+        <div class="rounded-lg border p-4 flex flex-col gap-3 mb-3">
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-col gap-0.5">
+              <span class="font-medium text-sm">Browser Notifications</span>
+              <span class="text-xs text-muted-foreground">
+                Show a desktop notification when a new message arrives and the tab is in the background.
+                <span v-if="notifPermission === 'denied'" class="text-destructive ml-1">
+                  Permission denied — enable notifications in browser settings.
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="notificationsEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                notificationsEnabled ? 'bg-primary' : 'bg-input',
+              ]"
+              @click="toggleNotifications(!notificationsEnabled)"
+            >
+              <span
+                :class="[
+                  'pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                  notificationsEnabled ? 'translate-x-5' : 'translate-x-0',
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- Sound toggle -->
+        <div class="rounded-lg border p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-col gap-0.5">
+              <span class="font-medium text-sm">Sound</span>
+              <span class="text-xs text-muted-foreground">
+                Play a short chime when a new message arrives.
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="text-xs text-muted-foreground hover:text-foreground underline"
+                @click="playChime"
+              >
+                Test
+              </button>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="soundEnabled"
+                :class="[
+                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  soundEnabled ? 'bg-primary' : 'bg-input',
+                ]"
+                @click="soundEnabled = !soundEnabled"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                    soundEnabled ? 'translate-x-5' : 'translate-x-0',
+                  ]"
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>

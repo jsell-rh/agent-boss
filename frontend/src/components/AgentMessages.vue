@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SendHorizontal, MessageCircle, Check, ChevronDown } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
-import { formatFullDate } from '@/composables/useTime'
+import { formatFullDate, relativeTime } from '@/composables/useTime'
 import { renderMarkdown } from '@/lib/markdown'
 
 const props = defineProps<{
@@ -269,7 +269,7 @@ const enrichedMessages = computed((): MessageEntry[] => {
                 class="flex items-center gap-1.5 mt-1 px-1"
               >
                 <time :datetime="entry.msg.timestamp" class="text-xs text-muted-foreground">
-                  {{ formatTime(entry.msg.timestamp) }}
+                  {{ relativeTime(entry.msg.timestamp) }}
                 </time>
                 <!-- Read receipt: double-check in blue when read, single grey when delivered -->
                 <span
