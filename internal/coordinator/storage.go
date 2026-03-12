@@ -160,9 +160,22 @@ func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
 	}
 }
 
+// resolveSpaceNameLocked returns the canonical stored space name for a
+// case-insensitive match, or raw if no existing space matches.
+// Caller MUST hold s.mu (read or write lock).
+func (s *Server) resolveSpaceNameLocked(raw string) string {
+	for existing := range s.spaces {
+		if strings.EqualFold(existing, raw) {
+			return existing
+		}
+	}
+	return raw
+}
+
 // getOrCreateSpaceLocked returns or creates the named space.
 // Caller MUST hold s.mu (write lock).
 func (s *Server) getOrCreateSpaceLocked(name string) *KnowledgeSpace {
+	name = s.resolveSpaceNameLocked(name)
 	if ks, ok := s.spaces[name]; ok {
 		return ks
 	}
@@ -187,6 +200,7 @@ func (s *Server) getOrCreateSpace(name string) *KnowledgeSpace {
 func (s *Server) getSpace(name string) (*KnowledgeSpace, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	name = s.resolveSpaceNameLocked(name)
 	ks, ok := s.spaces[name]
 	return ks, ok
 }
