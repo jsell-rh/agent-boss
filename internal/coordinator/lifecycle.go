@@ -319,6 +319,13 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 			spawnInitialPrompt = cfg.InitialPrompt
 			spawnPersonas = cfg.Personas
 		}
+		// Inherit WorkDir from spawner if the child has no WorkDir configured.
+		if spawnWorkDir == "" && spawnerName != "" {
+			spawnerCanonical := resolveAgentName(existingKS, spawnerName)
+			if spawnerCfg := existingKS.agentConfig(spawnerCanonical); spawnerCfg != nil {
+				spawnWorkDir = spawnerCfg.WorkDir
+			}
+		}
 		s.mu.RUnlock()
 	}
 	_ = spawnPersonas // personas are embedded in buildIgnitionText

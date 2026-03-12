@@ -1,12 +1,43 @@
 package coordinator
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 )
+
+// spawnCapturingBackend is a minimal SessionBackend that records CreateSession opts.
+type spawnCapturingBackend struct {
+	captured chan SessionCreateOpts
+}
+
+func newSpawnCapturingBackend() *spawnCapturingBackend {
+	return &spawnCapturingBackend{captured: make(chan SessionCreateOpts, 1)}
+}
+
+func (b *spawnCapturingBackend) Name() string { return "tmux" }
+func (b *spawnCapturingBackend) Available() bool { return true }
+func (b *spawnCapturingBackend) CreateSession(_ context.Context, opts SessionCreateOpts) (string, error) {
+	b.captured <- opts
+	return "mock-session-id", nil
+}
+func (b *spawnCapturingBackend) KillSession(_ context.Context, _ string) error        { return nil }
+func (b *spawnCapturingBackend) SessionExists(_ string) bool                           { return false }
+func (b *spawnCapturingBackend) ListSessions() ([]string, error)                       { return nil, nil }
+func (b *spawnCapturingBackend) GetStatus(_ context.Context, _ string) (SessionStatus, error) {
+	return SessionStatusUnknown, nil
+}
+func (b *spawnCapturingBackend) IsIdle(_ string) bool                          { return false }
+func (b *spawnCapturingBackend) CaptureOutput(_ string, _ int) ([]string, error) { return nil, nil }
+func (b *spawnCapturingBackend) CheckApproval(_ string) ApprovalInfo           { return ApprovalInfo{} }
+func (b *spawnCapturingBackend) SendInput(_ string, _ string) error            { return nil }
+func (b *spawnCapturingBackend) Approve(_ string) error                        { return nil }
+func (b *spawnCapturingBackend) AlwaysAllow(_ string) error                    { return nil }
+func (b *spawnCapturingBackend) Interrupt(_ context.Context, _ string) error   { return nil }
+func (b *spawnCapturingBackend) DiscoverSessions() (map[string]string, error)  { return nil, nil }
 
 // TestInferAgentStatus verifies the status inference logic for various tmux observations.
 func TestInferAgentStatus(t *testing.T) {
@@ -369,5 +400,88 @@ func TestAgentStopNotFound(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404 for unknown space, got %d", resp.StatusCode)
+	}
+}
+
+// TestSpawnInheritsParentWorkDir verifies that when a spawner agent has a WorkDir
+// configured, child agents spawned by that agent inherit the WorkDir when they
+// have no WorkDir of their own (TASK-050).
+func TestSpawnInheritsParentWorkDir(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	const (
+		spaceName   = "test-parent-cwd"
+		spawnerName = "spawner-agent"
+		childName   = "child-agent"
+		parentWD    = "/parent/work/dir"
+	)
+
+	mock := newSpawnCapturingBackend()
+	srv.backends["tmux"] = mock
+
+	ks := srv.getOrCreateSpace(spaceName)
+	srv.mu.Lock()
+	ks.setAgentConfig(spawnerName, &AgentConfig{WorkDir: parentWD})
+	srv.mu.Unlock()
+
+	_, _, _, err := srv.spawnAgentService(spaceName, childName, spawnRequest{Backend: "tmux"}, spawnerName)
+	if err != nil {
+		t.Fatalf("spawnAgentService: %v", err)
+	}
+
+	select {
+	case opts := <-mock.captured:
+		tmuxOpts, ok := opts.BackendOpts.(TmuxCreateOpts)
+		if !ok {
+			t.Fatalf("BackendOpts is %T, want TmuxCreateOpts", opts.BackendOpts)
+		}
+		if tmuxOpts.WorkDir != parentWD {
+			t.Errorf("child WorkDir = %q, want %q (should be inherited from spawner)", tmuxOpts.WorkDir, parentWD)
+		}
+	default:
+		t.Fatal("CreateSession was not called")
+	}
+}
+
+// TestSpawnDoesNotOverrideChildWorkDir verifies that a child agent's own WorkDir
+// is not replaced by the spawner's WorkDir (TASK-050).
+func TestSpawnDoesNotOverrideChildWorkDir(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	const (
+		spaceName   = "test-child-cwd-override"
+		spawnerName = "parent-agent"
+		childName   = "worker-agent"
+		parentWD    = "/parent/dir"
+		childWD     = "/child/override"
+	)
+
+	mock := newSpawnCapturingBackend()
+	srv.backends["tmux"] = mock
+
+	ks := srv.getOrCreateSpace(spaceName)
+	srv.mu.Lock()
+	ks.setAgentConfig(spawnerName, &AgentConfig{WorkDir: parentWD})
+	ks.setAgentConfig(childName, &AgentConfig{WorkDir: childWD})
+	srv.mu.Unlock()
+
+	_, _, _, err := srv.spawnAgentService(spaceName, childName, spawnRequest{Backend: "tmux"}, spawnerName)
+	if err != nil {
+		t.Fatalf("spawnAgentService: %v", err)
+	}
+
+	select {
+	case opts := <-mock.captured:
+		tmuxOpts, ok := opts.BackendOpts.(TmuxCreateOpts)
+		if !ok {
+			t.Fatalf("BackendOpts is %T, want TmuxCreateOpts", opts.BackendOpts)
+		}
+		if tmuxOpts.WorkDir != childWD {
+			t.Errorf("child WorkDir = %q, want %q (child's own config must not be overridden)", tmuxOpts.WorkDir, childWD)
+		}
+	default:
+		t.Fatal("CreateSession was not called")
 	}
 }
