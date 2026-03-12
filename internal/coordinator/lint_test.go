@@ -3,10 +3,11 @@
 // part of `go test ./internal/coordinator/...` and fail loud with remediation
 // instructions so that agents know exactly what to fix.
 //
-// Three invariants are checked:
+// Four invariants are checked:
 //  1. No fmt.Print* in server code — use the structured logger instead.
 //  2. No new .go files in coordinator exceeding 600 lines.
 //  3. HTTP handler functions follow the handle{Noun}{Verb} naming convention.
+//  4. TmuxCreateOpts literals that set MCPServerURL must also set AgentToken.
 package coordinator_test
 
 import (
@@ -318,6 +319,103 @@ func TestHandlerNaming(t *testing.T) {
 		f.Close()
 		if err := sc.Err(); err != nil {
 			t.Fatalf("scan %s: %v", filePath, err)
+		}
+	}
+}
+
+// TestAgentExperienceSurfaceInvariants enforces the agent experience contract:
+// any TmuxCreateOpts struct literal that sets MCPServerURL must also set AgentToken.
+//
+// Rationale: MCPServerURL and AgentToken are logically coupled. When BOSS_API_TOKEN
+// is set on the server, all MCP tool calls require an Authorization: Bearer header.
+// If MCPServerURL is registered without AgentToken, agents silently receive 401s
+// on every MCP call — a connectivity failure with no obvious error at spawn time.
+//
+// This invariant was introduced after TASK-015 (PR #155) revealed exactly this
+// failure mode: auth was added to the HTTP layer but spawn never got the --header flag.
+//
+// See: docs/design-docs/agent-experience-surface.md
+//
+// TO FIX: Add AgentToken: s.apiToken to any TmuxCreateOpts literal that sets MCPServerURL.
+func TestAgentExperienceSurfaceInvariants(t *testing.T) {
+	dir := coordinatorDir(t)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir %s: %v", dir, err)
+	}
+
+	// We scan source files for TmuxCreateOpts struct literals using a simple
+	// state-machine approach: track when we're inside a TmuxCreateOpts{...} block
+	// and check that MCPServerURL and AgentToken appear together.
+	//
+	// This grep-based approach is intentionally simple and robust — no AST parsing
+	// needed because the struct literal fields are always on separate lines by
+	// convention (enforced by gofmt). If the codebase style changes, adjust the
+	// detection logic below.
+
+	tmuxOptsStartRe := regexp.MustCompile(`\bTmuxCreateOpts\s*\{`)
+	mcpURLFieldRe := regexp.MustCompile(`\bMCPServerURL\s*:`)
+	agentTokenFieldRe := regexp.MustCompile(`\bAgentToken\s*:`)
+
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		filePath := filepath.Join(dir, e.Name())
+
+		// Read all lines so we can do windowed scans around each TmuxCreateOpts literal.
+		f, err := os.Open(filePath)
+		if err != nil {
+			t.Fatalf("open %s: %v", filePath, err)
+		}
+		var lines []string
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			lines = append(lines, sc.Text())
+		}
+		f.Close()
+		if err := sc.Err(); err != nil {
+			t.Fatalf("scan %s: %v", filePath, err)
+		}
+
+		for i, line := range lines {
+			if !tmuxOptsStartRe.MatchString(line) {
+				continue
+			}
+			// Found a TmuxCreateOpts{ literal at line i (1-indexed: i+1).
+			// Scan forward to find the closing brace, collecting all field names.
+			// Limit the scan window to 30 lines — struct literals should never be longer.
+			startLine := i + 1 // 1-indexed for error messages
+			hasMCPURL := mcpURLFieldRe.MatchString(line)
+			hasAgentToken := agentTokenFieldRe.MatchString(line)
+
+			depth := strings.Count(line, "{") - strings.Count(line, "}")
+			for j := i + 1; j < len(lines) && j < i+30; j++ {
+				l := lines[j]
+				if mcpURLFieldRe.MatchString(l) {
+					hasMCPURL = true
+				}
+				if agentTokenFieldRe.MatchString(l) {
+					hasAgentToken = true
+				}
+				depth += strings.Count(l, "{") - strings.Count(l, "}")
+				if depth <= 0 {
+					break
+				}
+			}
+
+			if hasMCPURL && !hasAgentToken {
+				t.Errorf(
+					"LINT FAIL [agent-experience]: %s:%d — TmuxCreateOpts sets MCPServerURL without AgentToken\n"+
+						"  Invariant: MCPServerURL and AgentToken must always be set together.\n"+
+						"  Reason: When BOSS_API_TOKEN is configured, every MCP tool call requires an\n"+
+						"          Authorization: Bearer header. Omitting AgentToken silently breaks all\n"+
+						"          agent MCP connectivity with no error at spawn time.\n"+
+						"  Fix: Add AgentToken: s.apiToken to this TmuxCreateOpts literal.\n"+
+						"  Spec: docs/design-docs/agent-experience-surface.md",
+					e.Name(), startLine,
+				)
+			}
 		}
 	}
 }

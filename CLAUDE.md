@@ -147,5 +147,12 @@ These tests fail if any of the following rules are violated:
 1. **No `fmt.Print*` in server code** — use the structured logger (`log.Info`, `log.Error`, etc.). `fmt.Sprintf` for string formatting is fine; `fmt.Printf` / `fmt.Println` / `fmt.Fprintf(os.Stderr, ...)` are not.
 2. **File size limit** — no new `.go` file in `internal/coordinator/` may exceed 600 lines. Files that already exceed this limit are grandfathered (see `grandfatheredLargeFiles` in `lint_test.go`) — do not add new files to the grandfather list without a cleanup task.
 3. **Handler naming** — HTTP handler methods on `*Server` must follow `handle{Noun}{Verb}` (e.g. `handleAgentCreate`, `handleTaskGet`). Known legacy violations are grandfathered in `grandfatheredHandlers`. New handlers must conform.
+4. **Agent experience surface** — `TmuxCreateOpts` literals that set `MCPServerURL` must also set `AgentToken`. See below.
 
 When a linter test fails, the error message includes the rule and an exact remediation instruction.
+
+## Agent Experience Invariants
+
+Every agent spawn must deliver the full experience surface: MCP URL, auth token, working directory, and ignition prompt. The structural test `TestAgentExperienceSurfaceInvariants` (`internal/coordinator/lint_test.go`) enforces the most failure-prone coupling: **if `TmuxCreateOpts.MCPServerURL` is set, `AgentToken` must also be set**. This prevents the silent failure mode where auth is enabled on the server but spawned agents never receive the credential to call MCP tools.
+
+See **[docs/design-docs/agent-experience-surface.md](docs/design-docs/agent-experience-surface.md)** for the full contract and spawn flow diagram.
