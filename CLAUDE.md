@@ -52,6 +52,7 @@ DATA_DIR=./data FRONTEND_DIR=./internal/coordinator/frontend /tmp/boss serve
 
 ```
 cmd/boss/main.go                       CLI entrypoint (serve, post, check)
+cmd/boss-observe/main.go               Standalone MCP observability plugin (4 read-only tools)
 internal/coordinator/
   types.go                             AgentUpdate, KnowledgeSpace, markdown renderer
   server.go                            HTTP server, routing, persistence, SSE
@@ -63,6 +64,8 @@ internal/coordinator/
 frontend/
   src/                                 Vue 3 + TypeScript source
   vite.config.ts                       Vite config (outDir → ../internal/coordinator/frontend)
+scripts/
+  boss-observe.sh                      Mid-session curl wrapper for observability (no MCP restart needed)
 data/
   boss.db                              SQLite database (primary store — spaces, agents, tasks, events)
   protocol.md                          Agent communication protocol template
@@ -104,6 +107,52 @@ data/
 | `AMBIENT_WORKFLOW_PATH` | _(unset)_ | Path to workflow definition file for the ambient backend |
 | `AMBIENT_SKIP_TLS_VERIFY` | `false` | Skip TLS verification for ambient API calls |
 | `COORDINATOR_EXTERNAL_URL` | _(unset)_ | External URL injected into ambient sessions as `BOSS_URL` |
+
+## MCP Tool Stack Composition
+
+Agents can be equipped with multiple MCP servers at spawn time via `--mcp-config`. The recommended tool stack for a dev instance:
+
+```json
+{"mcpServers":{
+  "boss-mcp":     {"type":"http","url":"http://localhost:8899/mcp"},
+  "boss-observe": {"type":"stdio","command":"./bin/boss-observe","args":["--boss-url","http://localhost:8899"]}
+}}
+```
+
+Build `boss-observe` first:
+
+```bash
+go build -o ./bin/boss-observe ./cmd/boss-observe/
+```
+
+Pass the JSON to `claude --mcp-config` at agent spawn time (TASK-021 integrates this into the spawn flow). Tools become available from the start of the session.
+
+### boss-observe tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_session_output` | `session_id`, `lines=50` | Last N lines from a tmux pane |
+| `list_sessions` | `filter?` | All tmux sessions with idle/running status |
+| `get_recent_events` | `space`, `limit=20`, `event_type?` | Recent events from boss event log |
+| `get_agent_status` | `space`, `agent` | Combined health: status + session + last 10 output lines |
+
+### Mid-session fallback (no MCP restart required)
+
+When `boss-observe` is not registered in the current session, use the curl wrapper:
+
+```bash
+# Quick overview of all agents in a space
+bash scripts/boss-observe.sh check-all "Agent Boss Dev"
+
+# Get a specific agent's status + tmux output
+bash scripts/boss-observe.sh get-agent-status "Agent Boss Dev" arch2
+
+# Tail recent events
+bash scripts/boss-observe.sh get-recent-events "Agent Boss Dev" 20 agent_updated
+
+# See what an agent's tmux pane is showing
+bash scripts/boss-observe.sh get-session-output agent-boss-dev-arch2 50
+```
 
 ## Restart Procedure
 
