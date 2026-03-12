@@ -290,3 +290,111 @@ Files to change:
 | Token delivery to agents | Env var via tmux send-keys before claude launch; tmux scrollback is accepted tradeoff |
 | SEC-003 fix | Bundle with Phase 1 PR — simple 3-line fix in lifecycle.go |
 | CORS fix | Bundle with Phase 1 PR |
+
+---
+
+## Addendum: Boss Corrections (2026-03-12)
+
+Three corrections to the Phase 2 design incorporated after initial review:
+
+### 1. MCP Endpoint Auth — Header Injection at Registration
+
+The ADR secured the HTTP API but did not explicitly address agents accessing the MCP endpoint. The MCP server at `/mcp` is how agents call tools (`post_status`, `send_message`, etc.). It must also require the token.
+
+**Problem:** The `claude mcp add` command that registers the boss MCP server with Claude Code is run at spawn time (in `session_backend_tmux.go`). If the MCP endpoint requires a Bearer token, this registration must include the auth header.
+
+**Solution:** The `claude mcp add --transport http` command supports `--header` flags for custom HTTP headers. At spawn time, inject the header:
+
+```bash
+# Instead of:
+claude mcp add boss-mcp --transport http http://localhost:8899/mcp
+
+# Use:
+claude mcp add boss-mcp --transport http http://localhost:8899/mcp \
+  --header "Authorization: Bearer ${BOSS_AGENT_TOKEN}"
+```
+
+In Go (`session_backend_tmux.go`), the `mcpCmd` construction becomes:
+
+```go
+mcpCmd := fmt.Sprintf(
+    "claude mcp add boss-mcp --transport http %s/mcp --header %s 2>/dev/null || true",
+    mcpServerURL,
+    shellQuote("Authorization: Bearer "+rawToken),
+)
+```
+
+This ensures the claude MCP client authenticates with the coordinator on every tool call. The token is injected into the `BOSS_AGENT_TOKEN` env var first (see correction 2), so the env var is available when the mcp registration command runs.
+
+**Phase 1 note:** During Phase 1 (static `BOSS_API_TOKEN`), the same pattern applies — the operator token is injected into the MCP registration header. Agents spawned by the coordinator inherit the operator token for MCP access.
+
+### 2. tmux Environment — Use `set-environment` Instead of `send-keys`
+
+The initial design used `tmux send-keys` to run `export BOSS_AGENT_TOKEN=xxx` in the shell before launching claude. Boss correctly notes that tmux supports setting session environment variables directly without keystroke injection.
+
+**Better approach:** `tmux set-environment -t <session> <VAR> <value>` sets the variable in the tmux session's environment. Any process subsequently started in that session (via `send-keys`) inherits it. This avoids:
+- The variable appearing in the shell's command history
+- Any race condition between the export command and the claude launch
+
+```go
+// Set the env var directly in the tmux session environment
+ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+defer cancel()
+if err := exec.CommandContext(ctx, "tmux", "set-environment", "-t", sessionID,
+    "BOSS_AGENT_TOKEN", rawToken).Run(); err != nil {
+    // non-fatal: log and continue
+}
+
+// Also set for the MCP registration command to reference
+if err := exec.CommandContext(ctx2, "tmux", "set-environment", "-t", sessionID,
+    "BOSS_API_TOKEN", rawToken).Run(); err != nil {
+    // non-fatal
+}
+
+// Now launch claude — it inherits BOSS_AGENT_TOKEN from the session env
+tmuxSendKeys(sessionID, command)
+```
+
+**Scrollback note:** The raw token no longer appears in the tmux scrollback buffer at all with this approach. This is strictly better than the original send-keys design and removes the previously "accepted tradeoff."
+
+**Important:** `tmux set-environment` sets variables on the session, not the running shell. The shell must be started *after* the variable is set for it to inherit via `new-window` or `new-session`. For existing shells already running, `set-environment` won't propagate automatically — but since we set it before launching any commands, this is fine for spawn.
+
+### 3. Ambient Backend — Explicit Token Injection Design
+
+The ambient backend (`session_backend_ambient.go`) creates sessions via an HTTP API. Token injection must use the ambient API's session creation mechanism rather than tmux.
+
+**Approach:** `AmbientCreateOpts` gains a `EnvVars map[string]string` field. At spawn time, the coordinator sets:
+
+```go
+AmbientCreateOpts{
+    DisplayName: agentName,
+    Repos:       spawnRepos,
+    EnvVars: map[string]string{
+        "BOSS_AGENT_TOKEN": rawToken,
+    },
+}
+```
+
+The ambient backend passes `EnvVars` to the session creation API as environment variable overrides. The spawned process inherits them without any tmux send-keys involvement.
+
+**MCP registration for ambient:** Since ambient sessions don't use tmux, the `claude mcp add` command must be sent as an initial input to the session (via `SendInput`) after the session reaches running state, with the token embedded in the `--header` flag:
+
+```go
+mcpCmd := fmt.Sprintf(
+    "claude mcp add boss-mcp --transport http %s/mcp --header %s",
+    mcpServerURL,
+    shellQuote("Authorization: Bearer "+rawToken),
+)
+backend.SendInput(sessionID, mcpCmd)
+```
+
+This is analogous to what the tmux backend already does for MCP registration (in `CreateSession`), extended with the auth header.
+
+**Updated implementation table for Phase 2:**
+
+| File | Change |
+|------|--------|
+| `internal/coordinator/session_backend_tmux.go` | Use `tmux set-environment` for `BOSS_AGENT_TOKEN`; add `--header` to `claude mcp add` cmd |
+| `internal/coordinator/session_backend_ambient.go` | Add `EnvVars` to `AmbientCreateOpts`; pass token via session env API; add auth header to MCP registration `SendInput` |
+| `internal/coordinator/session_backend.go` | Add `EnvVars map[string]string` to `SessionCreateOpts` |
+| `internal/coordinator/mcp_server.go` | Enforce token on all MCP tool calls (validate same as HTTP middleware) |
