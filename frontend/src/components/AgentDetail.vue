@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save } from 'lucide-vue-next'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save, Volume2 } from 'lucide-vue-next'
+import { previewAgentVoice, soundEnabled } from '@/composables/useNotifications'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -422,6 +423,18 @@ watch(() => props.agentName, () => {
             <AgentAvatar :name="agentName" :size="36" />
             <h1 class="text-2xl font-semibold tracking-tight">{{ agentName }}</h1>
             <StatusBadge :status="agent.status" />
+            <Tooltip v-if="soundEnabled">
+              <TooltipTrigger as-child>
+                <button
+                  class="flex items-center justify-center size-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="`Hear ${agentName}'s voice`"
+                  @click="previewAgentVoice(agentName)"
+                >
+                  <Volume2 class="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Hear {{ agentName }}'s voice</TooltipContent>
+            </Tooltip>
             <Tooltip v-if="agent.stale">
               <TooltipTrigger as-child>
                 <Badge variant="outline" class="border-orange-500/50 text-orange-500 text-[10px] h-5 px-1.5">

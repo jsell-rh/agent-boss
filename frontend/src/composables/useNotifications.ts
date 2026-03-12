@@ -212,29 +212,38 @@ function hashName(name: string): number {
 
 const _chimePlayed = new Set<string>()
 
+function _playAgentVoice(agentName: string): void {
+  const ctx = new AudioContext()
+  const t = ctx.currentTime
+  const h = hashName(agentName)
+  const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]!
+  // Major-third partner (ratio 5:4) — always consonant
+  const partner = root * 1.25
+
+  const waveforms: OscillatorType[] = ['sine', 'triangle']
+  const wave = waveforms[(h >> 4) % waveforms.length] as OscillatorType
+
+  // Micro-variation: ±5% pitch + ±15ms timing offset so each play feels organic
+  const pitchVariation = 0.975 + Math.random() * 0.05
+  const timingVariation = Math.random() * 0.015
+
+  tone(ctx, root * pitchVariation,    t + timingVariation,        0.35, 0.055, wave)
+  tone(ctx, partner * pitchVariation, t + 0.06 + timingVariation, 0.30, 0.045, wave)
+
+  setTimeout(() => ctx.close(), 800)
+}
+
 export function playAgentSignatureChime(agentName: string): void {
   if (!soundEnabled.value) return
   if (_chimePlayed.has(agentName)) return
   _chimePlayed.add(agentName)
+  try { _playAgentVoice(agentName) } catch { /* AudioContext not available */ }
+}
 
-  try {
-    const ctx = new AudioContext()
-    const t = ctx.currentTime
-    const h = hashName(agentName)
-    const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]!
-    // Major-third partner (ratio 5:4) — always consonant
-    const partner = root * 1.25
-
-    const waveforms: OscillatorType[] = ['sine', 'triangle']
-    const wave = waveforms[(h >> 4) % waveforms.length] as OscillatorType
-
-    tone(ctx, root,    t,        0.35, 0.055, wave)
-    tone(ctx, partner, t + 0.06, 0.30, 0.045, wave)
-
-    setTimeout(() => ctx.close(), 800)
-  } catch {
-    // AudioContext not available
-  }
+/** Play an agent's voice on demand (for profile preview button — always plays, ignores once-per-session guard). */
+export function previewAgentVoice(agentName: string): void {
+  if (!soundEnabled.value) return
+  try { _playAgentVoice(agentName) } catch { /* AudioContext not available */ }
 }
 
 // Reset chimes on space navigation so agents get their chime each new session
