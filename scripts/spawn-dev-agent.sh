@@ -111,7 +111,7 @@ sleep 0.3
 
 # The claude command uses --mcp-config for both servers, --strict-mcp-config to
 # exclude any globally registered servers (clean environment for dev testing).
-# Wrapped in a restart loop: if claude exits (e.g. auto-compact), it relaunches.
+# Wrapped in a restart loop: if claude exits unexpectedly, it relaunches automatically.
 CLAUDE_CMD="claude --dangerously-skip-permissions --mcp-config $(printf '%q' "$MCP_CONFIG_FILE") --strict-mcp-config"
 RESTART_LOOP="while true; do $CLAUDE_CMD; echo '[spawn-dev-agent] claude exited — restarting in 2s...'; sleep 2; done"
 
