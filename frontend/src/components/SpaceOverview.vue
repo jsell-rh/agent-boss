@@ -1268,7 +1268,7 @@ const activeSections = computed(() => [
         v-model:open="agentCreateDialogOpen"
         :space="space.name"
         @created="() => {}"
-        @open-personas="emit('open-personas')"
+        @open-personas="agentCreateDialogOpen = false; emit('open-personas')"
       />
     </div>
   </ScrollArea>
