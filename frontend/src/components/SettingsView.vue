@@ -5,6 +5,8 @@ import { AlertTriangle } from 'lucide-vue-next'
 import {
   notificationsEnabled,
   soundEnabled,
+  soundTheme,
+  SOUND_THEMES,
   requestNotificationPermission,
   playChime,
 } from '@/composables/useNotifications'
@@ -200,8 +202,9 @@ async function toggleSkipPermissions(value: boolean) {
           </div>
         </div>
 
-        <!-- Sound toggle -->
-        <div class="rounded-lg border p-4 flex flex-col gap-3">
+        <!-- Sound toggle + theme picker -->
+        <div class="rounded-lg border p-4 flex flex-col gap-4">
+          <!-- Toggle row -->
           <div class="flex items-center justify-between gap-4">
             <div class="flex flex-col gap-0.5">
               <span class="font-medium text-sm">Sound Effects</span>
@@ -215,7 +218,7 @@ async function toggleSkipPermissions(value: boolean) {
                 class="text-xs text-muted-foreground hover:text-foreground underline"
                 @click="playChime"
               >
-                Test
+                Preview
               </button>
               <button
                 type="button"
@@ -235,6 +238,27 @@ async function toggleSkipPermissions(value: boolean) {
                 />
               </button>
             </div>
+          </div>
+
+          <!-- Sound theme picker (always visible so it's discoverable) -->
+          <div class="flex flex-col gap-2">
+            <span class="text-xs font-medium text-foreground">Sound Theme</span>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                v-for="theme in SOUND_THEMES"
+                :key="theme.id"
+                type="button"
+                :class="[
+                  'flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted',
+                  soundTheme === theme.id ? 'border-primary bg-primary/5' : 'border-border',
+                ]"
+                @click="soundTheme = theme.id; playChime()"
+              >
+                <span class="text-xs font-medium">{{ theme.label }}</span>
+                <span class="text-xs text-muted-foreground">{{ theme.description }}</span>
+              </button>
+            </div>
+            <p class="text-xs text-muted-foreground">Clicking a theme previews its sound.</p>
           </div>
         </div>
       </div>
