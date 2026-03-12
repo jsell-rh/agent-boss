@@ -156,6 +156,7 @@ func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
 	if ks.SharedContracts == "" {
 		p := strings.ReplaceAll(protocolTemplate, "{SPACE}", ks.Name)
 		p = strings.ReplaceAll(p, "{COORDINATOR_URL}", s.localURL())
+		p = strings.ReplaceAll(p, "{MCP_NAME}", s.mcpServerName())
 		ks.SharedContracts = p
 	}
 }

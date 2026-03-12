@@ -478,12 +478,12 @@ func (s *Server) runAgentCheckIn(spaceName, canonical, sessionID string, backend
 
 	// Send a plain-text check-in prompt using MCP tools.
 	checkInPrompt := fmt.Sprintf(
-		"Check in now. Use your boss-mcp tools: "+
+		"Check in now. Use your %s tools: "+
 			"1) check_messages(space: %q, agent: %q) to read pending messages. "+
 			"2) post_status(space: %q, agent: %q, status: \"active\", summary: \"%s: checking in\") to report your current state. "+
 			"3) Act on any message directives immediately. "+
 			"If you have lost context about the collaboration protocol, read the boss://protocol MCP resource.",
-		spaceName, canonical, spaceName, canonical, canonical,
+		s.mcpServerName(), spaceName, canonical, spaceName, canonical, canonical,
 	)
 	progress("sending check-in prompt")
 	if err := backend.SendInput(sessionID, checkInPrompt); err != nil {
