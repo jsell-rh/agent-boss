@@ -58,6 +58,7 @@ const props = defineProps<{
   selectedSpace: string
   selectedAgent: string
   broadcasting?: boolean
+  mentionedAgents?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -521,7 +522,11 @@ defineExpose({ openNewSpaceDialog })
             <SidebarGroupContent>
               <SidebarMenu>
                 <!-- Active agents: error, blocked, active — sorted by priority -->
-                <SidebarMenuItem v-for="[name, agent] in activeAgents" :key="name">
+                <SidebarMenuItem
+                  v-for="[name, agent] in activeAgents"
+                  :key="name"
+                  :class="{ 'mention-pulse': props.mentionedAgents?.has(name) }"
+                >
                   <SidebarMenuButton
                     size="lg"
                     class="py-3 h-auto min-h-12"
@@ -619,7 +624,11 @@ defineExpose({ openNewSpaceDialog })
               <CollapsibleContent>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem v-for="[name, agent] in inactiveAgents" :key="name">
+                    <SidebarMenuItem
+                      v-for="[name, agent] in inactiveAgents"
+                      :key="name"
+                      :class="{ 'mention-pulse': props.mentionedAgents?.has(name) }"
+                    >
                       <SidebarMenuButton
                         class="py-1 h-8 opacity-60"
                         :data-active="name === selectedAgent"
@@ -778,3 +787,22 @@ defineExpose({ openNewSpaceDialog })
     </DialogContent>
   </Dialog>
 </template>
+
+<style scoped>
+/* @mention pulse — 3s highlight ring on agent card when @mentioned in a message */
+.mention-pulse {
+  animation: mention-ring 3s ease-out forwards;
+  border-radius: 0.5rem;
+}
+
+@keyframes mention-ring {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7); }
+  25%  { box-shadow: 0 0 0 4px hsl(var(--primary) / 0.4); }
+  60%  { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.15); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mention-pulse { animation: none; }
+}
+</style>

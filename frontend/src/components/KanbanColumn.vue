@@ -129,19 +129,27 @@ const statusHeaderClass: Record<TaskStatus, string> = {
 </template>
 
 <style scoped>
-.kanban-card-enter-active,
-.kanban-card-leave-active {
-  transition: all 0.25s ease;
+/* Spring-drop: cards enter with a slight overshoot then settle — feels physical */
+.kanban-card-enter-active {
+  animation: kanban-spring-drop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.kanban-card-enter-from {
-  opacity: 0;
-  transform: translateY(-8px) scale(0.97);
+@keyframes kanban-spring-drop {
+  0%   { opacity: 0; transform: translateY(-14px) scale(0.95); }
+  55%  { opacity: 1; transform: translateY(5px) scale(1.01); }
+  78%  { transform: translateY(-2px) scale(0.998); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.kanban-card-leave-active {
+  transition: all 0.2s ease;
 }
 .kanban-card-leave-to {
   opacity: 0;
-  transform: translateY(8px) scale(0.97);
+  transform: translateY(6px) scale(0.97);
 }
 .kanban-card-move {
   transition: transform 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kanban-card-enter-active { animation: none; }
 }
 </style>
