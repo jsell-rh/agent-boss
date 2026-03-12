@@ -89,6 +89,8 @@ data/
 | `DB_PATH` | `$DATA_DIR/boss.db` | SQLite file path |
 | `DB_DSN` | _(required for postgres)_ | Postgres DSN (e.g. `host=... user=... dbname=... sslmode=disable`) |
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token for all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
+| `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
 
 ## Restart Procedure
@@ -96,7 +98,9 @@ data/
 ```bash
 pkill -f '/tmp/boss'
 sleep 1
-# rebuild (see Build above)
+git pull
+cd frontend && npm install && npm run build && cd ..
+go build -o /tmp/boss ./cmd/boss/
 DATA_DIR=./data nohup /tmp/boss serve > /tmp/boss.log 2>&1 &
 ```
 
