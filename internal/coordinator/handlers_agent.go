@@ -1404,6 +1404,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				Height:               req.Height,
 				MCPServerURL:         s.localURL(),
 				MCPServerName:        s.mcpServerName(),
+				AgentToken:           s.apiToken,
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
