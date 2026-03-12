@@ -194,6 +194,85 @@ export function playSprintComplete(): void {
   }
 }
 
+// ── Agent signature chimes ─────────────────────────────────────────────────
+// Each agent gets a unique 2-note "voice" from their name hash.
+// Plays once per page-load per agent on their first status update.
+// Uses a pentatonic scale so every chord sounds harmonious regardless of hash.
+
+const PENTATONIC_HZ = [
+  261.63, 293.66, 329.63, 392.00, 440.00,  // C4 D4 E4 G4 A4
+  523.25, 587.33, 659.25, 783.99, 880.00,  // C5 D5 E5 G5 A5
+]
+
+function hashName(name: string): number {
+  let h = 5381
+  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0
+  return h
+}
+
+const _chimePlayed = new Set<string>()
+
+export function playAgentSignatureChime(agentName: string): void {
+  if (!soundEnabled.value) return
+  if (_chimePlayed.has(agentName)) return
+  _chimePlayed.add(agentName)
+
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const h = hashName(agentName)
+    const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]!
+    // Major-third partner (ratio 5:4) — always consonant
+    const partner = root * 1.25
+
+    const waveforms: OscillatorType[] = ['sine', 'triangle']
+    const wave = waveforms[(h >> 4) % waveforms.length] as OscillatorType
+
+    tone(ctx, root,    t,        0.35, 0.055, wave)
+    tone(ctx, partner, t + 0.06, 0.30, 0.045, wave)
+
+    setTimeout(() => ctx.close(), 800)
+  } catch {
+    // AudioContext not available
+  }
+}
+
+// Reset chimes on space navigation so agents get their chime each new session
+export function resetAgentChimes(): void {
+  _chimePlayed.clear()
+}
+
+// ── Activity tick ──────────────────────────────────────────────────────────
+// Micro white-noise burst on each SSE agent_updated event.
+// Creates "busy server room" ambience. Off by default.
+
+const LS_TICK = 'boss_activity_tick_enabled'
+export const activityTickEnabled = ref(
+  localStorage.getItem(LS_TICK) === 'true',
+)
+watch(activityTickEnabled, (v) => localStorage.setItem(LS_TICK, String(v)))
+
+export function playActivityTick(): void {
+  if (!activityTickEnabled.value) return
+  try {
+    const ctx = new AudioContext()
+    const bufSize = ctx.sampleRate * 0.004 // 4ms
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1)
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    const gain = ctx.createGain()
+    gain.gain.value = 0.012
+    src.connect(gain)
+    gain.connect(ctx.destination)
+    src.start()
+    setTimeout(() => ctx.close(), 200)
+  } catch {
+    // AudioContext not available
+  }
+}
+
 export function notifyBossMessage(from: string, spaceName: string): void {
   if (soundEnabled.value) playChime()
 

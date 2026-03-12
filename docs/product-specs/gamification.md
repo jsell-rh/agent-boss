@@ -73,7 +73,7 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 #### 2.6 @mention pulse animation ✅ implemented
 - **Trigger:** When `send_message` body contains `@agent-name`.
 - **Implementation:** SSE `agent_message` handler parses message content for `@word` patterns. Matched agent cards in the sidebar pulse with a 3s ring animation (box-shadow expand/fade). Reactive `mentionedAgents` Set with auto-expiry.
-- **Protocol:** Requires agents to use `@agent-name` syntax in messages. garden is documenting this convention.
+- **Protocol:** Requires agents to use `@agent-name` syntax in messages. Documented in `internal/coordinator/protocol.md` via PR #171 (garden).
 - **Never blocks:** Visual only. No database changes.
 
 #### 2.7 Fleet Vibe roll-up ✅ implemented

@@ -37,7 +37,13 @@ import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
-import { notifyBossMessage, playSprintComplete } from '@/composables/useNotifications'
+import {
+  notifyBossMessage,
+  playSprintComplete,
+  playAgentSignatureChime,
+  playActivityTick,
+  resetAgentChimes,
+} from '@/composables/useNotifications'
 import { useConfetti } from '@/composables/useConfetti'
 
 const { theme, toggle: toggleTheme } = useTheme()
@@ -338,6 +344,8 @@ async function loadSessionStatus(space: string) {
 
 // ── Selection handlers (via router) ────────────────────────────────
 function handleSelectSpace(name: string) {
+  // Reset agent chimes so each space gets fresh signature chimes on first update
+  resetAgentChimes()
   // Day 0: no agents → show overview with empty state CTAs
   // Day 2: has agents → default to kanban
   const spaceSummary = spaces.value.find(s => s.name === name)
@@ -705,11 +713,20 @@ function setupSSE() {
     // Update sidebar attention counts — debounced to avoid per-keystroke fetches
     scheduleSpacesReload()
     checkSprintComplete()
+    // Agent signature chime — plays once per agent per page load on first update
+    playAgentSignatureChime(data.agent)
+    // Activity tick — subtle ambient sound for busy server-room feel (opt-in)
+    playActivityTick()
     statusAnnouncement.value = `Agent ${data.agent} updated: ${data.status}`
     pushLog('agent_updated', `[${data.agent}] ${data.status}: ${data.summary}`)
   })
 
   sse.on('agent_spawned', (data) => {
+    // Guard: malformed events (missing space/agent) are silently dropped.
+    // The backend should always send {space, agent} but we defend against
+    // partial payloads — e.g. when spawn_agent MCP is called without `space`.
+    if (!data.space || !data.agent) return
+
     // New agent just spawned — add a placeholder immediately so the card
     // appears in the UI without waiting for the agent's first status POST.
     if (currentSpace.value && currentSpace.value.name === data.space) {

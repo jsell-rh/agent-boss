@@ -7,6 +7,7 @@ import {
   soundEnabled,
   soundTheme,
   SOUND_THEMES,
+  activityTickEnabled,
   requestNotificationPermission,
   playChime,
 } from '@/composables/useNotifications'
@@ -259,6 +260,24 @@ async function toggleSkipPermissions(value: boolean) {
               </button>
             </div>
             <p class="text-xs text-muted-foreground">Clicking a theme previews its sound.</p>
+          </div>
+
+          <!-- Activity tick toggle -->
+          <div class="flex items-center justify-between gap-4 pt-2 border-t border-border">
+            <div class="flex flex-col gap-0.5 min-w-0">
+              <span class="text-sm font-medium">Ambient activity tick</span>
+              <span class="text-xs text-muted-foreground">
+                Soft tick on each agent update — server-room ambience. Very quiet.
+              </span>
+            </div>
+            <button
+              role="switch"
+              :aria-checked="activityTickEnabled"
+              :class="['relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors', activityTickEnabled ? 'bg-primary' : 'bg-input']"
+              @click="activityTickEnabled = !activityTickEnabled"
+            >
+              <span :class="['block h-4 w-4 rounded-full bg-background shadow transition-transform', activityTickEnabled ? 'translate-x-4' : 'translate-x-0']" />
+            </button>
           </div>
         </div>
       </div>
