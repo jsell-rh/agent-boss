@@ -166,7 +166,7 @@ async function toggleSkipPermissions(value: boolean) {
       <!-- Notifications section -->
       <div>
         <h2 class="text-base font-semibold mb-1">Notifications</h2>
-        <p class="text-xs text-muted-foreground mb-3">Controls browser notifications and sounds when new messages arrive for boss.</p>
+        <p class="text-xs text-muted-foreground mb-3">Controls browser notifications and sound effects for Agent Boss events.</p>
 
         <!-- Browser notifications toggle -->
         <div class="rounded-lg border p-4 flex flex-col gap-3 mb-3">
@@ -204,9 +204,9 @@ async function toggleSkipPermissions(value: boolean) {
         <div class="rounded-lg border p-4 flex flex-col gap-3">
           <div class="flex items-center justify-between gap-4">
             <div class="flex flex-col gap-0.5">
-              <span class="font-medium text-sm">Sound</span>
+              <span class="font-medium text-sm">Sound Effects</span>
               <span class="text-xs text-muted-foreground">
-                Play a short chime when a new message arrives.
+                Play audio cues for key events: message arrivals, task completion, and sprint-complete celebrations. Off by default.
               </span>
             </div>
             <div class="flex items-center gap-2">

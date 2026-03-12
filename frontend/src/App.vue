@@ -37,7 +37,8 @@ import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
-import { notifyBossMessage } from '@/composables/useNotifications'
+import { notifyBossMessage, playSprintComplete } from '@/composables/useNotifications'
+import { useConfetti } from '@/composables/useConfetti'
 
 const { theme, toggle: toggleTheme } = useTheme()
 
@@ -60,6 +61,30 @@ const broadcasting = ref(false)
 const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(null)
 
 const sse = useSSE()
+const { celebrate } = useConfetti()
+
+// Track whether all agents were already idle/done to avoid re-triggering
+// the sprint-complete celebration on every subsequent update.
+let _wasAllIdleOrDone = false
+
+function checkSprintComplete() {
+  if (!currentSpace.value) return
+  const agents = currentSpace.value.agents
+  const names = Object.keys(agents)
+  if (names.length === 0) return
+  const allIdleOrDone = names.every(n => {
+    const s = agents[n]?.status
+    return s === 'idle' || s === 'done'
+  })
+  if (allIdleOrDone && !_wasAllIdleOrDone) {
+    _wasAllIdleOrDone = true
+    celebrate()
+    playSprintComplete()
+    showStatus(`🎉 Sprint complete — all agents are ${names.length === 1 ? 'idle' : 'idle or done'}`)
+  } else if (!allIdleOrDone) {
+    _wasAllIdleOrDone = false
+  }
+}
 
 // ── Auth token dialog ─────────────────────────────────────────────
 const tokenDialogInput = ref('')
@@ -646,6 +671,7 @@ function setupSSE() {
     }
     // Update sidebar attention counts — debounced to avoid per-keystroke fetches
     scheduleSpacesReload()
+    checkSprintComplete()
     statusAnnouncement.value = `Agent ${data.agent} updated: ${data.status}`
     pushLog('agent_updated', `[${data.agent}] ${data.status}: ${data.summary}`)
   })
