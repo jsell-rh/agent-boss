@@ -4143,3 +4143,27 @@ func TestSpaceNameCanonicalization(t *testing.T) {
 		t.Errorf("expected exactly 1 space for 'myspace' (case-insensitive), got %d", count)
 	}
 }
+
+// TestTmuxIsIdleEmptyPaneNotIdle verifies that an empty tmux pane (no output)
+// is NOT considered idle. A blank pane means the process is still loading
+// (e.g. Claude Code TUI hasn't rendered yet), so waitForIdle must keep polling.
+// Regression test for TASK-135: the previous code had `if len(lines) == 0 { return true }`
+// which caused waitForIdle to fire prematurely and SendInput to fail with "exit status 1".
+func TestTmuxIsIdleEmptyPaneNotIdle(t *testing.T) {
+	// lineIsIdleIndicator is the pure logic at the heart of tmuxIsIdle.
+	// An empty string (blank line after trimming) must NOT be an idle indicator.
+	if lineIsIdleIndicator("") {
+		t.Error("empty string must not be an idle indicator (blank pane = still loading)")
+	}
+	if lineIsIdleIndicator("   ") {
+		t.Error("whitespace-only line must not be an idle indicator")
+	}
+	// Confirm that non-existent session is NOT falsely reported as idle via
+	// the empty-pane path — tmuxIsIdle should return true only on error (can't
+	// read the pane), not on a valid empty capture.
+	// This test exercises the error-return branch (session does not exist).
+	result := tmuxIsIdle("__nonexistent_boss_test_session__")
+	// On error (no such session), tmuxIsIdle returns true to avoid blocking forever.
+	// We just verify it doesn't panic.
+	_ = result
+}

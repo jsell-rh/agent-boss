@@ -237,9 +237,11 @@ func tmuxIsIdle(session string) bool {
 		return true
 	}
 
-	// An entirely empty pane (all blank lines) is idle.
+	// An empty pane means the process is still loading (e.g. Claude Code TUI
+	// rendering). Do NOT treat blank output as idle — wait until a positive
+	// idle indicator appears.
 	if len(lines) == 0 {
-		return true
+		return false
 	}
 
 	// Check each of the last N non-empty lines for idle indicators.
@@ -383,7 +385,7 @@ func tmuxSendKeys(session, text string) error {
 
 func waitForIdle(session string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if tmuxIsIdle(session) {
 			return nil
