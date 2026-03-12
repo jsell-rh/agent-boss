@@ -104,3 +104,73 @@ If you add a new location that creates a `TmuxCreateOpts` with `MCPServerURL`:
 1. Set `AgentToken: s.apiToken` alongside it.
 2. Run `go test ./internal/coordinator/` — `TestAgentExperienceSurfaceInvariants` will fail if you forget.
 3. Update this doc if the spawn flow changes structurally.
+
+---
+
+## Dev Agent Experience Surface
+
+Agents spawned via `make dev-spawn AGENT=<name> SPACE=<space>` (or `scripts/spawn-dev-agent.sh`) receive an **extended surface** on top of the standard contract above.
+
+### Two MCP servers
+
+```json
+{
+  "mcpServers": {
+    "boss-mcp": {
+      "type": "http",
+      "url": "http://localhost:8899/mcp",
+      "headers": {"Authorization": "Bearer <BOSS_API_TOKEN>"}
+    },
+    "boss-dev": {
+      "type": "http",
+      "url": "http://localhost:<DEV_PORT>/mcp"
+    }
+  }
+}
+```
+
+| Server | What it connects to | When to use it |
+|--------|---------------------|----------------|
+| `boss-mcp` | Production coordinator (`data/boss.db`) | Check in, post status, tasks, messages |
+| `boss-dev` | Local isolated dev instance (`data-dev/boss.db`) | Test API changes against the branch's binary |
+
+The dev instance port is auto-assigned (≥ 9000) and stored in `data-dev/boss.port`. `spawn-dev-agent.sh` reads this file after running `make dev-start`.
+
+### Extended capabilities
+
+| Capability | How |
+|------------|-----|
+| Check in / tasks / messages | `boss-mcp.*` tools |
+| Test API changes locally | `boss-dev.*` tools |
+| Observe running sessions | `boss-observe.*` tools (when registered) |
+| Rebuild and redeploy binary | `make dev-restart` |
+| Full Playwright e2e | `make e2e` |
+| E2e against dev instance | `make e2e-dev` |
+| Capture UI screenshots | `make e2e-screenshots` |
+| Interactive browser | Playwright MCP (optional) |
+
+### Isolation guarantee
+
+`data-dev/boss.db` is completely separate from `data/boss.db`. Dev agents experiment freely without affecting shared production state or other agents' dashboard visibility.
+
+### Spawn flow for dev agents
+
+```
+make dev-spawn AGENT=worker1 SPACE="Agent Boss Dev"
+  └─ scripts/spawn-dev-agent.sh worker1 "Agent Boss Dev"
+       ├─ make dev-start          (no-op if already running)
+       ├─ DEV_PORT=$(cat data-dev/boss.port)
+       ├─ build --mcp-config JSON with boss-mcp + boss-dev
+       └─ claude --mcp-config /tmp/mcp-config.json \
+                 --strict-mcp-config \
+                 [--dangerously-skip-permissions if BOSS_ALLOW_SKIP_PERMISSIONS=true]
+```
+
+### Checklist before shipping spawn infrastructure changes
+
+- [ ] All `TmuxCreateOpts` literals with `MCPServerURL` also set `AgentToken`
+- [ ] `go test ./internal/coordinator/ ./internal/domain/...` passes
+- [ ] `scripts/spawn-dev-agent.sh` is executable and tested
+- [ ] `make dev-spawn` target exists in `Makefile`
+- [ ] CLAUDE.md Dev Loop section documents `make dev-spawn`
+- [ ] This file updated if the spawn flow changes
