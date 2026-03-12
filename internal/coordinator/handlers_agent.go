@@ -730,6 +730,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("- When you receive a new task via messages, **start working on it immediately**.\n")
 	b.WriteString("- If you need a decision, use `send_message` to your manager and continue working on what you can.\n")
 	b.WriteString("- When your task is done, use `post_status` with status `\"done\"` and await new messages.\n")
+	b.WriteString("- **Never exit claude code.** Your session is permanent — boss will kill it when needed. Stay running and await new messages after each task.\n")
 	b.WriteString("\n")
 
 	b.WriteString("## Coordinator\n\n")
