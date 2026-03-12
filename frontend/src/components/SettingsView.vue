@@ -6,7 +6,10 @@ import {
   notificationsEnabled,
   soundEnabled,
   soundTheme,
+  soundVolume,
+  soundCategories,
   SOUND_THEMES,
+  SOUND_CATEGORY_META,
   activityTickEnabled,
   requestNotificationPermission,
   playChime,
@@ -260,6 +263,52 @@ async function toggleSkipPermissions(value: boolean) {
               </button>
             </div>
             <p class="text-xs text-muted-foreground">Clicking a theme previews its sound.</p>
+          </div>
+
+          <!-- Volume slider -->
+          <div class="flex flex-col gap-2 pt-2 border-t border-border">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Volume</span>
+              <span class="text-xs text-muted-foreground tabular-nums">{{ Math.round(soundVolume * 100) }}%</span>
+            </div>
+            <input
+              v-model.number="soundVolume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              class="w-full accent-primary h-1.5 rounded-full cursor-pointer"
+            />
+          </div>
+
+          <!-- Per-category toggles -->
+          <div class="flex flex-col gap-2 pt-2 border-t border-border">
+            <span class="text-sm font-medium">Sound Categories</span>
+            <p class="text-xs text-muted-foreground -mt-1">Fine-tune which events make noise.</p>
+            <div class="flex flex-col gap-1">
+              <div
+                v-for="cat in SOUND_CATEGORY_META"
+                :key="cat.id"
+                class="flex items-center justify-between gap-4 py-1.5"
+              >
+                <div class="flex flex-col gap-0.5 min-w-0">
+                  <span class="text-xs font-medium">{{ cat.label }}</span>
+                  <span class="text-xs text-muted-foreground">{{ cat.description }}</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="soundCategories[cat.id]"
+                  :class="[
+                    'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+                    soundCategories[cat.id] ? 'bg-primary' : 'bg-input',
+                  ]"
+                  @click="soundCategories = { ...soundCategories, [cat.id]: !soundCategories[cat.id] }"
+                >
+                  <span :class="['block h-4 w-4 rounded-full bg-background shadow transition-transform', soundCategories[cat.id] ? 'translate-x-4' : 'translate-x-0']" />
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Activity tick toggle -->

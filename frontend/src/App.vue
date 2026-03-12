@@ -45,6 +45,8 @@ import {
   playBlockedAlert,
   playAgentSpawn,
   playMentionPing,
+  playPRShipped,
+  playCollaborationChord,
   resetAgentChimes,
 } from '@/composables/useNotifications'
 import { useConfetti } from '@/composables/useConfetti'
@@ -408,6 +410,26 @@ watch(
     }
   },
 )
+
+// ── PR shipped detection ──────────────────────────────────────────
+// Track per-agent PR values; play playPRShipped() when an agent first sets a PR.
+const _agentPRTracker = new Map<string, string>()
+watch(currentSpace, (space) => {
+  if (!space) return
+  for (const [name, agent] of Object.entries(space.agents)) {
+    const key = `${space.name}:${name}`
+    const prevPR = _agentPRTracker.get(key)
+    if (agent.pr && !prevPR) {
+      // New PR just appeared — but only fire if we've seen this agent before
+      // (avoids playing sound on initial page load for pre-existing PRs)
+      if (_agentPRTracker.has(key) || _agentPRTracker.size > 0) {
+        playPRShipped()
+      }
+    }
+    if (agent.pr) _agentPRTracker.set(key, agent.pr)
+    else _agentPRTracker.set(key, '') // mark as seen with no PR
+  }
+})
 
 // ── Action handlers ────────────────────────────────────────────────
 async function handleBroadcastSpace() {
@@ -817,6 +839,11 @@ function setupSSE() {
         }
       }
       if (mentionFound) playMentionPing()
+    }
+    // Collaboration chord — when two known agents talk to each other
+    if (data.sender && data.agent && data.sender !== 'boss' && data.agent !== 'boss'
+        && currentSpace.value?.agents[data.sender] && currentSpace.value?.agents[data.agent]) {
+      playCollaborationChord(data.sender, data.agent)
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })
