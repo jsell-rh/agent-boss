@@ -229,7 +229,7 @@ grep -rn 'BOSS_API_TOKEN\|authMiddleware\|apiToken' internal/coordinator/server.
 **Pass:** if `BOSS_API_TOKEN` is read in code, it is documented in CLAUDE.md with its open-mode default. AGENTS.md (if present) notes whether spawned agents inherit the token.
 **Fail:** update CLAUDE.md; if agents need the token injected via env, verify `session_backend_tmux.go` passes it through and document it.
 
-Note: As of 2026-03-12, `BOSS_API_TOKEN` is documented in CLAUDE.md but implementation is in-review (feat/auth-phase1, PR #149). Update this note once merged.
+Note: `BOSS_API_TOKEN` was implemented in PR #155 (feat/auth-phase1, merged 2026-03-12). It is now live in production code — `os.Getenv("BOSS_API_TOKEN")` is read in `internal/coordinator/server.go`.
 
 ---
 
