@@ -15,7 +15,7 @@ import { ChevronDown, Plus, RefreshCw, Search, AlertCircle } from 'lucide-vue-ne
 import KanbanColumn from './KanbanColumn.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { useConfetti } from '@/composables/useConfetti'
+import { useConfetti, type ConfettiPriority } from '@/composables/useConfetti'
 import { playSuccess } from '@/composables/useNotifications'
 
 const props = defineProps<{
@@ -148,7 +148,7 @@ async function onTaskDrop(taskId: string, newStatus: TaskStatus) {
   try {
     const updated = await api.moveTask(props.space.name, taskId, newStatus)
     Object.assign(task, updated)
-    if (newStatus === 'done') { celebrate(); playSuccess() }
+    if (newStatus === 'done') { celebrate(undefined, undefined, (task.priority ?? 'medium') as ConfettiPriority); playSuccess() }
   } catch {
     // Revert on error
     task.status = oldStatus
@@ -235,7 +235,7 @@ const unsubTaskUpdated = sse.on('task_updated', (data) => {
   // Celebrate when a remote agent moves a task to done
   const existing = tasks.value.find(t => t.id === data.id)
   if (data.status === 'done' && existing && existing.status !== 'done') {
-    celebrate()
+    celebrate(undefined, undefined, (existing.priority ?? 'medium') as ConfettiPriority)
     playSuccess()
   }
   scheduleSSEReload()

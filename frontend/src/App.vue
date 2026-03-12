@@ -63,25 +63,58 @@ const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(n
 const sse = useSSE()
 const { celebrate } = useConfetti()
 
-// Track whether all agents were already idle/done to avoid re-triggering
-// the sprint-complete celebration on every subsequent update.
+// @mention pulse — tracks agents recently @mentioned in messages (3s highlight)
+const mentionedAgents = ref<Set<string>>(new Set())
+const _mentionTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+// Spawn warp — tracks agents that just spawned (600ms warp-in animation)
+const spawnedAgents = ref<Set<string>>(new Set())
+
+function pulseAgentMention(agentName: string) {
+  // Clear any existing timer for this agent
+  const existing = _mentionTimers.get(agentName)
+  if (existing) clearTimeout(existing)
+  mentionedAgents.value = new Set([...mentionedAgents.value, agentName])
+  const timer = setTimeout(() => {
+    const next = new Set(mentionedAgents.value)
+    next.delete(agentName)
+    mentionedAgents.value = next
+    _mentionTimers.delete(agentName)
+  }, 3000)
+  _mentionTimers.set(agentName, timer)
+}
+
+// Track sprint-complete celebration state.
+// Only fires when agents transition FROM active → all-idle, not on page load
+// or when agents are idle the whole time (which would fire when there's still
+// backlog work to do). Requires at least one agent to have been `active`
+// since the last celebration.
 let _wasAllIdleOrDone = false
+let _hadActiveAgents = false
 
 function checkSprintComplete() {
   if (!currentSpace.value) return
   const agents = currentSpace.value.agents
   const names = Object.keys(agents)
-  if (names.length === 0) return
+  // Need at least 2 agents — single-agent spaces don't have sprint semantics
+  if (names.length < 2) return
+  const hasActive = names.some(n => agents[n]?.status === 'active')
   const allIdleOrDone = names.every(n => {
     const s = agents[n]?.status
     return s === 'idle' || s === 'done'
   })
-  if (allIdleOrDone && !_wasAllIdleOrDone) {
+  // Track whether we've seen any active agent since last celebration
+  if (hasActive) {
+    _hadActiveAgents = true
+    _wasAllIdleOrDone = false
+  }
+  if (allIdleOrDone && _hadActiveAgents && !_wasAllIdleOrDone) {
     _wasAllIdleOrDone = true
+    _hadActiveAgents = false // require a new active phase before next celebration
     celebrate()
     playSprintComplete()
-    showStatus(`🎉 Sprint complete — all agents are ${names.length === 1 ? 'idle' : 'idle or done'}`)
-  } else if (!allIdleOrDone) {
+    showStatus('🎉 Sprint complete — all agents are idle or done')
+  } else if (!allIdleOrDone && !hasActive) {
     _wasAllIdleOrDone = false
   }
 }
@@ -688,6 +721,13 @@ function setupSSE() {
         } as AgentUpdate
       }
     }
+    // Spawn warp animation: mark agent as newly spawned for 600ms
+    spawnedAgents.value = new Set([...spawnedAgents.value, data.agent])
+    setTimeout(() => {
+      const next = new Set(spawnedAgents.value)
+      next.delete(data.agent)
+      spawnedAgents.value = next
+    }, 600)
     // Schedule a full reload to pick up the real agent record from the backend
     scheduleSpaceReload(data.space, 2000)
     scheduleSpacesReload(500)
@@ -738,6 +778,16 @@ function setupSSE() {
     // Notify boss when a message is directed to them
     if (data.agent === 'boss') {
       notifyBossMessage(data.sender, data.space)
+    }
+    // Parse @mentions in message body and pulse the mentioned agent's card
+    if (data.message && typeof data.message === 'string' && currentSpace.value) {
+      const mentions = [...data.message.matchAll(/@([\w-]+)/g)]
+      for (const m of mentions) {
+        const name = m[1]
+        if (name && currentSpace.value.agents[name]) {
+          pulseAgentMention(name)
+        }
+      }
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })
@@ -963,6 +1013,8 @@ onUnmounted(() => {
         :selected-space="selectedSpace"
         :selected-agent="selectedAgent"
         :broadcasting="broadcasting"
+        :mentioned-agents="mentionedAgents"
+        :spawned-agents="spawnedAgents"
         @select-space="handleSelectSpace"
         @select-agent="handleSelectAgent"
         @broadcast="handleBroadcastSpace"

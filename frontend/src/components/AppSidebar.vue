@@ -58,6 +58,8 @@ const props = defineProps<{
   selectedSpace: string
   selectedAgent: string
   broadcasting?: boolean
+  mentionedAgents?: Set<string>
+  spawnedAgents?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -521,7 +523,14 @@ defineExpose({ openNewSpaceDialog })
             <SidebarGroupContent>
               <SidebarMenu>
                 <!-- Active agents: error, blocked, active — sorted by priority -->
-                <SidebarMenuItem v-for="[name, agent] in activeAgents" :key="name">
+                <SidebarMenuItem
+                  v-for="[name, agent] in activeAgents"
+                  :key="name"
+                  :class="{
+                    'mention-pulse': props.mentionedAgents?.has(name),
+                    'agent-spawn': props.spawnedAgents?.has(name),
+                  }"
+                >
                   <SidebarMenuButton
                     size="lg"
                     class="py-3 h-auto min-h-12"
@@ -556,13 +565,13 @@ defineExpose({ openNewSpaceDialog })
                           :href="prLink(agent)!"
                           target="_blank"
                           rel="noopener noreferrer"
-                          class="text-[10px] text-primary hover:underline shrink-0"
+                          :class="['text-[10px] hover:underline shrink-0 pr-shimmer text-primary']"
                           :title="prLink(agent)!"
                           @click.stop
                         >{{ agent.pr }}</a>
                         <span
                           v-else-if="agent.pr"
-                          class="text-[10px] text-muted-foreground shrink-0"
+                          class="text-[10px] shrink-0 pr-shimmer text-muted-foreground"
                         >{{ agent.pr }}</span>
                       </div>
                     </div>
@@ -619,7 +628,11 @@ defineExpose({ openNewSpaceDialog })
               <CollapsibleContent>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem v-for="[name, agent] in inactiveAgents" :key="name">
+                    <SidebarMenuItem
+                      v-for="[name, agent] in inactiveAgents"
+                      :key="name"
+                      :class="{ 'mention-pulse': props.mentionedAgents?.has(name) }"
+                    >
                       <SidebarMenuButton
                         class="py-1 h-8 opacity-60"
                         :data-active="name === selectedAgent"
@@ -778,3 +791,55 @@ defineExpose({ openNewSpaceDialog })
     </DialogContent>
   </Dialog>
 </template>
+
+<style scoped>
+/* @mention pulse — 3s highlight ring on agent card when @mentioned in a message */
+.mention-pulse {
+  animation: mention-ring 3s ease-out forwards;
+  border-radius: 0.5rem;
+}
+
+@keyframes mention-ring {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7); }
+  25%  { box-shadow: 0 0 0 4px hsl(var(--primary) / 0.4); }
+  60%  { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.15); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+/* PR badge shimmer — traveling light on "in review" PR links */
+.pr-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--primary) / 0.35) 50%,
+    transparent 100%
+  ) no-repeat;
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: pr-shimmer-travel 2.4s ease-in-out infinite;
+}
+@keyframes pr-shimmer-travel {
+  0%   { background-position: 150% center; }
+  100% { background-position: -50% center; }
+}
+
+/* Spawn warp — new agents warp in like a portal opening (scale + ring) */
+.agent-spawn {
+  animation: agent-spawn-warp 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 0.5rem;
+  transform-origin: center;
+}
+
+@keyframes agent-spawn-warp {
+  0%   { opacity: 0; transform: scale(0.35); box-shadow: 0 0 0 8px hsl(var(--primary) / 0.6); }
+  50%  { opacity: 1; transform: scale(1.04); box-shadow: 0 0 0 3px hsl(var(--primary) / 0.3); }
+  75%  { transform: scale(0.985); box-shadow: 0 0 0 1px hsl(var(--primary) / 0.1); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mention-pulse { animation: none; }
+  .agent-spawn { animation: none; }
+}
+</style>

@@ -273,6 +273,25 @@ const sortedAgents = computed(() => {
 
 const agentCount = computed(() => Object.keys(props.space.agents).length)
 
+// Fleet Vibe — live emoji + label derived from agent status distribution
+const fleetVibe = computed(() => {
+  const agents = Object.values(props.space.agents)
+  if (agents.length === 0) return null
+  const counts = { active: 0, blocked: 0, error: 0, done: 0, idle: 0 }
+  for (const a of agents) {
+    const s = (a as any).status as string
+    if (s in counts) (counts as any)[s]++
+  }
+  const total = agents.length
+  if (counts.error > 0) return { emoji: '🚨', label: 'On fire' }
+  if (counts.blocked / total >= 0.5) return { emoji: '🔴', label: 'Blocked' }
+  if (counts.active / total >= 0.6) return { emoji: '🚀', label: 'Shipping' }
+  if (counts.active > 0 && counts.blocked === 0) return { emoji: '⚡', label: 'In progress' }
+  if (counts.done / total >= 0.8) return { emoji: '🎉', label: 'Wrapping up' }
+  if ((counts.idle + counts.done) === total) return { emoji: '😴', label: 'All resting' }
+  return { emoji: '🤔', label: 'Mixed' }
+})
+
 // Setup checklist: shown for new spaces (<24h old, <3 agents) until dismissed.
 const checklistDismissed = ref(
   localStorage.getItem(`checklist-dismissed:${props.space.name}`) === '1'
@@ -436,7 +455,15 @@ const activeSections = computed(() => [
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">{{ space.name }}</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-semibold tracking-tight">{{ space.name }}</h1>
+            <Tooltip v-if="fleetVibe">
+              <TooltipTrigger>
+                <span class="text-xl select-none cursor-default" aria-hidden="true">{{ fleetVibe.emoji }}</span>
+              </TooltipTrigger>
+              <TooltipContent>Fleet vibe: {{ fleetVibe.label }}</TooltipContent>
+            </Tooltip>
+          </div>
           <p class="text-sm text-muted-foreground font-text">
             {{ headerSummary }}
           </p>

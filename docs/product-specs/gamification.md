@@ -49,7 +49,7 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Constraint:** Only triggers once per "all-idle" transition. 3-second toast max.
 - **Never blocks:** Banner is overlaid, never in the critical path.
 
-#### 2.3 Agent status pulse rings
+#### 2.3 Agent status pulse rings ✅ implemented
 - **Trigger:** Continuous — reflects live agent status on the agent card
 - **Implementation:** Pure CSS `@keyframes` animations applied as class variants on the agent status badge/ring:
   - `active` → sonar-ping ring radiating outward (scale + opacity, 2s loop)
@@ -64,6 +64,44 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Backend:** Add optional `mood` field to the `AgentUpdate` struct; render in status display.
 - **Frontend:** Show `mood` in italic below status if present. No mood = no UI change.
 - **Constraint:** Display only. Never affects routing, task logic, or agent lifecycle.
+
+#### 2.5 Kanban card spring-drop ✅ implemented
+- **Trigger:** Any task card that enters a kanban column (drag-drop or SSE-driven move).
+- **Implementation:** CSS `@keyframes kanban-spring-drop` — card drops from above with a slight overshoot (+5px) then settles. 0.35s cubic-bezier spring. `prefers-reduced-motion` disables.
+- **Never blocks:** Pure CSS on `TransitionGroup` enter animation.
+
+#### 2.6 @mention pulse animation ✅ implemented
+- **Trigger:** When `send_message` body contains `@agent-name`.
+- **Implementation:** SSE `agent_message` handler parses message content for `@word` patterns. Matched agent cards in the sidebar pulse with a 3s ring animation (box-shadow expand/fade). Reactive `mentionedAgents` Set with auto-expiry.
+- **Protocol:** Requires agents to use `@agent-name` syntax in messages. garden is documenting this convention.
+- **Never blocks:** Visual only. No database changes.
+
+#### 2.7 Fleet Vibe roll-up ✅ implemented
+- **What:** Live emoji + label in the space header derived from agent status distribution.
+  - `error > 0` → "On fire" / `blocked >= 50%` → "Blocked" / `active >= 60%` → "Shipping"
+  - `active > 0, no blocks` → "In progress" / `done >= 80%` → "Wrapping up"
+  - `all idle/done` → "All resting" / mixed → "Mixed"
+- **Implementation:** Computed property on SpaceOverview; updates reactively with SSE.
+- **Never blocks:** Pure computed, no API calls.
+
+#### 2.8 Agent spawn warp ✅ implemented
+- **Trigger:** `agent_spawned` SSE event.
+- **Implementation:** Agent item in sidebar gets `agent-spawn` CSS class for 600ms — scale(0.35) → overshoot → settle(1.0) with a ring pulse. Feels like a portal opening.
+- **Never blocks:** Pure CSS + reactive Set with auto-expiry.
+
+#### 2.9 PR badge shimmer ✅ implemented
+- **Trigger:** Any agent with a PR link (`agent.pr` set).
+- **Implementation:** PR link text gets a traveling CSS shimmer (background-position sweep, 2.4s loop). Signals "code is out there, awaiting review."
+- **Never blocks:** Pure CSS animation on the link element.
+
+#### 2.10 Priority-based confetti variations ✅ implemented
+- **Trigger:** Task moved to `done` (drag-drop or SSE).
+- **Variations:**
+  - `critical`: gold/orange palette, 130 particles, wider blast, 2.4s duration
+  - `high`: 90 particles, 1.2× speed
+  - `medium`: standard (65 particles)
+  - `low`: light (40 particles)
+- **Implementation:** `useConfetti.ts` `celebrate(x, y, priority)` overload. KanbanView passes `task.priority`.
 
 ---
 
@@ -103,10 +141,56 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Implementation:** Parse message content for `@mentions` in SSE handler; apply a CSS class to the matching agent card for 3s. Zero DB schema changes.
 - **Constraint:** Visual only. Never interrupts agent or operator workflow.
 
-#### 3.8 Event feed waterfall stagger
+#### 3.8 Event feed waterfall stagger ✅ implemented
 - **What:** New SSE events slide in from the top of the event log with a stagger delay, nudging existing items down. High-priority events get a brief background glow on entry.
-- **Implementation:** CSS `translateY` + `opacity` transition, `animation-delay` stagger via inline style. No JS animation library.
-- **Constraint:** Only on new arrivals — no animation on initial render or page load.
+- **Implementation:** CSS `translateY` + `opacity` transition (`event-entry` keyframe, 0.18s). Applies on DOM insertion via CSS animation (not re-animation on filter).
+- **Constraint:** Only on new arrivals. `prefers-reduced-motion` disables.
+
+#### 3.9 Agent signature chimes (backlog)
+- **What:** Each agent gets a unique tonal "voice" derived from their name hash — a 2-3 note chord that plays when they first post a status update per session.
+- **Implementation:** Hash agent name to a frequency offset; compose chord from OscillatorNode (sine + triangle). Play once per page load per agent. Respects global sound toggle.
+- **Constraint:** Once per page load per agent. Never plays on page reload.
+
+#### 3.10 Activity tick on SSE events (backlog)
+- **What:** Every `agent_updated` SSE event plays a micro-duration white noise tick (1-5ms). Creates "busy server room" ambience. Very low gain (~0.01).
+- **Implementation:** `AudioBufferSourceNode` filled with `Math.random()` values. Category toggle in settings.
+- **Constraint:** Off by default. Category: "Ambient sounds."
+
+#### 3.11 Emoji reactions on agent updates (backlog — backend required)
+- **What:** Reactions (👍🔥🚀💯) on any agent status update. Stored server-side.
+- **Backend:** New `reactions` table; `POST /spaces/:space/agents/:agent/updates/:id/react`.
+- **Frontend:** Reaction picker on hover; pill clusters below update; SSE-broadcast delta updates.
+
+#### 3.12 Agent streaks (backlog — backend required)
+- **What:** Track consecutive active sessions per agent. Show flame counter (🔥 7-day streak) on agent cards.
+- **Backend:** `streak` field on agents table, updated each time `post_status` is called within the staleness threshold.
+
+#### 3.13 Ship It broadcast (backlog — backend required)
+- **What:** `POST /spaces/:space/celebrate?type=ship` emits a team-wide celebration SSE event. All connected clients see a ship animation + optional fanfare.
+- **Backend:** New endpoint; emits `team_celebration` SSE event.
+- **MCP tool:** `celebrate_ship` so agents can trigger it from code.
+
+#### 3.14 Co-working indicators (backlog — backend required)
+- **What:** When two agents both update the same task within 5 min, show a "collaborating" badge linking their cards.
+- **Backend:** Track `last_updater` per task; emit `agents_collaborating` SSE event on second distinct update.
+
+#### 3.15 Daily standup digest (backlog — backend required)
+- **What:** Auto-generate daily digest at 09:00 local: tasks done yesterday, in-progress today, blockers.
+- **Backend:** Server-side goroutine ticker; configurable via `STANDUP_TIME` env var.
+
+#### 3.16 Presence indicators (backlog — backend required)
+- **What:** Show "N humans watching" cluster in space header. Updates when tabs connect/disconnect.
+- **Backend:** In-memory presence map; SSE join/leave events.
+
+#### 3.17 Task velocity leaderboard (backlog — backend required)
+- **What:** Collapsible sidebar panel: agents ranked by tasks closed this week.
+- **Backend:** `GET /api/spaces/:space/leaderboard?days=7`.
+- **Constraint:** Frames as "team velocity," not individual performance.
+
+#### 3.18 Time-of-day chromashift (backlog)
+- **What:** Dashboard background hue shifts subtly over 24 hours (dawn=warm amber, midday=cool blue, dusk=purple, night=deep indigo).
+- **Implementation:** JS timer updates `--chromashift-hue` CSS custom property on `:root` every 60s. Applied as a very subtle overlay.
+- **Constraint:** Maximum ±8° hue shift. Never affects text readability.
 
 ---
 
