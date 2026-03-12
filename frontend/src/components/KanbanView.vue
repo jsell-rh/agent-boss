@@ -49,11 +49,12 @@ const allLabels = computed(() => {
   return [...s].sort()
 })
 
-const now = new Date()
+const now = ref(new Date())
+let nowTimer: ReturnType<typeof setInterval> | null = null
 
 function isTaskOverdue(task: Task): boolean {
   if (!task.due_at || task.status === 'done') return false
-  return new Date(task.due_at) < now
+  return new Date(task.due_at) < now.value
 }
 
 function dueSortKey(task: Task): number {
@@ -112,6 +113,7 @@ async function loadTasks() {
 }
 
 onMounted(async () => {
+  nowTimer = setInterval(() => { now.value = new Date() }, 60_000)
   await loadTasks()
   // Scroll to task anchor if URL hash is present (e.g. /kanban#TASK-001)
   // After scrolling, briefly highlight the card with a ring animation.
@@ -244,6 +246,7 @@ const unsubTaskUpdated = sse.on('task_updated', (data) => {
 onUnmounted(() => {
   unsubTaskUpdated()
   if (sseReloadTimer !== null) clearTimeout(sseReloadTimer)
+  if (nowTimer !== null) clearInterval(nowTimer)
 })
 </script>
 
@@ -262,6 +265,7 @@ onUnmounted(() => {
           type="search"
           placeholder="Search tasks…"
           class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-32 sm:w-40"
+          data-search-focus
         />
       </div>
 

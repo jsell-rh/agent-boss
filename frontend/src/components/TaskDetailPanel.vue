@@ -10,6 +10,16 @@ import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -48,6 +58,7 @@ const localTitle = ref('')
 const addingSubtask = ref(false)
 const newSubtaskTitle = ref('')
 const submittingSubtask = ref(false)
+const deleteConfirmOpen = ref(false)
 const pendingStatus = ref<TaskStatus | null>(null)
 const pendingReason = ref('')
 
@@ -171,7 +182,6 @@ async function submitComment() {
 
 async function deleteTask() {
   if (!props.task) return
-  if (!confirm(`Delete task ${props.task.id}?`)) return
   await api.deleteTask(props.space.name, props.task.id)
   emit('task-deleted', props.task.id)
   emit('update:open', false)
@@ -232,7 +242,7 @@ async function setDueDate(value: string) {
                 {{ task.title }}
               </SheetTitle>
             </div>
-            <Button variant="ghost" size="sm" class="text-destructive hover:text-destructive shrink-0" @click="deleteTask">
+            <Button variant="ghost" size="sm" class="text-destructive hover:text-destructive shrink-0" @click="deleteConfirmOpen = true">
               <Trash2 class="size-4" />
             </Button>
           </div>
@@ -570,4 +580,17 @@ async function setDueDate(value: string) {
       </div>
     </SheetContent>
   </Sheet>
+
+  <AlertDialog :open="deleteConfirmOpen" @update:open="deleteConfirmOpen = $event">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Delete {{ task?.id }}?</AlertDialogTitle>
+        <AlertDialogDescription>This action cannot be undone. The task and all its history will be permanently removed.</AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel @click="deleteConfirmOpen = false">Cancel</AlertDialogCancel>
+        <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="deleteTask">Delete</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>

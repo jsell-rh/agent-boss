@@ -288,6 +288,7 @@ watch(
 // ── Inline compose ──────────────────────────────────────────────────
 const inlineMessage = ref('')
 const inlineSending = ref(false)
+const inlineSendError = ref<string | null>(null)
 const composeRef = ref<HTMLTextAreaElement | null>(null)
 
 // Boss can compose to the other participant (only if boss is in the conversation)
@@ -303,11 +304,12 @@ async function sendInlineCompose() {
   const recipient = composeRecipient.value
   if (!text || !recipient) return
   inlineSending.value = true
+  inlineSendError.value = null
   try {
     await api.sendMessage(props.space.name, recipient, text, 'boss')
     inlineMessage.value = ''
-  } catch (_) {
-    // silently handle
+  } catch (err) {
+    inlineSendError.value = err instanceof Error ? err.message : 'Failed to send message'
   } finally {
     inlineSending.value = false
   }
@@ -437,7 +439,7 @@ watch(composeRecipient, async (agent) => {
               @keydown.escape="newMsgPickerOpen = false"
             />
           </div>
-          <ScrollArea class="max-h-48">
+          <div class="max-h-48 overflow-y-auto">
             <div v-if="filteredAgentNames.length === 0" class="px-3 py-4 text-xs text-muted-foreground text-center">
               No agents found
             </div>
@@ -450,7 +452,7 @@ watch(composeRecipient, async (agent) => {
               <AgentAvatar :name="name" :size="18" />
               {{ name }}
             </button>
-          </ScrollArea>
+          </div>
         </div>
       </div>
 
@@ -873,6 +875,7 @@ watch(composeRecipient, async (agent) => {
               <SendHorizontal class="size-4" />
             </Button>
           </form>
+          <p v-if="inlineSendError" class="mt-1.5 text-xs text-destructive">{{ inlineSendError }}</p>
         </div>
       </template>
 
