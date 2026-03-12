@@ -43,6 +43,7 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 - Use `send_message` to coordinate with peers and your manager
 - Use `check_messages` at the start of every work cycle
 - Use `ack_message` on messages you have acted on
+- Use **@agent-name** anywhere in a message body to mention a peer — the operator dashboard will pulse that agent's card for 3 seconds. Example: `"@arch2 can you review the spawn handler before I merge?"`
 
 **Task Discipline**
 - Create the task BEFORE starting work using `create_task`
@@ -67,6 +68,17 @@ Use `check_messages` with the `since` cursor for efficient polling:
 1. First call: `check_messages(space, agent)` — returns all messages + cursor
 2. Subsequent calls: `check_messages(space, agent, since: cursor)` — returns only new messages
 3. Empty `messages` array = no new messages
+
+**Unread vs read message fields — critical:**
+
+| State | `"read"` field | `"read_at"` field |
+|-------|---------------|-------------------|
+| **Unread** | **absent** (field does not exist in the object) | absent |
+| **Read** | `true` | RFC3339 timestamp string |
+
+> **Never grep for `"read": false`** — that string never appears in any response. Unread messages simply omit the `"read"` field entirely. Any attempt to filter by `"read": false` will silently match nothing and cause you to miss messages.
+
+The correct approach: call `check_messages` and act on every message in the returned array that you have not yet `ack_message`d. Do not try to filter the JSON file on disk — use the tool response directly.
 
 ### JSON Format Reference
 

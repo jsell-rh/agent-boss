@@ -258,6 +258,24 @@ grep -q "Dev Agent Experience Surface" docs/design-docs/agent-experience-surface
 
 ---
 
+### Check 7 — @mention syntax is documented in protocol.md
+
+After any sprint touching the message system or frontend agent card rendering, verify that `internal/coordinator/protocol.md` documents `@mention` syntax.
+
+```bash
+grep '@agent-name\|@mention\|mention' internal/coordinator/protocol.md
+```
+
+**Pass:** protocol.md explains that agents can use `@agent-name` in `send_message` bodies to pulse the mentioned agent's card in the operator dashboard.
+**Fail:** add a bullet to the `**Communication**` section of protocol.md:
+
+```
+- Use **@agent-name** anywhere in a message body to mention a peer — the operator dashboard
+  will pulse that agent's card for 3 seconds. Example: "@arch2 can you review this before I merge?"
+```
+
+---
+
 ### Drift found → action matrix
 
 | Drift type | Action |
@@ -270,6 +288,23 @@ grep -q "Dev Agent Experience Surface" docs/design-docs/agent-experience-surface
 | Auth var undocumented | Edit CLAUDE.md, verify session backend injects it; open PR |
 | dev-spawn script or target missing | File task (assign to arch); document what exists, note what is planned |
 | dev-spawn documented but script absent | Mark as `_(planned — TASK-NNN)_` in CLAUDE.md; update when merged |
+| @mention not in protocol.md | Add bullet to Communication section in `internal/coordinator/protocol.md`, open PR |
+| Unread message field semantics missing | Add unread/read field table to Message Polling section of `internal/coordinator/protocol.md`, open PR |
+
+---
+
+### Check 8 — Unread message field semantics are documented in protocol.md
+
+After any sprint touching the message system or `check_messages` tool, verify that `internal/coordinator/protocol.md` correctly documents how agents distinguish unread from read messages.
+
+```bash
+grep -A3 'Unread\|read.*false\|field does not exist' internal/coordinator/protocol.md
+```
+
+**Pass:** protocol.md explains that unread messages omit the `"read"` field entirely, and warns agents never to grep for `"read": false`.
+**Fail:** add the unread/read field table to the Message Polling section. This is a critical correctness issue — agents who miss this will silently drop directives.
+
+The correct guidance: call `check_messages` and act on every message in the returned array that has not yet been `ack_message`d. Do not filter by `"read"` field value.
 
 ---
 
