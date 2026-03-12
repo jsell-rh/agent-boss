@@ -22,14 +22,14 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Constraint:** Lasts ≤ 2 seconds. Does not intercept mouse events. Auto-removes the canvas.
 - **Never blocks:** Confetti fires and forgets — if canvas fails, task move still succeeds.
 
-#### 1.2 Notification sounds
+#### 1.2 Notification sounds ✅ implemented
 - **Trigger:** Configurable per-event:
   - Task → `done`: pleasant success chord (Web Audio API, no files needed)
   - New message received: subtle ping
   - Agent status → `done` or `idle` (all agents): gentle chime
-- **Implementation:** `useSounds.ts` composable using Web Audio API. Synth tones, zero audio files.
-- **Settings:** Toggle in global settings drawer (sound on/off + volume). Persisted in `localStorage`.
-- **Constraint:** Muted by default. User must explicitly enable. Browser autoplay policy requires user interaction before sounds play — the first sound after the user clicks anything is safe.
+- **Implementation:** `useNotifications.ts` composable using Web Audio API. Synth tones, zero audio files. 4 selectable themes: Classic, Retro 8-bit, Spaceship, Nature.
+- **Settings:** Toggle + theme picker in global settings drawer. Persisted in `localStorage`.
+- **Constraint:** Muted by default. User must explicitly enable.
 - **Never blocks:** All sound calls wrapped in try/catch. If Web Audio API unavailable, silent fail.
 
 ---
@@ -43,11 +43,27 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Constraint:** Reactions are cosmetic. They cannot block message delivery or task actions.
 - **Never blocks:** Reaction API failure is silent — optimistic UI update, rollback on error.
 
-#### 2.2 Celebration moment: all agents idle
+#### 2.2 Celebration moment: all agents idle ✅ implemented
 - **Trigger:** All agents in a space transition to `idle` simultaneously (sprint complete)
-- **Implementation:** Check agent statuses in SSE `agent_updated` handler. When all transition to idle: display a brief "🎉 Sprint complete!" banner + confetti burst.
-- **Constraint:** Only triggers once per "all-idle" transition (not on every poll). 3-second banner max.
+- **Implementation:** Check agent statuses in SSE `agent_updated` handler. When all transition to idle: confetti burst + sprint-complete fanfare + "🎉 Sprint complete!" toast.
+- **Constraint:** Only triggers once per "all-idle" transition. 3-second toast max.
 - **Never blocks:** Banner is overlaid, never in the critical path.
+
+#### 2.3 Agent status pulse rings
+- **Trigger:** Continuous — reflects live agent status on the agent card
+- **Implementation:** Pure CSS `@keyframes` animations applied as class variants on the agent status badge/ring:
+  - `active` → sonar-ping ring radiating outward (scale + opacity, 2s loop)
+  - `idle` → slow breathe (opacity 0.4↔1.0, 3s ease-in-out infinite)
+  - `blocked` / `error` → subtle red jitter (translateX ±2px, 0.1s rapid)
+  - `done` → static green glow (box-shadow, no animation — calm resolution)
+- **Constraint:** Animation plays on the border/ring element only, never covers the badge text. `prefers-reduced-motion` disables all animations.
+- **Never blocks:** Pure CSS — no JS in the render path.
+
+#### 2.4 Agent mood / vibes field
+- **What:** Agents can include an optional `mood` string in `post_status` (e.g. "in the zone", "fighting a flaky test"). Displayed as small italic flavor text on the agent card beneath the status badge.
+- **Backend:** Add optional `mood` field to the `AgentUpdate` struct; render in status display.
+- **Frontend:** Show `mood` in italic below status if present. No mood = no UI change.
+- **Constraint:** Display only. Never affects routing, task logic, or agent lifecycle.
 
 ---
 
@@ -74,10 +90,23 @@ Agent Boss is functionally excellent but emotionally flat. Watching a swarm of a
 - **Backend:** Aggregate query from existing task event log (type=moved, detail contains "to done").
 - **Constraint:** Counter is display-only. Never shown on empty/Day-0 spaces.
 
-#### 3.5 Sound themes
-- **What:** Selectable soundscape (lo-fi beats, space ambient) while dashboard is open. Uses Web Audio API oscillators + filters for generative music — no audio files.
-- **Toggle:** In settings drawer. Off by default.
-- **Constraint:** Volume capped at 30% of system volume. Pauses when tab is backgrounded (`document.visibilityState`).
+#### 3.5 Sound themes ✅ implemented (Tier 1.2 upgrade)
+- 4 themes (Classic, Retro 8-bit, Spaceship, Nature) shipped in PR #168. Theme picker in settings drawer.
+
+#### 3.6 Agent signature chimes
+- **What:** Each agent gets a unique tonal "voice" derived from their name hash — a 2-3 note chord that plays when they first post a status update per session. Inspired by character-select sounds (Smash Bros, SF6).
+- **Implementation:** Hash agent name to a frequency offset; compose chord from OscillatorNode with different waveforms. Play once on first `agent_updated` SSE event per session.
+- **Constraint:** Respects global sound toggle. Only once per page load per agent.
+
+#### 3.7 @mention pulse animation
+- **What:** When a `send_message` body contains `@agent-name`, that agent's card in the dashboard pulses with a highlight ring for ~3 seconds.
+- **Implementation:** Parse message content for `@mentions` in SSE handler; apply a CSS class to the matching agent card for 3s. Zero DB schema changes.
+- **Constraint:** Visual only. Never interrupts agent or operator workflow.
+
+#### 3.8 Event feed waterfall stagger
+- **What:** New SSE events slide in from the top of the event log with a stagger delay, nudging existing items down. High-priority events get a brief background glow on entry.
+- **Implementation:** CSS `translateY` + `opacity` transition, `animation-delay` stagger via inline style. No JS animation library.
+- **Constraint:** Only on new arrivals — no animation on initial render or page load.
 
 ---
 

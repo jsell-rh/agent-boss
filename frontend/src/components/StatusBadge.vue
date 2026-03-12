@@ -22,7 +22,7 @@ const config = computed(() => {
       }
     case 'blocked':
       return {
-        badgeClass: 'bg-warning/15 text-warning-foreground border-warning/30',
+        badgeClass: 'bg-warning/15 text-warning-foreground border-warning/30 status-jitter',
         icon: StopCircle,
         pulse: false,
       }
@@ -34,13 +34,13 @@ const config = computed(() => {
       }
     case 'idle':
       return {
-        badgeClass: 'bg-muted text-muted-foreground border-border',
+        badgeClass: 'bg-muted text-muted-foreground border-border status-breathe',
         icon: Pause,
         pulse: false,
       }
     case 'error':
       return {
-        badgeClass: 'bg-destructive/15 text-destructive border-destructive/30',
+        badgeClass: 'bg-destructive/15 text-destructive border-destructive/30 status-jitter',
         icon: AlertCircle,
         pulse: false,
       }
@@ -78,3 +78,34 @@ const config = computed(() => {
     </TooltipContent>
   </Tooltip>
 </template>
+
+<style scoped>
+/* Idle: slow breathe — opacity oscillates to signal "alive but resting" */
+.status-breathe {
+  animation: status-breathe 3s ease-in-out infinite;
+}
+
+/* Blocked/Error: subtle jitter — signals something needs attention */
+.status-jitter {
+  animation: status-jitter 0.4s ease-in-out infinite;
+}
+
+@keyframes status-breathe {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+@keyframes status-jitter {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-1.5px); }
+  75%      { transform: translateX(1.5px); }
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .status-breathe,
+  .status-jitter {
+    animation: none;
+  }
+}
+</style>

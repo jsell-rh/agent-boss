@@ -741,3 +741,29 @@ defineExpose({ pushSSEEvent, clearLog })
     </div>
   </div>
 </template>
+
+<style scoped>
+/* New event rows slide in from slightly above on DOM insertion.
+   Each row animates once when added — no re-animation on re-renders.
+   animation-fill-mode: both ensures the initial state is applied before start. */
+tbody tr {
+  animation: event-entry 0.18s ease-out both;
+}
+
+@keyframes event-entry {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  tbody tr {
+    animation: none;
+  }
+}
+</style>
