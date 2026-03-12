@@ -101,3 +101,10 @@ DATA_DIR=./data nohup /tmp/boss serve > /tmp/boss.log 2>&1 &
 ```
 
 Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.
+
+## Knowledge Base
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — System map: domain layers, key files, invariants, data flows. Start here for a new contributor orientation.
+- **[docs/index.md](docs/index.md)** — Table of contents for all 21 docs grouped by type (design-docs, exec-plans, product-specs) with implementation status.
+- **[docs/QUALITY.md](docs/QUALITY.md)** — Quality grades (A–D) for each major subsystem.
+- **[docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)** — Prioritized list of known tech debt items (TD-001 through TD-014).
