@@ -22,7 +22,7 @@ const BASE_URL = process.env.BOSS_URL ?? 'http://localhost:8899'
 
 async function take(name: string, url: string, page: import('@playwright/test').Page) {
   console.log(`  → ${name}: ${url}`)
-  await page.goto(url, { waitUntil: 'networkidle' })
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
   // Give Vue components a moment to render
   await page.waitForTimeout(500)
   const dest = path.join(SNAPSHOTS_DIR, `${name}.png`)
