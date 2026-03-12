@@ -47,6 +47,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	var workDir string
 	var mcpServerURL string
 	var mcpServerName string
+	var agentToken string
 	var allowSkipPermissions bool
 
 	if tmuxOpts, ok := opts.BackendOpts.(TmuxCreateOpts); ok {
@@ -59,6 +60,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		workDir = tmuxOpts.WorkDir
 		mcpServerURL = tmuxOpts.MCPServerURL
 		mcpServerName = tmuxOpts.MCPServerName
+		agentToken = tmuxOpts.AgentToken
 		allowSkipPermissions = tmuxOpts.AllowSkipPermissions
 	}
 	if mcpServerName == "" {
@@ -92,7 +94,19 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 
 	// Register boss MCP server with Claude before launching (idempotent).
 	if mcpServerURL != "" {
-		mcpCmd := fmt.Sprintf("claude mcp add %s --transport http %s/mcp 2>/dev/null || true", mcpServerName, mcpServerURL)
+		// Inject the bearer token into the session environment so the shell
+		// variable is available for the claude mcp add --header flag.
+		// Using tmux set-environment keeps it out of scrollback history.
+		if agentToken != "" {
+			exec.CommandContext(ctx, "tmux", "set-environment", "-t", sessionID, "BOSS_AGENT_TOKEN", agentToken).Run() //nolint:errcheck
+		}
+
+		var mcpCmd string
+		if agentToken != "" {
+			mcpCmd = fmt.Sprintf(`claude mcp add %s --transport http --header "Authorization: Bearer ${BOSS_AGENT_TOKEN}" %s/mcp 2>/dev/null || true`, mcpServerName, mcpServerURL)
+		} else {
+			mcpCmd = fmt.Sprintf("claude mcp add %s --transport http %s/mcp 2>/dev/null || true", mcpServerName, mcpServerURL)
+		}
 		if err := tmuxSendKeys(sessionID, mcpCmd); err != nil {
 			// Non-fatal: log but continue — agent can still function without MCP.
 			_ = err

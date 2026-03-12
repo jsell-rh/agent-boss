@@ -375,6 +375,7 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 				WorkDir:              spawnWorkDir,
 				MCPServerURL:         s.localURL(),
 				MCPServerName:        s.mcpServerName(),
+				AgentToken:           s.apiToken,
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
@@ -612,6 +613,7 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 				WorkDir:              restartWorkDir,
 				MCPServerURL:         s.localURL(),
 				MCPServerName:        s.mcpServerName(),
+				AgentToken:           s.apiToken,
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
@@ -836,6 +838,7 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 					WorkDir:              workDir,
 					MCPServerURL:         s.localURL(),
 					MCPServerName:        s.mcpServerName(),
+					AgentToken:           s.apiToken,
 					AllowSkipPermissions: s.allowSkipPermissions,
 				},
 			}
