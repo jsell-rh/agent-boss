@@ -159,35 +159,53 @@ export function playChime(): void {
   }
 }
 
-// Task-done success chord
-export function playSuccess(): void {
+// Task-done success chord.
+// priority='critical' (#4 Boss Level): adds an ascending run before the chord for extra fanfare.
+export function playSuccess(priority?: string): void {
   if (!isCategoryEnabled('celebrations')) return
+  const isCritical = priority === 'critical'
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
-
-    if (theme === 'retro') {
-      // Chiptune ascending arpeggio
-      tone(ctx, 262, t,        0.12, 0.07, 'square') // C4
-      tone(ctx, 330, t + 0.10, 0.12, 0.07, 'square') // E4
-      tone(ctx, 392, t + 0.20, 0.12, 0.07, 'square') // G4
-      tone(ctx, 523, t + 0.30, 0.22, 0.09, 'square') // C5 held
-    } else if (theme === 'space') {
-      sweep(ctx, 400,  800,  t,        0.15, 0.07, 'sine')
-      sweep(ctx, 800,  1200, t + 0.18, 0.25, 0.08, 'sine')
-    } else if (theme === 'nature') {
-      tone(ctx, 523.25, t,        0.6,  0.05, 'triangle') // C5
-      tone(ctx, 659.25, t + 0.12, 0.55, 0.05, 'triangle') // E5
-      tone(ctx, 783.99, t + 0.24, 0.5,  0.05, 'triangle') // G5
-    } else {
-      // Classic: C major triad (C5, E5, G5)
-      tone(ctx, 523.25, t,        0.5)  // C5
-      tone(ctx, 659.25, t + 0.08, 0.45) // E5
-      tone(ctx, 783.99, t + 0.16, 0.4)  // G5
+    // Critical-priority head-start: ascending run (C5→G5→C6) gives a "Boss Level" feeling
+    const offset = isCritical ? 0.38 : 0
+    if (isCritical && !prefersReducedMotion) {
+      if (theme === 'retro') {
+        tone(ctx, 523,  t,        0.09, effectiveVolume(0.065), 'square')
+        tone(ctx, 784,  t + 0.10, 0.09, effectiveVolume(0.065), 'square')
+        tone(ctx, 1047, t + 0.22, 0.1,  effectiveVolume(0.075), 'square')
+      } else if (theme === 'space') {
+        sweep(ctx, 300, 1400, t, 0.32, effectiveVolume(0.07), 'sine')
+      } else {
+        // Classic/Nature: short C5→G5→C6 arpeggio lead-in
+        const wave: OscillatorType = theme === 'nature' ? 'triangle' : 'sine'
+        tone(ctx, 523.25, t,        0.12, effectiveVolume(0.055), wave)
+        tone(ctx, 783.99, t + 0.13, 0.12, effectiveVolume(0.055), wave)
+        tone(ctx, 1046.5, t + 0.26, 0.1,  effectiveVolume(0.065), wave)
+      }
     }
 
-    setTimeout(() => ctx.close(), 1500)
+    if (theme === 'retro') {
+      tone(ctx, 262, t + offset,        0.12, 0.07, 'square') // C4
+      tone(ctx, 330, t + offset + 0.10, 0.12, 0.07, 'square') // E4
+      tone(ctx, 392, t + offset + 0.20, 0.12, 0.07, 'square') // G4
+      tone(ctx, 523, t + offset + 0.30, 0.22, 0.09, 'square') // C5 held
+    } else if (theme === 'space') {
+      sweep(ctx, 400,  800,  t + offset,        0.15, 0.07, 'sine')
+      sweep(ctx, 800,  1200, t + offset + 0.18, 0.25, 0.08, 'sine')
+    } else if (theme === 'nature') {
+      tone(ctx, 523.25, t + offset,        0.6,  0.05, 'triangle') // C5
+      tone(ctx, 659.25, t + offset + 0.12, 0.55, 0.05, 'triangle') // E5
+      tone(ctx, 783.99, t + offset + 0.24, 0.5,  0.05, 'triangle') // G5
+    } else {
+      // Classic: C major triad (C5, E5, G5)
+      tone(ctx, 523.25, t + offset,        0.5)  // C5
+      tone(ctx, 659.25, t + offset + 0.08, 0.45) // E5
+      tone(ctx, 783.99, t + offset + 0.16, 0.4)  // G5
+    }
+
+    setTimeout(() => ctx.close(), isCritical ? 2000 : 1500)
   } catch {
     // AudioContext not available
   }
@@ -321,6 +339,20 @@ export function playActivityTick(): void {
   }
 }
 
+// ── #7 Heartbeat Mode — agent-personality tick ─────────────────────────────
+// Each agent's tick is a 3ms micro-tone at their pentatonic frequency instead
+// of uniform white noise. Active fleets sound like a chord of working agents.
+export function playAgentTick(agentName: string): void {
+  if (!activityTickEnabled.value) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const freq = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
+    tone(ctx, freq, t, 0.003, 0.008 * soundVolume.value, 'sine') // 3ms micro-tone
+    setTimeout(() => ctx.close(), 100)
+  } catch { /* AudioContext not available */ }
+}
+
 // ── Reduced-motion awareness ────────────────────────────────────────────────
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -429,6 +461,39 @@ export function playCollaborationChord(senderName: string, receiverName: string)
     const freqB = PENTATONIC_HZ[hashName(receiverName) % PENTATONIC_HZ.length]!
     tone(ctx, freqA, t,        0.3, effectiveVolume(0.04), 'sine')
     tone(ctx, freqB, t + 0.02, 0.3, effectiveVolume(0.04), 'triangle') // slight offset = conversation feel
+    setTimeout(() => ctx.close(), 600)
+  } catch { /* AudioContext not available */ }
+}
+
+// ── #5 Agent Moods — status transition voice variants ─────────────────────
+// Each agent's pentatonic root frequency played in ascending or descending
+// intervals to convey "waking up" vs "settling down" — completing the arc.
+// Uses the same pentatonic hash so moods are tonally consistent with chimes.
+
+export function playAgentMoodActive(agentName: string): void {
+  if (!isCategoryEnabled('events')) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
+    const fifth = root * 1.498 // perfect fifth (3:2 ratio) — energizing, upward
+    // Ascending: root → fifth, short and punchy
+    tone(ctx, root,  t,       0.18, effectiveVolume(0.038), 'sine')
+    tone(ctx, fifth, t + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
+    setTimeout(() => ctx.close(), 500)
+  } catch { /* AudioContext not available */ }
+}
+
+export function playAgentMoodIdle(agentName: string): void {
+  if (!isCategoryEnabled('events')) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
+    const fifth = root * 1.498
+    // Descending: fifth → root, slower and softer — "settling down"
+    tone(ctx, fifth, t,       0.22, effectiveVolume(0.028), 'triangle')
+    tone(ctx, root,  t + 0.13, 0.28, effectiveVolume(0.022), 'sine')
     setTimeout(() => ctx.close(), 600)
   } catch { /* AudioContext not available */ }
 }

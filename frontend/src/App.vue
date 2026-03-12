@@ -41,12 +41,14 @@ import {
   notifyBossMessage,
   playSprintComplete,
   playAgentSignatureChime,
-  playActivityTick,
   playBlockedAlert,
   playAgentSpawn,
   playMentionPing,
   playPRShipped,
   playCollaborationChord,
+  playAgentMoodActive,
+  playAgentMoodIdle,
+  playAgentTick,
   resetAgentChimes,
 } from '@/composables/useNotifications'
 import { useConfetti } from '@/composables/useConfetti'
@@ -717,6 +719,8 @@ function scheduleSpacesReload(delayMs = 1000) {
 
 function setupSSE() {
   sse.on('agent_updated', (data) => {
+    // Capture prevStatus BEFORE the in-place patch so mood/alert transitions fire correctly.
+    const prevStatus = currentSpace.value?.agents[data.agent]?.status
     // Patch agent in-place immediately for instant UI feedback — no HTTP round-trip.
     // SSE payload has status+summary; schedule a debounced full reload for
     // items/questions/blockers that aren't included in the SSE payload.
@@ -740,13 +744,18 @@ function setupSSE() {
     checkSprintComplete()
     // Agent signature chime — plays once per agent per page load on first update
     playAgentSignatureChime(data.agent)
-    // Dissonance alert — plays when agent transitions into blocked or error state
-    if ((data.status === 'blocked' || data.status === 'error')) {
-      const prev = currentSpace.value?.agents[data.agent]?.status
-      if (prev !== 'blocked' && prev !== 'error') playBlockedAlert()
+    // Dissonance alert — fires when transitioning INTO blocked/error (not already there)
+    if ((data.status === 'blocked' || data.status === 'error')
+        && prevStatus !== 'blocked' && prevStatus !== 'error') {
+      playBlockedAlert()
     }
-    // Activity tick — subtle ambient sound for busy server-room feel (opt-in)
-    playActivityTick()
+    // Agent moods (#5): ascending voice on going active, descending on going idle
+    if (prevStatus && prevStatus !== data.status) {
+      if (data.status === 'active') playAgentMoodActive(data.agent)
+      else if (data.status === 'idle' && prevStatus === 'active') playAgentMoodIdle(data.agent)
+    }
+    // Activity tick — agent-tuned pentatonic micro-tone (#7 Heartbeat Mode)
+    playAgentTick(data.agent)
     statusAnnouncement.value = `Agent ${data.agent} updated: ${data.status}`
     pushLog('agent_updated', `[${data.agent}] ${data.status}: ${data.summary}`)
   })
