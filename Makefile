@@ -4,7 +4,8 @@ REGISTRY      := default-route-openshift-image-registry.apps.okd1.timslab
 IMAGE_TAG     := latest
 IMAGE         := $(REGISTRY)/$(NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)
 
-.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status
+.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status e2e e2e-ui e2e-report e2e-dev e2e-screenshots
+
 
 build:
 	cd frontend && npm install && npm run build
@@ -102,3 +103,12 @@ e2e-ui:
 
 e2e-report:
 	cd e2e && npx playwright show-report
+
+# Run e2e against a running dev instance (no rebuild). DEV_PORT defaults to 9000.
+e2e-dev:
+	cd e2e && BASE_URL=http://localhost:$${DEV_PORT:-9000} SKIP_BUILD=1 npx playwright test
+
+# Capture screenshots of key UI pages for agent visual inspection.
+# Reads BOSS_URL (default http://localhost:8899). Output: e2e/snapshots/*.png
+e2e-screenshots:
+	cd e2e && BOSS_URL=$${BOSS_URL:-http://localhost:8899} npx tsx scripts/screenshots.ts
