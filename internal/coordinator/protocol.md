@@ -43,6 +43,7 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 - Use `send_message` to coordinate with peers and your manager
 - Use `check_messages` at the start of every work cycle
 - Use `ack_message` on messages you have acted on
+- Use **@agent-name** anywhere in a message body to mention a peer — the operator dashboard will pulse that agent's card for 3 seconds. Example: `"@arch2 can you review the spawn handler before I merge?"`
 
 **Task Discipline**
 - Create the task BEFORE starting work using `create_task`
