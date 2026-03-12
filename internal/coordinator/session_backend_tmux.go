@@ -143,7 +143,15 @@ func (b *TmuxSessionBackend) CheckApproval(sessionID string) ApprovalInfo {
 	return tmuxCheckApproval(sessionID)
 }
 
+// tmuxSendKeysLimit is the safe upper bound for tmux send-keys.
+// Beyond ~16 KB tmux returns "command too long" (exit status 1).
+// Using 8 KB gives comfortable headroom below the hard limit.
+const tmuxSendKeysLimit = 8192
+
 func (b *TmuxSessionBackend) SendInput(sessionID string, text string) error {
+	if len(text) > tmuxSendKeysLimit {
+		return tmuxPasteInput(sessionID, text)
+	}
 	return tmuxSendKeys(sessionID, text)
 }
 

@@ -383,6 +383,45 @@ func tmuxSendKeys(session, text string) error {
 	return nil
 }
 
+// tmuxPasteInput sends text to a tmux session using load-buffer + paste-buffer.
+// This is necessary for text larger than tmux's send-keys hard limit (~16 KB):
+// beyond that threshold send-keys returns exit status 1 with "command too long".
+// Named buffers (one per session) prevent concurrent calls from interfering.
+func tmuxPasteInput(session, text string) error {
+	bufName := "ignite-" + session
+
+	// Load text into a named paste buffer via stdin.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "tmux", "load-buffer", "-b", bufName, "-")
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("load-buffer: %w", err)
+	}
+
+	// Paste buffer into the target session at the current cursor position.
+	// -p suppresses an extra newline so we can send Enter ourselves below.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel2()
+	if err := exec.CommandContext(ctx2, "tmux", "paste-buffer", "-b", bufName, "-t", session, "-p").Run(); err != nil {
+		exec.Command("tmux", "delete-buffer", "-b", bufName).Run() //nolint:errcheck
+		return fmt.Errorf("paste-buffer: %w", err)
+	}
+	time.Sleep(tmuxSendDelay)
+
+	// Clean up the named buffer.
+	exec.Command("tmux", "delete-buffer", "-b", bufName).Run() //nolint:errcheck
+
+	// Submit with Enter.
+	ctx3, cancel3 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel3()
+	if err := exec.CommandContext(ctx3, "tmux", "send-keys", "-t", session, "C-m").Run(); err != nil {
+		return fmt.Errorf("send Enter: %w", err)
+	}
+	time.Sleep(tmuxSendDelay)
+	return nil
+}
+
 func waitForIdle(session string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	time.Sleep(5 * time.Second)
