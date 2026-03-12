@@ -205,3 +205,55 @@ When a linter test fails, the error message includes the rule and an exact remed
 Every agent spawn must deliver the full experience surface: MCP URL, auth token, working directory, and ignition prompt. The structural test `TestAgentExperienceSurfaceInvariants` (`internal/coordinator/lint_test.go`) enforces the most failure-prone coupling: **if `TmuxCreateOpts.MCPServerURL` is set, `AgentToken` must also be set**. This prevents the silent failure mode where auth is enabled on the server but spawned agents never receive the credential to call MCP tools.
 
 See **[docs/design-docs/agent-experience-surface.md](docs/design-docs/agent-experience-surface.md)** for the full contract and spawn flow diagram.
+
+## Dev Loop (per-worktree testing)
+
+Each worktree can run its own isolated boss instance — its own port, its own `data-dev/` directory, its own PID file. Multiple agents can run dev instances in parallel without conflict.
+
+### One-shot bootstrap
+
+```bash
+bash scripts/dev-setup.sh
+```
+
+This builds the boss binary and prints the MCP registration command:
+
+```
+claude mcp add boss-dev --transport http http://localhost:<PORT>/mcp
+```
+
+Register it once in your claude session to get `boss-dev` MCP tools pointed at your local instance.
+
+### Daily workflow
+
+```bash
+# Start your isolated dev instance (auto-detects a free port >= 9000)
+make dev-start
+
+# Check status + last 20 log lines
+make dev-status
+
+# After code changes — rebuild and restart in one step
+make dev-restart
+
+# Shut down when done
+make dev-stop
+```
+
+### What you can observe
+
+Once started, use the `boss-dev` MCP tools (or `http://localhost:<PORT>`) to:
+- Create spaces, post agent updates, create/move tasks
+- Verify new API behavior against your branch's code
+- Inspect logs via `make dev-status` or `tail -f data-dev/boss.log`
+
+The dev instance uses `data-dev/boss.db` (separate from the production `data/boss.db`), so you can freely experiment without affecting shared state.
+
+### Port files
+
+| File | Contents |
+|------|----------|
+| `data-dev/boss.port` | Port the dev instance is/was listening on |
+| `data-dev/boss.pid` | PID of the running process |
+| `data-dev/boss.log` | Server log output |
+| `data-dev/boss.db` | Isolated SQLite database |
