@@ -67,6 +67,8 @@ const emit = defineEmits<{
   'delete-space': [name: string]
   'create-space': [name: string]
   'archive-space': [name: string]
+  'open-personas': []
+  'open-settings': []
 }>()
 
 const router = useRouter()
@@ -443,26 +445,6 @@ defineExpose({ openNewSpaceDialog })
         </SidebarGroupContent>
       </SidebarGroup>
 
-      <!-- Global nav — always visible -->
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton @click="router.push('/personas')">
-                <User class="size-4" />
-                <span>Personas</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton @click="router.push('/settings')">
-                <Settings class="size-4" />
-                <span>Settings</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-
       <SidebarSeparator v-if="currentSpace" />
 
       <!-- Space nav: Tasks board + Conversations -->
@@ -699,8 +681,8 @@ defineExpose({ openNewSpaceDialog })
       </SidebarGroup>
     </SidebarContent>
 
-    <SidebarFooter v-if="currentSpace" class="p-3">
-      <Tooltip>
+    <SidebarFooter class="p-3 gap-2">
+      <Tooltip v-if="currentSpace">
         <TooltipTrigger as-child>
           <Button
             variant="outline"
@@ -716,6 +698,37 @@ defineExpose({ openNewSpaceDialog })
           Nudge all agents with the latest space state
         </TooltipContent>
       </Tooltip>
+      <!-- Global settings row — always at bottom of sidebar -->
+      <div class="flex items-center justify-end gap-1 pt-1 border-t border-border/50">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              aria-label="Personas"
+              @click="emit('open-personas')"
+            >
+              <User class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Personas</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              aria-label="Settings"
+              @click="emit('open-settings')"
+            >
+              <Settings class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Settings</TooltipContent>
+        </Tooltip>
+      </div>
     </SidebarFooter>
   </Sidebar>
 
