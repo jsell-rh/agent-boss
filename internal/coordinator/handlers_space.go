@@ -425,6 +425,7 @@ func (s *Server) handleSpaceContractsDefault(w http.ResponseWriter, r *http.Requ
 	}
 	defaultContracts := strings.ReplaceAll(protocolTemplate, "{SPACE}", spaceName)
 	defaultContracts = strings.ReplaceAll(defaultContracts, "{COORDINATOR_URL}", s.localURL())
+	defaultContracts = strings.ReplaceAll(defaultContracts, "{MCP_NAME}", s.mcpServerName())
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, defaultContracts)
 }

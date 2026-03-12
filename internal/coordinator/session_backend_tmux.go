@@ -46,6 +46,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	height := 50
 	var workDir string
 	var mcpServerURL string
+	var mcpServerName string
 	var allowSkipPermissions bool
 
 	if tmuxOpts, ok := opts.BackendOpts.(TmuxCreateOpts); ok {
@@ -57,7 +58,11 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		}
 		workDir = tmuxOpts.WorkDir
 		mcpServerURL = tmuxOpts.MCPServerURL
+		mcpServerName = tmuxOpts.MCPServerName
 		allowSkipPermissions = tmuxOpts.AllowSkipPermissions
+	}
+	if mcpServerName == "" {
+		mcpServerName = "boss-mcp"
 	}
 
 	// Append --dangerously-skip-permissions when global toggle is on.
@@ -87,7 +92,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 
 	// Register boss MCP server with Claude before launching (idempotent).
 	if mcpServerURL != "" {
-		mcpCmd := fmt.Sprintf("claude mcp add boss-mcp --transport http %s/mcp 2>/dev/null || true", mcpServerURL)
+		mcpCmd := fmt.Sprintf("claude mcp add %s --transport http %s/mcp 2>/dev/null || true", mcpServerName, mcpServerURL)
 		if err := tmuxSendKeys(sessionID, mcpCmd); err != nil {
 			// Non-fatal: log but continue — agent can still function without MCP.
 			_ = err
