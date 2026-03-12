@@ -57,6 +57,8 @@ go test -race -v ./internal/coordinator/
 | `COORDINATOR_PORT` | `8899` | Server listen port |
 | `DATA_DIR` | `./data` | Persistence directory |
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token required on all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
+| `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist |
 | `BOSS_ALLOW_SKIP_PERMISSIONS` | `false` | Allow `--dangerously-skip-permissions` for tmux agents |
 
@@ -65,6 +67,11 @@ go test -race -v ./internal/coordinator/
 - [Getting Started](docs/getting-started.md) — step-by-step with curl examples
 - [API Reference](docs/api-reference.md) — all endpoints, request/response schemas
 - [Agent Protocol](docs/AGENT_PROTOCOL.md) — collaboration norms for agent teams
+
+## Full Protocol
+
+For the complete collaboration protocol (detailed norms, JSON format reference, endpoint tables),
+read the `boss://protocol` MCP resource.
 
 ## How It Works
 
