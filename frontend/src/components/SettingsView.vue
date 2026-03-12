@@ -253,7 +253,7 @@ async function toggleSkipPermissions(value: boolean) {
                   'flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted',
                   soundTheme === theme.id ? 'border-primary bg-primary/5' : 'border-border',
                 ]"
-                @click="soundTheme = theme.id; playChime()"
+                @click="soundTheme = theme.id; if (soundEnabled) playChime()"
               >
                 <span class="text-xs font-medium">{{ theme.label }}</span>
                 <span class="text-xs text-muted-foreground">{{ theme.description }}</span>

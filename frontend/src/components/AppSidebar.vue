@@ -2,7 +2,7 @@
 import type { SpaceSummary, KnowledgeSpace, AgentStatus } from '@/types'
 import { STATUS_DISPLAY } from '@/types'
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { relativeTime } from '@/composables/useTime'
 import { prLink } from '@/lib/utils'
 import {
@@ -74,6 +74,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const route = useRoute()
 
 function handleSelectSpace(name: string) {
   router.push('/' + name)
@@ -455,7 +456,7 @@ defineExpose({ openNewSpaceDialog })
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                :data-active="false"
+                :data-active="route.path.includes('/kanban')"
                 @click="router.push('/' + selectedSpace + '/kanban')"
               >
                 <LayoutDashboard class="size-4" />
@@ -464,7 +465,7 @@ defineExpose({ openNewSpaceDialog })
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                :data-active="false"
+                :data-active="route.path.includes('/conversations')"
                 @click="router.push('/' + selectedSpace + '/conversations')"
               >
                 <div class="relative shrink-0">
@@ -478,12 +479,6 @@ defineExpose({ openNewSpaceDialog })
                 </div>
                 <span>Conversations</span>
               </SidebarMenuButton>
-              <SidebarMenuBadge
-                v-if="bossUnreadCount > 0"
-                class="text-red-500 font-bold text-[10px]"
-              >
-                {{ bossUnreadCount }}
-              </SidebarMenuBadge>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
@@ -565,13 +560,13 @@ defineExpose({ openNewSpaceDialog })
                           :href="prLink(agent)!"
                           target="_blank"
                           rel="noopener noreferrer"
-                          :class="['text-[10px] hover:underline shrink-0 pr-shimmer text-primary']"
+                          :class="['text-[10px] hover:underline shrink-0 text-primary', { 'pr-shimmer': agent.status === 'active' }]"
                           :title="prLink(agent)!"
                           @click.stop
                         >{{ agent.pr }}</a>
                         <span
                           v-else-if="agent.pr"
-                          class="text-[10px] shrink-0 pr-shimmer text-muted-foreground"
+                          :class="['text-[10px] shrink-0 text-muted-foreground', { 'pr-shimmer': agent.status === 'active' }]"
                         >{{ agent.pr }}</span>
                       </div>
                     </div>
