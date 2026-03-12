@@ -89,6 +89,8 @@ data/
 | `DB_PATH` | `$DATA_DIR/boss.db` | SQLite file path |
 | `DB_DSN` | _(required for postgres)_ | Postgres DSN (e.g. `host=... user=... dbname=... sslmode=disable`) |
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token for all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
+| `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
 
 ## Restart Procedure
@@ -96,7 +98,9 @@ data/
 ```bash
 pkill -f '/tmp/boss'
 sleep 1
-# rebuild (see Build above)
+git pull
+cd frontend && npm install && npm run build && cd ..
+go build -o /tmp/boss ./cmd/boss/
 DATA_DIR=./data nohup /tmp/boss serve > /tmp/boss.log 2>&1 &
 ```
 
@@ -112,3 +116,24 @@ Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.
 ## Doc Gardening
 
 The `garden` agent keeps the knowledge base current after every sprint. See **[docs/exec-plans/doc-gardening-agent.md](docs/exec-plans/doc-gardening-agent.md)** for the standing instructions — what to check, how to update grades, and how to open the PR.
+## Linting
+
+Run the architectural boundary and taste-invariant linters with:
+
+```bash
+go test ./internal/domain/... ./internal/coordinator/...
+```
+
+These tests fail if any of the following rules are violated:
+
+### Boundary enforcement (`internal/domain/architecture_test.go`)
+- `internal/domain/` must import **only** the Go standard library — no external packages, no coordinator, no adapters.
+- `internal/adapters/` packages (once created) must not import sibling adapter packages.
+- The domain boundary test logs the `internal/coordinator` import baseline for migration tracking.
+
+### Taste invariants (`internal/coordinator/lint_test.go`)
+1. **No `fmt.Print*` in server code** — use the structured logger (`log.Info`, `log.Error`, etc.). `fmt.Sprintf` for string formatting is fine; `fmt.Printf` / `fmt.Println` / `fmt.Fprintf(os.Stderr, ...)` are not.
+2. **File size limit** — no new `.go` file in `internal/coordinator/` may exceed 600 lines. Files that already exceed this limit are grandfathered (see `grandfatheredLargeFiles` in `lint_test.go`) — do not add new files to the grandfather list without a cleanup task.
+3. **Handler naming** — HTTP handler methods on `*Server` must follow `handle{Noun}{Verb}` (e.g. `handleAgentCreate`, `handleTaskGet`). Known legacy violations are grandfathered in `grandfatheredHandlers`. New handlers must conform.
+
+When a linter test fails, the error message includes the rule and an exact remediation instruction.
