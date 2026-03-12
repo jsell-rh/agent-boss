@@ -282,6 +282,75 @@ export function playActivityTick(): void {
   }
 }
 
+// ── Reduced-motion awareness ────────────────────────────────────────────────
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+function effectiveVolume(base: number): number {
+  return prefersReducedMotion ? base * 0.4 : base
+}
+
+// ── #2 Dissonance Flag — blocked/error alert ───────────────────────────────
+// Minor second interval (two adjacent semitones) — tense but not alarming.
+export function playBlockedAlert(): void {
+  if (!soundEnabled.value) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    const vol = effectiveVolume(0.12)
+    tone(ctx, 440,    t,       vol,          0.07, 'triangle') // A4
+    tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine')     // A#4 — minor second
+    setTimeout(() => ctx.close(), 500)
+  } catch { /* AudioContext not available */ }
+}
+
+// ── #6 Warp Arrival — agent spawned ───────────────────────────────────────
+export function playAgentSpawn(): void {
+  if (!soundEnabled.value) return
+  if (prefersReducedMotion) return // skip sweeps in reduced-motion mode
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    sweep(ctx, 200, 1200, t, 0.25, effectiveVolume(0.08), 'sine')
+    tone(ctx, 1200, t + 0.28, 0.35, effectiveVolume(0.05), 'triangle')
+    setTimeout(() => ctx.close(), 800)
+  } catch { /* AudioContext not available */ }
+}
+
+// ── #3 The Arc — task column transitions ──────────────────────────────────
+// backlog→in_progress: rising sweep ("starting")
+// in_progress→review: suspended 2nd chord ("waiting")
+// review→done / any→done: playSuccess() (already wired at call site)
+export function playTaskTransition(toStatus: string): void {
+  if (!soundEnabled.value) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    if (toStatus === 'in_progress') {
+      if (prefersReducedMotion) {
+        tone(ctx, 523.25, t, 0.2, effectiveVolume(0.06))
+      } else {
+        sweep(ctx, 330, 523, t, 0.2, effectiveVolume(0.06), 'sine')
+      }
+    } else if (toStatus === 'review') {
+      tone(ctx, 523.25, t,       0.4, effectiveVolume(0.055)) // C5
+      tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045)) // D5 — suspended 2nd
+    }
+    setTimeout(() => ctx.close(), 800)
+  } catch { /* AudioContext not available */ }
+}
+
+// ── #9 @mention ping ───────────────────────────────────────────────────────
+// Distinct short ping — higher pitch than message chime, percussive attack.
+export function playMentionPing(): void {
+  if (!soundEnabled.value) return
+  try {
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    tone(ctx, 1046.5, t, 0.15, effectiveVolume(0.09), 'sine') // C6 — bright, short
+    setTimeout(() => ctx.close(), 400)
+  } catch { /* AudioContext not available */ }
+}
+
 export function notifyBossMessage(from: string, spaceName: string): void {
   if (soundEnabled.value) playChime()
 

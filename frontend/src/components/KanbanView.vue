@@ -16,7 +16,7 @@ import KanbanColumn from './KanbanColumn.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
 import { useConfetti, type ConfettiPriority } from '@/composables/useConfetti'
-import { playSuccess } from '@/composables/useNotifications'
+import { playSuccess, playTaskTransition } from '@/composables/useNotifications'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -151,6 +151,7 @@ async function onTaskDrop(taskId: string, newStatus: TaskStatus) {
     const updated = await api.moveTask(props.space.name, taskId, newStatus)
     Object.assign(task, updated)
     if (newStatus === 'done') { celebrate(undefined, undefined, (task.priority ?? 'medium') as ConfettiPriority); playSuccess() }
+    else { playTaskTransition(newStatus) }
   } catch {
     // Revert on error
     task.status = oldStatus
@@ -239,6 +240,8 @@ const unsubTaskUpdated = sse.on('task_updated', (data) => {
   if (data.status === 'done' && existing && existing.status !== 'done') {
     celebrate(undefined, undefined, (existing.priority ?? 'medium') as ConfettiPriority)
     playSuccess()
+  } else if (data.status && data.status !== existing?.status && data.status !== 'done') {
+    playTaskTransition(data.status)
   }
   scheduleSSEReload()
 })

@@ -42,6 +42,9 @@ import {
   playSprintComplete,
   playAgentSignatureChime,
   playActivityTick,
+  playBlockedAlert,
+  playAgentSpawn,
+  playMentionPing,
   resetAgentChimes,
 } from '@/composables/useNotifications'
 import { useConfetti } from '@/composables/useConfetti'
@@ -715,6 +718,11 @@ function setupSSE() {
     checkSprintComplete()
     // Agent signature chime — plays once per agent per page load on first update
     playAgentSignatureChime(data.agent)
+    // Dissonance alert — plays when agent transitions into blocked or error state
+    if ((data.status === 'blocked' || data.status === 'error')) {
+      const prev = currentSpace.value?.agents[data.agent]?.status
+      if (prev !== 'blocked' && prev !== 'error') playBlockedAlert()
+    }
     // Activity tick — subtle ambient sound for busy server-room feel (opt-in)
     playActivityTick()
     statusAnnouncement.value = `Agent ${data.agent} updated: ${data.status}`
@@ -748,6 +756,7 @@ function setupSSE() {
     // Schedule a full reload to pick up the real agent record from the backend
     scheduleSpaceReload(data.space, 2000)
     scheduleSpacesReload(500)
+    playAgentSpawn()
     statusAnnouncement.value = `Agent ${data.agent} spawned`
     pushLog('agent_spawned', `[${data.agent}] agent spawned`)
   })
@@ -799,12 +808,15 @@ function setupSSE() {
     // Parse @mentions in message body and pulse the mentioned agent's card
     if (data.message && typeof data.message === 'string' && currentSpace.value) {
       const mentions = [...data.message.matchAll(/@([\w-]+)/g)]
+      let mentionFound = false
       for (const m of mentions) {
         const name = m[1]
         if (name && currentSpace.value.agents[name]) {
           pulseAgentMention(name)
+          mentionFound = true
         }
       }
+      if (mentionFound) playMentionPing()
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })
