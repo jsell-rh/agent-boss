@@ -53,6 +53,18 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 │  session_backend_ambient.go   — Ambient cloud API          │
 │  tmux.go                      — low-level tmux commands    │
 └────────────────────────────────────────────────────────────┘
+
+── Hexagonal Foundation (Phase 1 complete, Phase 2 planned) ──
+
+┌────────────────────────────────────────────────────────────┐
+│  internal/domain/  (PR #145)                               │
+│  types.go          — canonical domain entities             │
+│  ports/storage.go  — storage port interface                │
+│  architecture_test.go — adapter isolation guard            │
+│                                                            │
+│  internal/adapters/ — NOT YET CREATED (Phase 2)           │
+│  Planned: sqlite/, http/, mcp/, sse/ adapters              │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -61,7 +73,7 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `internal/coordinator/server.go` | 334 | Server struct, routing, Start/Stop |
+| `internal/coordinator/server.go` | 350 | Server struct, routing, Start/Stop |
 | `internal/coordinator/types.go` | 802 | All domain types + markdown rendering |
 | `internal/coordinator/handlers_agent.go` | 1680 | Agent HTTP handlers (status, spawn, messages) |
 | `internal/coordinator/handlers_task.go` | 887 | Task CRUD + Kanban move |
@@ -76,9 +88,11 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 | `internal/coordinator/db_adapter.go` | 552 | GORM ↔ domain type bridge |
 | `internal/coordinator/tmux.go` | 723 | Tmux session commands |
 | `internal/coordinator/session_backend_ambient.go` | 513 | Ambient cloud session backend |
-| `frontend/src/components/SpaceOverview.vue` | 1246 | Main dashboard view |
+| `frontend/src/components/SpaceOverview.vue` | 1248 | Main dashboard view |
 | `frontend/src/components/AgentDetail.vue` | 1243 | Per-agent detail panel |
 | `frontend/src/api/client.ts` | 552 | REST API client |
+| `internal/domain/types.go` | — | Canonical domain entities (hexagonal Phase 1) |
+| `internal/domain/ports/storage.go` | — | Storage port interface (hexagonal Phase 1) |
 
 ---
 
@@ -148,4 +162,6 @@ protocol.go: render ignition prompt from template
 - **SSE Streaming:** see [docs/sse-design.md](docs/sse-design.md)
 - **Agent Lifecycle:** see [docs/lifecycle-spec.md](docs/lifecycle-spec.md)
 - **API Reference:** see [docs/api-reference.md](docs/api-reference.md)
+- **Hexagonal Architecture:** see [docs/design-docs/hexagonal-architecture.md](docs/design-docs/hexagonal-architecture.md)
+- **Auth Model:** see [docs/design-docs/auth-model.md](docs/design-docs/auth-model.md)
 - **Quality & Tech Debt:** see [docs/QUALITY.md](docs/QUALITY.md) and [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)

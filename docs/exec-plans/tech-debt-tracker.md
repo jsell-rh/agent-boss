@@ -1,6 +1,6 @@
 # Tech Debt Tracker
 
-Known technical debt in Agent Boss as of 2026-03-12. Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
+Known technical debt in Agent Boss as of 2026-03-12 (updated after PRs #144–#148). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
 
 Items are ordered by priority: **high** → **medium** → **low**.
 
@@ -21,8 +21,8 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Fix:** Audit which agents/clients still use `tmux_session`. Remove field once confirmed unused. Add a migration that reads the field on startup if needed.
 
 ### TD-003: Frontend components >1000 LOC
-- **Files:** `frontend/src/components/SpaceOverview.vue` (1246 LOC), `frontend/src/components/AgentDetail.vue` (1243 LOC), `frontend/src/components/ConversationsView.vue` (997 LOC)
-- **Issue:** Components are too large to maintain. Each handles data fetching, rendering, and event coordination.
+- **Files:** `frontend/src/components/SpaceOverview.vue` (1248 LOC), `frontend/src/components/AgentDetail.vue` (1243 LOC), `frontend/src/components/ConversationsView.vue` (1079 LOC)
+- **Issue:** Components are too large to maintain. Each handles data fetching, rendering, and event coordination. PR #147 grew `ConversationsView.vue` from 997 → 1079 LOC, pushing it over the 1000-LOC threshold.
 - **Impact:** Hard to test, slow to review, fragile under changes.
 - **Fix:** Extract sub-components. SpaceOverview → `AgentGrid`, `TaskBoard`, `SpaceHeader`. AgentDetail → `AgentStatusCard`, `AgentHistoryPanel`, `AgentMessageList`.
 
@@ -60,11 +60,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Impact:** Acceptable at current scale but will slow as agent/task count grows.
 - **Fix:** Implement explicit deep-copy methods, or use `encoding/gob` which is ~2× faster than JSON.
 
-### TD-009: CLAUDE.md Project Structure section is outdated
-- **File:** `CLAUDE.md`
-- **Issue:** The Project Structure table references `server.go` as "HTTP server, routing, persistence, SSE" — but SSE, handlers, persistence, MCP are now separate files.
-- **Impact:** Misleads new contributors about where code lives.
-- **Fix:** Update Project Structure table to reflect the current file split. (Done in this PR's CLAUDE.md update.)
+### ~~TD-009: CLAUDE.md Project Structure section is outdated~~
+
+> **RESOLVED** in PR #144 (2026-03-12) — CLAUDE.md Project Structure table updated to reflect the current file split (separate handler files, MCP server, SSE handlers). Knowledge Base section added.
 
 ### TD-010: Paude integration proposed but never built
 - **File:** `docs/paude.md`
@@ -99,3 +97,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Issue:** Three overlapping factory-scale vision documents from early 2026. None are actionable plans.
 - **Impact:** Cognitive overhead for new contributors trying to understand project direction.
 - **Fix:** Consolidate into one forward-looking roadmap or archive as `proposed`.
+
+### TD-015: Hexagonal architecture Phase 2 not yet started
+- **Files:** `internal/domain/`, `internal/coordinator/`
+- **Issue:** PR #145 created the hexagonal domain foundation (`internal/domain/types.go`, `internal/domain/ports/storage.go`), but Phase 2 — extracting `internal/adapters/sqlite`, `internal/adapters/http`, `internal/adapters/mcp`, `internal/adapters/sse` from the coordinator — has not begun. The architecture test (`TestAdapterIsolationBaseline`) currently passes only by acknowledging the adapters don't exist yet.
+- **Impact:** The coordinator package remains a 7000+ LOC monolith containing HTTP handlers, persistence, MCP, SSE, and business logic. The domain isolation benefit of the hexagonal design is not yet realized.
+- **Fix:** Implement Phase 2 as described in [docs/design-docs/hexagonal-architecture.md](../design-docs/hexagonal-architecture.md). The `architecture_test.go` will begin enforcing isolation once adapter packages exist.
