@@ -907,6 +907,14 @@ function handleKeydown(e: KeyboardEvent) {
     return
   }
 
+  // 'i' — go to space overview (inbox)
+  if (e.key === 'i') {
+    if (!selectedSpace.value) return
+    e.preventDefault()
+    router.push('/' + selectedSpace.value)
+    return
+  }
+
   // 'd' — go to conversations (decisions are shown there now)
   if (e.key === 'd') {
     if (!selectedSpace.value) return

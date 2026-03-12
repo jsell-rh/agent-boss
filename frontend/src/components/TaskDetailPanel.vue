@@ -206,7 +206,7 @@ async function setDueDate(value: string) {
   if (!props.task) return
   saving.value = true
   try {
-    const due_at = value ? new Date(value + 'T00:00:00Z').toISOString() : null
+    const due_at = value ? new Date(value + 'T12:00:00Z').toISOString() : null
     const updated = await api.updateTask(props.space.name, props.task.id, { due_at })
     emit('task-updated', updated)
   } finally {
@@ -334,6 +334,7 @@ async function setDueDate(value: string) {
                 <DropdownMenuTrigger as-child>
                   <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" :disabled="saving">
                     <span v-if="!task.assigned_to" class="text-muted-foreground">Unassigned</span>
+                    <span v-else class="text-muted-foreground text-[10px]">Change</span>
                     <ChevronDown class="size-3" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -531,12 +532,15 @@ async function setDueDate(value: string) {
 
             <!-- Add comment -->
             <div class="flex gap-2 mt-1">
-              <Textarea
-                v-model="commentText"
-                placeholder="Add a comment…"
-                class="text-sm min-h-[60px] resize-none flex-1"
-                @keydown.ctrl.enter="submitComment"
-              />
+              <div class="flex flex-col gap-1 flex-1">
+                <Textarea
+                  v-model="commentText"
+                  placeholder="Add a comment…"
+                  class="text-sm min-h-[60px] resize-none"
+                  @keydown.ctrl.enter.prevent="submitComment"
+                />
+                <p class="text-[10px] text-muted-foreground">Ctrl+Enter to send</p>
+              </div>
               <Button
                 size="sm"
                 :disabled="!commentText.trim() || submittingComment"

@@ -284,7 +284,7 @@ onUnmounted(() => {
         <!-- Filter by assignee -->
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
-            <Button variant="outline" size="sm" class="h-7 text-xs gap-1">
+            <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterAssignee ? 'border-primary text-primary' : '']">
               {{ filterAssignee || 'All agents' }}
               <ChevronDown class="size-3" />
             </Button>
@@ -307,7 +307,7 @@ onUnmounted(() => {
         <!-- Filter by label -->
         <DropdownMenu v-if="allLabels.length > 0">
           <DropdownMenuTrigger as-child>
-            <Button variant="outline" size="sm" class="h-7 text-xs gap-1">
+            <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterLabel ? 'border-primary text-primary' : '']">
               {{ filterLabel || 'All labels' }}
               <ChevronDown class="size-3" />
             </Button>
@@ -346,6 +346,18 @@ onUnmounted(() => {
     <!-- Loading skeleton -->
     <div v-if="loading && tasks.length === 0" class="flex items-center justify-center flex-1 text-muted-foreground text-sm">
       Loading tasks…
+    </div>
+
+    <!-- No results state -->
+    <div
+      v-else-if="filteredTasks.length === 0 && (filterSearch || filterAssignee || filterLabel || filterOverdueOnly)"
+      class="flex flex-col items-center justify-center flex-1 text-muted-foreground text-sm gap-2"
+    >
+      <span>No tasks match your filters.</span>
+      <button
+        class="text-xs text-primary hover:underline"
+        @click="filterSearch = ''; filterAssignee = ''; filterLabel = ''; filterOverdueOnly = false"
+      >Clear filters</button>
     </div>
 
     <!-- Board -->

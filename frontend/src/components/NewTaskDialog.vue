@@ -67,7 +67,7 @@ async function submit() {
       priority: priority.value,
       assigned_to: assignedTo.value || undefined,
       parent_task: parentTask.value || undefined,
-      due_at: dueDate.value ? new Date(dueDate.value + 'T00:00:00Z').toISOString() : undefined,
+      due_at: dueDate.value ? new Date(dueDate.value + 'T12:00:00Z').toISOString() : undefined,
     })
     reset()
     emit('created')
