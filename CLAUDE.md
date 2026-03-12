@@ -91,7 +91,19 @@ data/
 | `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
 | `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token for all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
 | `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
+| `BOSS_ALLOW_SKIP_PERMISSIONS` | `false` | Set `true` to pass `--dangerously-skip-permissions` to Claude CLI in tmux sessions |
+| `COORDINATOR_HOST` | _(all interfaces)_ | Listen interface override (e.g. `127.0.0.1`) |
+| `STALENESS_THRESHOLD` | `5m` | Duration after which an agent heartbeat is considered stale |
+| `LOG_FORMAT` | `text` | Log output format: `text` or `json` |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist with a local directory |
+| `AMBIENT_API_URL` | _(unset)_ | Enable the ambient session backend; set to the ambient API base URL |
+| `AMBIENT_TOKEN` | _(unset)_ | Auth token for the ambient API |
+| `AMBIENT_PROJECT` | _(unset)_ | Project identifier for ambient sessions |
+| `AMBIENT_WORKFLOW_URL` | _(unset)_ | Workflow URL used to launch ambient agents |
+| `AMBIENT_WORKFLOW_BRANCH` | _(unset)_ | Git branch for the ambient workflow |
+| `AMBIENT_WORKFLOW_PATH` | _(unset)_ | Path to workflow definition file for the ambient backend |
+| `AMBIENT_SKIP_TLS_VERIFY` | `false` | Skip TLS verification for ambient API calls |
+| `COORDINATOR_EXTERNAL_URL` | _(unset)_ | External URL injected into ambient sessions as `BOSS_URL` |
 
 ## Restart Procedure
 

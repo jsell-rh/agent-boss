@@ -19,6 +19,9 @@ All coordinator interactions use **{MCP_NAME}** tools. These are automatically a
 | `list_tasks` | List/filter tasks | `space`, `status`, `assigned_to`, `priority`, `label` |
 | `move_task` | Change task status | `space`, `agent`, `task_id`, `status`, `reason` |
 | `update_task` | Update task fields | `space`, `agent`, `task_id`, `title`, `linked_pr`, `assigned_to` |
+| `spawn_agent` | Spawn a new agent session | `space`, `name`, `work_dir`, `initial_message`, `parent`, `task_id` |
+| `restart_agent` | Restart an existing agent session | `space`, `name` |
+| `stop_agent` | Stop an agent and kill its session | `space`, `name` |
 
 ### HTTP API
 
