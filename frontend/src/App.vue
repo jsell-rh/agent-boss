@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { SpaceSummary, KnowledgeSpace, SessionAgentStatus, AgentUpdate, HierarchyTree, HierarchyNode } from '@/types'
-import { api } from '@/api/client'
+import { api, authRequired, setStoredToken } from '@/api/client'
 import { useSSE } from '@/composables/useSSE'
 
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
@@ -60,6 +60,14 @@ const broadcasting = ref(false)
 const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(null)
 
 const sse = useSSE()
+
+// ── Auth token dialog ─────────────────────────────────────────────
+const tokenDialogInput = ref('')
+function saveTokenFromDialog() {
+  setStoredToken(tokenDialogInput.value.trim())
+  authRequired.value = false
+  tokenDialogInput.value = ''
+}
 const eventLogRef = ref<InstanceType<typeof EventLog> | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -1290,5 +1298,27 @@ onUnmounted(() => {
         </div>
       </SheetContent>
     </Sheet>
+
+    <!-- Auth token dialog (TASK-011) -->
+    <Dialog :open="authRequired" @update:open="val => { if (!val) authRequired = false }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Authentication Required</DialogTitle>
+          <DialogDescription>Enter your BOSS_API_TOKEN to continue. The token is stored in localStorage.</DialogDescription>
+        </DialogHeader>
+        <div class="flex flex-col gap-3 py-2">
+          <input
+            v-model="tokenDialogInput"
+            type="password"
+            placeholder="Paste token here…"
+            class="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            @keydown.enter="saveTokenFromDialog"
+          />
+        </div>
+        <DialogFooter>
+          <Button size="sm" :disabled="!tokenDialogInput.trim()" @click="saveTokenFromDialog">Save Token</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </TooltipProvider>
 </template>

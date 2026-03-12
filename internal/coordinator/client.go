@@ -12,6 +12,7 @@ import (
 type Client struct {
 	baseURL    string
 	space      string
+	authToken  string
 	httpClient *http.Client
 }
 
@@ -26,6 +27,21 @@ func NewClient(baseURL, space string) *Client {
 			Timeout: 5 * time.Second,
 		},
 	}
+}
+
+// WithAuthToken sets the Bearer token sent on all mutating (non-GET) requests.
+// Returns the same client for chaining.
+func (c *Client) WithAuthToken(token string) *Client {
+	c.authToken = token
+	return c
+}
+
+// doRequest executes req, injecting Authorization: Bearer if authToken is set.
+func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+	return c.httpClient.Do(req)
 }
 
 func (c *Client) spacePrefix() string {
@@ -89,11 +105,13 @@ func (c *Client) PostAgentUpdate(name string, update *AgentUpdate) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(
-		c.spacePrefix()+"/agent/"+name,
-		"application/json",
-		strings.NewReader(string(data)),
-	)
+	req, err := http.NewRequest(http.MethodPost, c.spacePrefix()+"/agent/"+name, strings.NewReader(string(data)))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", name)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("post agent %s: %w", name, err)
 	}
@@ -111,7 +129,7 @@ func (c *Client) DeleteAgent(name string) error {
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("delete agent %s: %w", name, err)
 	}
@@ -142,7 +160,12 @@ func (c *Client) EnsureSpace() (created bool, err error) {
 	}
 
 	// Space does not exist — POST to contracts creates it lazily.
-	postResp, e := c.httpClient.Post(c.spacePrefix()+"/contracts", "text/plain", strings.NewReader(""))
+	postReq, e := http.NewRequest(http.MethodPost, c.spacePrefix()+"/contracts", strings.NewReader(""))
+	if e != nil {
+		return false, fmt.Errorf("create request: %w", e)
+	}
+	postReq.Header.Set("Content-Type", "text/plain")
+	postResp, e := c.doRequest(postReq)
 	if e != nil {
 		return false, fmt.Errorf("create space: %w", e)
 	}
@@ -159,7 +182,7 @@ func (c *Client) DeleteSpace() error {
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("delete space %s: %w", c.space, err)
 	}
@@ -193,7 +216,12 @@ func (c *Client) FetchIgnition(agentName string, sessionID string) (string, erro
 }
 
 func (c *Client) TriggerBroadcast() (string, error) {
-	resp, err := c.httpClient.Post(c.spacePrefix()+"/broadcast", "application/json", nil)
+	req, err := http.NewRequest(http.MethodPost, c.spacePrefix()+"/broadcast", nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("trigger broadcast: %w", err)
 	}

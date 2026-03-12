@@ -32,6 +32,32 @@ function normalizeSpace(space: KnowledgeSpace): KnowledgeSpace {
   return { ...space, agents: normalized }
 }
 
+const TOKEN_KEY = 'boss_api_token'
+
+export function getStoredToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? ''
+}
+
+export function setStoredToken(token: string): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
+
+export class AuthRequiredError extends Error {
+  constructor() {
+    super('Authentication required — please enter your API token in Settings.')
+    this.name = 'AuthRequiredError'
+  }
+}
+
+// authRequired is set to true when any API call receives a 401.
+// Components can watch this to show a login prompt.
+import { ref } from 'vue'
+export const authRequired = ref(false)
+
 class ApiClient {
   private baseUrl: string
 
@@ -39,8 +65,26 @@ class ApiClient {
     this.baseUrl = baseUrl
   }
 
+  private authHeaders(method: string): HeadersInit {
+    const token = getStoredToken()
+    if (!token) return {}
+    const upper = method.toUpperCase()
+    if (upper === 'GET' || upper === 'HEAD' || upper === 'OPTIONS') return {}
+    return { Authorization: `Bearer ${token}` }
+  }
+
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, init)
+    const method = init?.method ?? 'GET'
+    const headers = new Headers(init?.headers)
+    for (const [k, v] of Object.entries(this.authHeaders(method))) {
+      headers.set(k, v as string)
+    }
+    const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers })
+    if (res.status === 401) {
+      setStoredToken('')
+      authRequired.value = true
+      throw new AuthRequiredError()
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText)
       throw new Error(`${res.status} ${res.statusText}: ${text}`)
@@ -49,7 +93,17 @@ class ApiClient {
   }
 
   private async requestVoid(path: string, init?: RequestInit): Promise<void> {
-    const res = await fetch(`${this.baseUrl}${path}`, init)
+    const method = init?.method ?? 'GET'
+    const headers = new Headers(init?.headers)
+    for (const [k, v] of Object.entries(this.authHeaders(method))) {
+      headers.set(k, v as string)
+    }
+    const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers })
+    if (res.status === 401) {
+      setStoredToken('')
+      authRequired.value = true
+      throw new AuthRequiredError()
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText)
       throw new Error(`${res.status} ${res.statusText}: ${text}`)

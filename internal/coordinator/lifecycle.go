@@ -553,7 +553,11 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 
 	command := restartCommand
 	if command == "" {
-		command = "claude --dangerously-skip-permissions"
+		if s.allowSkipPermissions {
+			command = "claude --dangerously-skip-permissions"
+		} else {
+			command = "claude"
+		}
 	}
 
 	if !exists {
@@ -807,7 +811,10 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 
 			// Determine work dir and command from stored config
 			workDir := ""
-			command := "claude --dangerously-skip-permissions"
+			command := "claude"
+			if s.allowSkipPermissions {
+				command = "claude --dangerously-skip-permissions"
+			}
 			initialPrompt := ""
 			if cfg != nil {
 				workDir = cfg.WorkDir

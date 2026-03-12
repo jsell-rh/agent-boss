@@ -74,6 +74,7 @@ Examples:
 
 Environment:
   BOSS_URL           Server URL (default: http://localhost:8899)
+  BOSS_API_TOKEN     Bearer token for authenticated requests (optional)
   COORDINATOR_PORT   Server port (serve only, default: 8899)
   COORDINATOR_HOST   Hostname used in agent-facing URLs (serve only, default: localhost)
   DATA_DIR           Data directory (serve only, default: ./data)
@@ -90,6 +91,16 @@ func serverURL() string {
 		port = strings.TrimPrefix(p, ":")
 	}
 	return "http://localhost:" + port
+}
+
+// newClient returns a coordinator client configured with the server URL and
+// BOSS_API_TOKEN (if set) for authenticated requests.
+func newClient(space string) *coordinator.Client {
+	c := coordinator.NewClient(serverURL(), space)
+	if token := os.Getenv("BOSS_API_TOKEN"); token != "" {
+		c.WithAuthToken(token)
+	}
+	return c
 }
 
 func cmdServe(args []string) {
@@ -150,7 +161,7 @@ func cmdPost(args []string) {
 		os.Exit(1)
 	}
 
-	client := coordinator.NewClient(serverURL(), *space)
+	client := newClient(*space)
 	update := &coordinator.AgentUpdate{
 		Status:    coordinator.AgentStatus(*status),
 		Summary:   *summary,
@@ -171,7 +182,7 @@ func cmdGet(args []string) {
 	raw := fs.Bool("raw", false, "Get rendered markdown")
 	fs.Parse(args)
 
-	client := coordinator.NewClient(serverURL(), *space)
+	client := newClient(*space)
 
 	if *raw {
 		md, err := client.FetchMarkdown()
@@ -207,7 +218,7 @@ func cmdSpaces(args []string) {
 	fs := flag.NewFlagSet("spaces", flag.ExitOnError)
 	fs.Parse(args)
 
-	client := coordinator.NewClient(serverURL(), "")
+	client := newClient("")
 	spaces, err := client.ListSpaces()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "boss spaces: %v\n", err)
@@ -236,7 +247,7 @@ func cmdIgnite(args []string) {
 	agentName := positional[0]
 	workspace := positional[1]
 
-	client := coordinator.NewClient(serverURL(), workspace)
+	client := newClient(workspace)
 	prompt, err := client.FetchIgnition(agentName, *tmuxSession)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "boss ignite: %v\n", err)
@@ -250,7 +261,7 @@ func cmdBroadcast(args []string) {
 	space := fs.String("space", "default", "Space name")
 	fs.Parse(args)
 
-	client := coordinator.NewClient(serverURL(), *space)
+	client := newClient(*space)
 	msg, err := client.TriggerBroadcast()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "boss broadcast: %v\n", err)
@@ -271,7 +282,7 @@ func cmdDelete(args []string) {
 		os.Exit(1)
 	}
 
-	client := coordinator.NewClient(serverURL(), *space)
+	client := newClient(*space)
 
 	if *agent != "" {
 		if err := client.DeleteAgent(*agent); err != nil {
@@ -301,7 +312,7 @@ func cmdInit(args []string) {
 	}
 
 	baseURL := serverURL()
-	client := coordinator.NewClient(baseURL, spaceName)
+	client := newClient(spaceName)
 
 	// Step 1: create space if it doesn't exist.
 	created, err := client.EnsureSpace()

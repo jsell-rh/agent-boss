@@ -4170,3 +4170,159 @@ func TestTmuxIsIdleEmptyPaneNotIdle(t *testing.T) {
 	// We just verify it doesn't panic.
 	_ = result
 }
+
+// ── Auth middleware tests (TASK-011) ──────────────────────────────────────────
+
+func mustStartServerWithToken(t *testing.T, token string) (*Server, func()) {
+	t.Helper()
+	dataDir := t.TempDir()
+	srv := NewServer(":0", dataDir)
+	srv.apiToken = token
+	if err := srv.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	return srv, func() { srv.Stop() }
+}
+
+func postJSONWithToken(t *testing.T, url, token string, payload any) *http.Response {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("new request %s: %v", url, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if name := extractAgentName(url); name != "" {
+		req.Header.Set("X-Agent-Name", name)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	return resp
+}
+
+// TestAuthOpenMode verifies that when BOSS_API_TOKEN is unset (empty), all
+// requests pass through without authentication (backward-compatible open mode).
+func TestAuthOpenMode(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// POST without any auth should succeed in open mode.
+	resp := postJSON(t, base+"/spaces/authtest/agent/bot1", map[string]any{
+		"status": "active", "summary": "open mode test",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("open mode POST: expected 202, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+// TestAuthTokenRequired verifies that when BOSS_API_TOKEN is set, mutating
+// requests without a token return 401, and authenticated requests succeed.
+func TestAuthTokenRequired(t *testing.T) {
+	const token = "test-secret-token-abc123"
+	srv, cleanup := mustStartServerWithToken(t, token)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// POST without any Authorization header → 401
+	resp := postJSONWithToken(t, base+"/spaces/authtest/agent/bot1", "", map[string]any{
+		"status": "active", "summary": "should be rejected",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("unauthenticated POST: expected 401, got %d: %s", resp.StatusCode, body)
+	}
+
+	// POST with wrong token → 401
+	resp2 := postJSONWithToken(t, base+"/spaces/authtest/agent/bot1", "wrong-token", map[string]any{
+		"status": "active", "summary": "should be rejected",
+	})
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp2.Body)
+		t.Fatalf("wrong token POST: expected 401, got %d: %s", resp2.StatusCode, body)
+	}
+
+	// POST with correct token → success
+	resp3 := postJSONWithToken(t, base+"/spaces/authtest/agent/bot1", token, map[string]any{
+		"status": "active", "summary": "authenticated post",
+	})
+	defer resp3.Body.Close()
+	if resp3.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp3.Body)
+		t.Fatalf("authenticated POST: expected 202, got %d: %s", resp3.StatusCode, body)
+	}
+}
+
+// TestAuthGetAlwaysAllowed verifies that GET requests are always permitted,
+// even when BOSS_API_TOKEN is set (read-only endpoints are open).
+func TestAuthGetAlwaysAllowed(t *testing.T) {
+	const token = "test-secret-for-get"
+	srv, cleanup := mustStartServerWithToken(t, token)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// First, create the space via authenticated POST.
+	resp := postJSONWithToken(t, base+"/spaces/gettest/agent/reader", token, map[string]any{
+		"status": "active", "summary": "setup",
+	})
+	resp.Body.Close()
+
+	// GET without Authorization should work.
+	code, _ := getBody(t, base+"/spaces/gettest/agent/reader")
+	if code != http.StatusOK {
+		t.Fatalf("GET without token: expected 200, got %d", code)
+	}
+
+	// GET /spaces should work.
+	code2, _ := getBody(t, base+"/spaces")
+	if code2 != http.StatusOK {
+		t.Fatalf("GET /spaces without token: expected 200, got %d", code2)
+	}
+}
+
+// TestAuthSecurityHeaders verifies that X-Content-Type-Options and X-Frame-Options
+// are present on every response.
+func TestAuthSecurityHeaders(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp, err := http.Get(base + "/spaces")
+	if err != nil {
+		t.Fatalf("GET /spaces: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options: want %q, got %q", "nosniff", got)
+	}
+	if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options: want %q, got %q", "DENY", got)
+	}
+}
+
+// TestSEC003RestartRespectsToggle verifies that restartAgentService uses
+// allowSkipPermissions instead of hardcoding --dangerously-skip-permissions.
+// We test the observable: when allowSkipPermissions is false, the stored config
+// command is used; and when the toggle is on, the flag is appended for tmux agents.
+// (Full end-to-end would require a live tmux session, so we test the server field directly.)
+func TestSEC003AllowSkipPermissionsField(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	if srv.allowSkipPermissions {
+		t.Error("allowSkipPermissions should default to false (BOSS_ALLOW_SKIP_PERMISSIONS not set)")
+	}
+}

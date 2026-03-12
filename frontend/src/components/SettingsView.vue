@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { api } from '@/api/client'
+import { api, getStoredToken, setStoredToken } from '@/api/client'
 import { AlertTriangle } from 'lucide-vue-next'
 import {
   notificationsEnabled,
@@ -22,6 +22,21 @@ async function toggleNotifications(value: boolean) {
     notifPermission.value = granted ? 'granted' : 'denied'
     if (!granted) notificationsEnabled.value = false
   }
+}
+
+// API token management
+const apiToken = ref(getStoredToken())
+const tokenSaved = ref(false)
+
+function saveToken() {
+  setStoredToken(apiToken.value.trim())
+  tokenSaved.value = true
+  setTimeout(() => { tokenSaved.value = false }, 2000)
+}
+
+function clearToken() {
+  apiToken.value = ''
+  setStoredToken('')
 }
 
 onMounted(async () => {
@@ -104,6 +119,45 @@ async function toggleSkipPermissions(value: boolean) {
         <p class="text-xs text-muted-foreground">
           Current state: <strong>{{ allowSkipPermissions ? 'Enabled' : 'Disabled' }}</strong>
           <span v-if="saving" class="ml-2 text-muted-foreground">Saving…</span>
+        </p>
+      </div>
+
+      <!-- API Token -->
+      <div class="rounded-lg border p-4 flex flex-col gap-3">
+        <div class="flex flex-col gap-0.5">
+          <span class="font-medium text-sm">API Token</span>
+          <span class="text-xs text-muted-foreground">
+            Set <code class="rounded bg-muted px-1">BOSS_API_TOKEN</code> on the server to enable auth.
+            Enter the same token here so the dashboard can make authenticated requests.
+          </span>
+        </div>
+        <div class="flex gap-2">
+          <input
+            v-model="apiToken"
+            type="password"
+            placeholder="Paste token here…"
+            class="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            @keydown.enter="saveToken"
+          />
+          <button
+            type="button"
+            class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            @click="saveToken"
+          >
+            {{ tokenSaved ? 'Saved!' : 'Save' }}
+          </button>
+          <button
+            v-if="apiToken"
+            type="button"
+            class="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            @click="clearToken"
+          >
+            Clear
+          </button>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Token is stored in <code class="rounded bg-muted px-1">localStorage</code>.
+          Leave blank for open mode (no auth).
         </p>
       </div>
 

@@ -82,6 +82,10 @@ type Server struct {
 	// Keyed by "space/agent" (lowercase). LoadOrStore guards the TOCTOU window
 	// between SessionExists() and CreateSession().
 	spawnInProgress sync.Map
+	// apiToken is the value of BOSS_API_TOKEN. When non-empty, all mutating
+	// HTTP requests must carry "Authorization: Bearer <token>". When empty the
+	// server runs in open mode (backward compatible for local development).
+	apiToken string
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -118,6 +122,7 @@ func NewServer(port, dataDir string) *Server {
 		logger:               NewLogger(os.Stdout),
 		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
 		personas:             newPersonaStore(dataDir),
+		apiToken:             os.Getenv("BOSS_API_TOKEN"),
 	}
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {
@@ -288,7 +293,7 @@ func (s *Server) Start() error {
 	}
 	s.port = ":" + strings.Split(listener.Addr().String(), ":")[len(strings.Split(listener.Addr().String(), ":"))-1]
 
-	s.httpServer = &http.Server{Handler: mux}
+	s.httpServer = &http.Server{Handler: securityHeadersMiddleware(s.authMiddleware(mux))}
 	s.running = true
 
 	go func() {
