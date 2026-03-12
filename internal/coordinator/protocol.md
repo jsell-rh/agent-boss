@@ -69,6 +69,17 @@ Use `check_messages` with the `since` cursor for efficient polling:
 2. Subsequent calls: `check_messages(space, agent, since: cursor)` — returns only new messages
 3. Empty `messages` array = no new messages
 
+**Unread vs read message fields — critical:**
+
+| State | `"read"` field | `"read_at"` field |
+|-------|---------------|-------------------|
+| **Unread** | **absent** (field does not exist in the object) | absent |
+| **Read** | `true` | RFC3339 timestamp string |
+
+> **Never grep for `"read": false`** — that string never appears in any response. Unread messages simply omit the `"read"` field entirely. Any attempt to filter by `"read": false` will silently match nothing and cause you to miss messages.
+
+The correct approach: call `check_messages` and act on every message in the returned array that you have not yet `ack_message`d. Do not try to filter the JSON file on disk — use the tool response directly.
+
 ### JSON Format Reference
 
 ```json
