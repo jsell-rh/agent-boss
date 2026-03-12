@@ -363,6 +363,12 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: agentName,
 				Repos:       spawnRepos,
+				EnvVars: func() map[string]string {
+					if s.apiToken == "" {
+						return nil
+					}
+					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+				}(),
 			},
 		}
 	} else {
@@ -599,6 +605,12 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 			Command: command,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: canonical,
+				EnvVars: func() map[string]string {
+					if s.apiToken == "" {
+						return nil
+					}
+					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+				}(),
 			},
 		}
 	} else {
