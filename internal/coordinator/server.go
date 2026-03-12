@@ -13,6 +13,8 @@ import (
 	"time"
 
 	bossdb "github.com/ambient/platform/components/boss/internal/coordinator/db"
+	sqliteadapter "github.com/ambient/platform/components/boss/internal/adapters/storage/sqlite"
+	"github.com/ambient/platform/components/boss/internal/domain/ports"
 )
 
 const (
@@ -69,6 +71,7 @@ type Server struct {
 	regMu         sync.RWMutex
 	journal        *EventJournal
 	repo           *bossdb.Repository // nil until Start() initialises the DB
+	storage        ports.StoragePort  // domain-layer storage port; wired in Start()
 	backends       map[string]SessionBackend
 	defaultBackend string
 	logger               Logger
@@ -206,6 +209,8 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// Wire the domain StoragePort adapter over the GORM repository.
+	s.storage = sqliteadapter.New(s.repo)
 	// With SQLite as the primary store, switch the event journal to in-memory
 	// ring buffer mode so no .events.jsonl files are written to disk.
 	// Each event is also persisted to SQLite for cross-restart durability.
