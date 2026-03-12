@@ -1387,6 +1387,12 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: req.Name,
 				Repos:       req.Repos,
+				EnvVars: func() map[string]string {
+					if s.apiToken == "" {
+						return nil
+					}
+					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+				}(),
 			},
 		}
 	} else {
