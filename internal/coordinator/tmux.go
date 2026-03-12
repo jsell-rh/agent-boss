@@ -244,6 +244,16 @@ func tmuxIsIdle(session string) bool {
 		return false
 	}
 
+	// Detect claude code exit: if the pane contains "Resume this session with:",
+	// claude has exited to the shell. The session is NOT in a usable idle state —
+	// returning false prevents check-in text from being sent to bash (where it
+	// would produce syntax errors). The restart loop will relaunch claude shortly.
+	for _, line := range lines {
+		if strings.Contains(line, "Resume this session with:") {
+			return false
+		}
+	}
+
 	// Check each of the last N non-empty lines for idle indicators.
 	for _, line := range lines {
 		if lineIsIdleIndicator(line) {
