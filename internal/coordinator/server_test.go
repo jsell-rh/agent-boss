@@ -4090,3 +4090,56 @@ func TestSpawnCommandFieldIgnoredInJSON(t *testing.T) {
 		t.Errorf("backend not decoded: got %q", req.Backend)
 	}
 }
+
+// TestSpaceNameCanonicalization verifies that space name lookups are case-insensitive
+// and do not create duplicate spaces for different-case names.
+func TestSpaceNameCanonicalization(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create space via mixed-case name.
+	postJSON(t, base+"/spaces/MySpace/agent/Bot", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Bot: ready",
+	})
+
+	// Read back via lower-case — should resolve to the same space.
+	code, body := getBody(t, base+"/spaces/myspace/agent/Bot")
+	if code != http.StatusOK {
+		t.Fatalf("lowercase lookup: expected 200, got %d: %s", code, body)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if ag.Summary != "Bot: ready" {
+		t.Errorf("summary = %q, want %q", ag.Summary, "Bot: ready")
+	}
+
+	// Post via upper-case — should not create a second space.
+	postJSON(t, base+"/spaces/MYSPACE/agent/Bot", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Bot: updated",
+	})
+
+	code, body = getBody(t, base+"/spaces")
+	if code != http.StatusOK {
+		t.Fatalf("list spaces: expected 200, got %d", code)
+	}
+	var summaries []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(body), &summaries); err != nil {
+		t.Fatalf("unmarshal spaces: %v", err)
+	}
+	count := 0
+	for _, sp := range summaries {
+		if strings.EqualFold(sp.Name, "myspace") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 space for 'myspace' (case-insensitive), got %d", count)
+	}
+}
