@@ -9,19 +9,21 @@ Any task that cannot be completed in a single focused session by a single agent 
 
 ## Definition: Non-Trivial Task
 
-The threshold is deliberately low — when in doubt, form a team. A task is non-trivial if it
-meets **any** of these criteria:
+The threshold is intentionally very low — when in doubt, form a team. The cost of
+under-staffing a task is higher than the cost of spawning one extra agent. A task is
+non-trivial if it meets **any** of these criteria:
 
-- Touches more than one file or component area
+- Requires more than one code change or affects more than one subsystem
+- Has any design decision that isn't already fully resolved
 - Has more than one distinct deliverable
 - Requires any research before implementation can begin
-- Has more than one acceptance criterion
 - Is a planning, spec, or design task (always non-trivial)
 - Would benefit from an independent review pass
-- Estimated effort exceeds ~30 minutes of focused work
+- Estimated effort exceeds ~15 minutes of focused work
 
-Solo work is appropriate only for tightly scoped leaf tasks: a single bug fix, a one-file
-documentation update, or a clearly-specified implementation with no design decisions.
+Solo work is appropriate only for single, atomic leaf tasks: a one-line fix with a known
+cause, a single-file documentation correction, or a fully-specified implementation with zero
+design decisions remaining.
 
 ## Required Team Roles
 

@@ -3,25 +3,41 @@
 **Status:** Draft
 **Owner:** ProtoSME (delegated from ProtocolMgr)
 
-## Hierarchy
+## Organizational Patterns
 
+Agent Boss does not enforce a specific org structure. Any arrangement that suits the work is
+valid. Common patterns:
+
+**Hierarchical team (complex, multi-subsystem work):**
 ```
 Boss (human)
-  └── CTO (top-level AI delegate)
+  └── CTO
         ├── ProtocolMgr → ProtoDev, ProtoSME
-        ├── DataMgr     → DataDev, DataSME
-        ├── FrontendMgr → FrontendDev, FrontendSME
-        ├── LifecycleMgr → LifecycleDev, LifecycleSME
-        └── QAMgr        → QADev, QASME
+        └── DataMgr     → DataDev, DataSME
 ```
 
-The hierarchy is registered in the coordinator via `parent=` in ignition. Dashboard renders it visually.
+**Flat contributor pool (independent tasks, no delegation needed):**
+```
+Boss (human)
+  ├── Agent-A
+  ├── Agent-B
+  └── Agent-C
+```
 
-> **Note:** This diagram reflects one common pattern (software development teams), not a
-> required template. Agent Boss supports any workflow — scientific research, customer support,
-> content pipelines, or anything else. Roles and team shapes are defined by the spawning agent
-> and the use case, not by the platform. The org structure also changes over time; treat the
-> ignition hierarchy as a starting point, not a permanent arrangement.
+**Single agent (well-scoped task):**
+```
+Boss (human)
+  └── Agent-A
+```
+
+The hierarchy is registered in the coordinator via `parent=` in ignition. The dashboard renders
+it visually. Org structure changes over time — treat the ignition hierarchy as a starting
+point, not a permanent arrangement.
+
+**Developer / independent contributor work is fully supported.** An agent does not need to be
+part of a management hierarchy to do valuable work. If you are spawned directly by the boss or
+by a peer for a well-defined task, work autonomously and report back when done. A formal
+manager layer is only needed when work is large enough to warrant decomposition and delegation.
 
 ## Leadership Responsibilities
 
@@ -115,7 +131,7 @@ Every task must have: an assignee, a parent (or be a root task), and a status th
 
 - Agents report status up (via messages and status updates)
 - Managers send decisions down (via task assignment and messages)
-- Peers coordinate laterally (via direct messages — allowed by default; manager can restrict specific interactions as an exception)
+- Peers coordinate laterally (via direct messages — always allowed; no pre-authorization required)
 
 ### 5. Context at the edge
 
