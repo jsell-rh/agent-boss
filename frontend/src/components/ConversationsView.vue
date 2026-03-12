@@ -15,7 +15,7 @@ import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
-import { relativeTime } from '@/composables/useTime'
+import { relativeTime, formatFullDate } from '@/composables/useTime'
 import api from '@/api/client'
 
 const props = defineProps<{
@@ -93,6 +93,14 @@ const filteredConversations = computed(() => {
     conv.participants.some(p => p.toLowerCase().includes(q)),
   )
 })
+
+const bossConversations = computed(() =>
+  filteredConversations.value.filter(c => c.participants.includes('boss')),
+)
+
+const agentConversations = computed(() =>
+  filteredConversations.value.filter(c => !c.participants.includes('boss')),
+)
 
 // selectedConversation — includes virtual entry for preselectAgent with no history
 const selectedConversation = computed((): Conversation | null => {
@@ -467,8 +475,13 @@ watch(composeRecipient, async (agent) => {
           </button>
         </div>
 
-        <ul v-else class="py-1" role="listbox" aria-label="Conversation list">
-          <li v-for="conv in filteredConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
+        <div v-else class="py-1" role="listbox" aria-label="Conversation list">
+          <!-- With Boss group -->
+          <div v-if="bossConversations.length > 0">
+            <div class="px-3 pt-2 pb-1">
+              <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">With Boss</span>
+            </div>
+            <div v-for="conv in bossConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
             <button
               class="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               :class="{ 'bg-muted': selectedKey === conv.key }"
@@ -551,8 +564,71 @@ watch(composeRecipient, async (agent) => {
                 </p>
               </div>
             </button>
-          </li>
-        </ul>
+            </div>
+          </div>
+          <!-- Agent conversations group -->
+          <div v-if="agentConversations.length > 0">
+            <div class="px-3 pb-1 border-t border-border/50 mt-1" :class="bossConversations.length > 0 ? 'pt-3' : 'pt-2'">
+              <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Agent Conversations</span>
+            </div>
+            <div v-for="conv in agentConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
+              <button
+                class="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                :class="{ 'bg-muted': selectedKey === conv.key }"
+                @click="selectedKey = conv.key"
+              >
+                <div class="relative shrink-0 w-9 h-9 mt-0.5" @click.stop>
+                  <AgentProfileCard
+                    :agent-name="conv.participants[0]"
+                    :agent="space.agents[conv.participants[0]]"
+                    :space-name="space.name"
+                    @select-agent="goToAgentDetail($event)"
+                  >
+                    <button
+                      class="absolute top-0 left-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      :aria-label="`View ${conv.participants[0]} details`"
+                      @click="openSlideover(conv.participants[0])"
+                    >
+                      <AgentAvatar :name="conv.participants[0]" :size="26" />
+                    </button>
+                  </AgentProfileCard>
+                  <AgentProfileCard
+                    :agent-name="conv.participants[1]"
+                    :agent="space.agents[conv.participants[1]]"
+                    :space-name="space.name"
+                    @select-agent="goToAgentDetail($event)"
+                  >
+                    <button
+                      class="absolute bottom-0 right-0 rounded-full ring-2 ring-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      :aria-label="`View ${conv.participants[1]} details`"
+                      @click="openSlideover(conv.participants[1])"
+                    >
+                      <AgentAvatar :name="conv.participants[1]" :size="22" />
+                    </button>
+                  </AgentProfileCard>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1 justify-between">
+                    <span class="text-sm font-medium truncate">
+                      {{ conv.participants[0] }} ↔ {{ conv.participants[1] }}
+                    </span>
+                    <time :datetime="conv.lastMessageAt" class="text-xs text-muted-foreground shrink-0">
+                      {{ formatRelativeTime(conv.lastMessageAt) }}
+                    </time>
+                  </div>
+                  <p v-if="conv.messages.length > 0" class="text-xs text-muted-foreground truncate mt-0.5">
+                    <span class="font-medium">{{ conv.messages[conv.messages.length - 1]!.sender }}:</span>
+                    {{ conv.messages[conv.messages.length - 1]!.message }}
+                  </p>
+                  <p class="text-xs text-muted-foreground/70 mt-0.5">
+                    {{ conv.messages.length }}
+                    {{ conv.messages.length === 1 ? 'message' : 'messages' }}
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
       </ScrollArea>
     </aside>
 
@@ -622,7 +698,8 @@ watch(composeRecipient, async (agent) => {
 
               <!-- Message row -->
               <div
-                class="flex items-start gap-2.5 mt-3"
+                class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors"
+                :class="msg.recipient === 'boss' && !msg.read ? 'bg-primary/5 -mx-2 px-2' : ''"
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
               >
@@ -668,12 +745,17 @@ watch(composeRecipient, async (agent) => {
                         >{{ msg.recipient }}</button>
                       </AgentProfileCard>
                     </span>
-                    <time
-                      :datetime="msg.timestamp"
-                      class="text-xs text-muted-foreground ml-auto"
-                    >
-                      {{ new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                    </time>
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <time
+                          :datetime="msg.timestamp"
+                          class="text-xs text-muted-foreground ml-auto cursor-default"
+                        >
+                          {{ relativeTime(msg.timestamp) }}
+                        </time>
+                      </TooltipTrigger>
+                      <TooltipContent>{{ formatFullDate(msg.timestamp) }}</TooltipContent>
+                    </Tooltip>
                   </div>
                   <!-- Priority badge -->
                   <div v-if="msg.priority && msg.priority !== 'info'" class="mb-1">

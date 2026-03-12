@@ -116,7 +116,8 @@ type TmuxCreateOpts struct {
 	WorkDir              string // working directory to cd into before launching
 	Width                int    // terminal width (default 220)
 	Height               int    // terminal height (default 50)
-	MCPServerURL         string // if set, run "claude mcp add boss-mcp" before launching
+	MCPServerURL         string // if set, run "claude mcp add" before launching
+	MCPServerName        string // MCP server name (e.g. "boss-mcp", "boss-mcp-8889"); defaults to "boss-mcp"
 	AllowSkipPermissions bool   // if true, append --dangerously-skip-permissions to command
 }
 

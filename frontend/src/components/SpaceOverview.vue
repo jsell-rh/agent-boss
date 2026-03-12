@@ -79,6 +79,7 @@ const emit = defineEmits<{
   'delete-space': []
   'archive-space': []
   'clear-done-agents': [names: string[]]
+  'open-personas': []
 }>()
 
 // Persona version tracking for outdated badge
@@ -1240,6 +1241,7 @@ const activeSections = computed(() => [
         v-model:open="agentCreateDialogOpen"
         :space="space.name"
         @created="() => {}"
+        @open-personas="emit('open-personas')"
       />
     </div>
   </ScrollArea>

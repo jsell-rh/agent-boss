@@ -428,7 +428,7 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceNam
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	setCORSOriginHeader(w, r)
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 

@@ -726,7 +726,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("**You are running autonomously. There is no human at this terminal.**\n\n")
 	b.WriteString("- You do NOT have a conversational partner. Do not ask questions or wait for confirmation.\n")
 	b.WriteString("- Messages from other agents or the boss are **instructions to act on immediately**.\n")
-	b.WriteString("- You interact with the coordinator using your **boss-mcp tools** (described below).\n")
+	b.WriteString(fmt.Sprintf("- You interact with the coordinator using your **%s tools** (described below).\n", s.mcpServerName()))
 	b.WriteString("- When you receive a new task via messages, **start working on it immediately**.\n")
 	b.WriteString("- If you need a decision, use `send_message` to your manager and continue working on what you can.\n")
 	b.WriteString("- When your task is done, use `post_status` with status `\"done\"` and await new messages.\n")
@@ -740,8 +740,9 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## MCP Tools (boss-mcp)\n\n")
-	b.WriteString("You have **boss-mcp** tools available. Use these for ALL coordinator interactions:\n\n")
+	mcpName := s.mcpServerName()
+	b.WriteString(fmt.Sprintf("## MCP Tools (%s)\n\n", mcpName))
+	b.WriteString(fmt.Sprintf("You have **%s** tools available. Use these for ALL coordinator interactions:\n\n", mcpName))
 	b.WriteString("| Tool | Purpose |\n")
 	b.WriteString("| ---- | ------- |\n")
 	b.WriteString("| `post_status` | Report your current status, branch, PR, progress |\n")
@@ -1402,6 +1403,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				Width:                req.Width,
 				Height:               req.Height,
 				MCPServerURL:         s.localURL(),
+				MCPServerName:        s.mcpServerName(),
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}

@@ -23,6 +23,7 @@ import { Separator } from '@/components/ui/separator'
 import AgentAvatar from './AgentAvatar.vue'
 import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock, X } from 'lucide-vue-next'
 import { relativeTime } from '@/composables/useTime'
+import { renderMarkdown } from '@/lib/markdown'
 
 const props = defineProps<{
   task: Task | null
@@ -375,7 +376,7 @@ async function setDueDate(value: string) {
           <!-- Description -->
           <div v-if="task.description" class="flex flex-col gap-1.5">
             <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Description</span>
-            <p class="text-sm text-foreground/80 whitespace-pre-wrap">{{ task.description }}</p>
+            <div class="text-sm text-foreground/80 md-content" v-html="renderMarkdown(task.description)" />
           </div>
 
           <!-- Labels -->
@@ -512,7 +513,7 @@ async function setDueDate(value: string) {
                     <span class="text-xs font-medium">{{ comment.author }}</span>
                     <span class="text-[10px] text-muted-foreground">{{ relativeTime(comment.created_at) }}</span>
                   </div>
-                  <p class="text-sm text-foreground/80 whitespace-pre-wrap">{{ comment.body }}</p>
+                  <div class="text-sm text-foreground/80 md-content" v-html="renderMarkdown(comment.body)" />
                 </div>
               </div>
             </div>

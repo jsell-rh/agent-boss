@@ -97,6 +97,7 @@ func (s *Server) buildMCPHandler() http.Handler {
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		text := strings.ReplaceAll(protocolTemplate, "{COORDINATOR_URL}", s.localURL())
+		text = strings.ReplaceAll(text, "{MCP_NAME}", s.mcpServerName())
 		return &mcp.ReadResourceResult{
 			Contents: []*mcp.ResourceContents{
 				{
@@ -154,7 +155,7 @@ func (s *Server) buildMCPHandler() http.Handler {
 
 	// Wrap with CORS headers so browser-based and cross-origin MCP clients can connect.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		setCORSOriginHeader(w, r)
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID")
 		w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")

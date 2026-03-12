@@ -22,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean]
   created: [agentName: string]
+  'open-personas': []
 }>()
 
 const agentName = ref('')
@@ -235,12 +236,22 @@ async function submit() {
           </p>
         </div>
 
-        <!-- Persona selector (shown only when personas exist) -->
-        <div v-if="personas.length > 0" class="flex flex-col gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Personas (optional)
-          </label>
-          <div class="flex flex-wrap gap-1.5">
+        <!-- Persona selector — shown when personas exist; quick-link shown when none -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Personas (optional)
+            </label>
+            <button
+              v-if="personas.length === 0"
+              type="button"
+              class="text-xs text-primary hover:underline"
+              @click="emit('open-personas')"
+            >
+              + Create persona
+            </button>
+          </div>
+          <div v-if="personas.length > 0" class="flex flex-wrap gap-1.5">
             <button
               v-for="persona in personas"
               :key="persona.id"
@@ -256,8 +267,9 @@ async function submit() {
             >
               {{ persona.name }}
             </button>
+            <p class="text-xs text-muted-foreground w-full">Prompt fragments injected into the agent on spawn.</p>
           </div>
-          <p class="text-xs text-muted-foreground">Prompt fragments injected into the agent on spawn.</p>
+          <p v-else class="text-xs text-muted-foreground">No personas yet. Create one to inject reusable prompts into agents.</p>
         </div>
 
         <p v-if="errorMsg" class="text-xs text-destructive">{{ errorMsg }}</p>

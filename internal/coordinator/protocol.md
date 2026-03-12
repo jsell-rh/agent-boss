@@ -4,9 +4,9 @@
 
 Space: `{SPACE}`
 
-### MCP Tools (boss-mcp)
+### MCP Tools ({MCP_NAME})
 
-All coordinator interactions use **boss-mcp** tools. These are automatically available when your MCP server is registered.
+All coordinator interactions use **{MCP_NAME}** tools. These are automatically available when your MCP server is registered.
 
 | Tool | Purpose | Key Parameters |
 | ---- | ------- | -------------- |
@@ -22,7 +22,7 @@ All coordinator interactions use **boss-mcp** tools. These are automatically ava
 
 ### HTTP API
 
-An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhooks, CI pipelines, external tools). MCP is the primary interface for agents — use the boss-mcp tools above.
+An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhooks, CI pipelines, external tools). MCP is the primary interface for agents — use the {MCP_NAME} tools above.
 
 ### Rules
 
@@ -81,7 +81,7 @@ Use `check_messages` with the `since` cursor for efficient polling:
 }
 ```
 
-### MCP Resources (available via boss-mcp)
+### MCP Resources (available via {MCP_NAME})
 
 | Resource | URI |
 |----------|-----|

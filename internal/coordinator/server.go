@@ -13,6 +13,8 @@ import (
 	"time"
 
 	bossdb "github.com/ambient/platform/components/boss/internal/coordinator/db"
+	sqliteadapter "github.com/ambient/platform/components/boss/internal/adapters/storage/sqlite"
+	"github.com/ambient/platform/components/boss/internal/domain/ports"
 )
 
 const (
@@ -69,6 +71,7 @@ type Server struct {
 	regMu         sync.RWMutex
 	journal        *EventJournal
 	repo           *bossdb.Repository // nil until Start() initialises the DB
+	storage        ports.StoragePort  // domain-layer storage port; wired in Start()
 	backends       map[string]SessionBackend
 	defaultBackend string
 	logger               Logger
@@ -82,6 +85,10 @@ type Server struct {
 	// Keyed by "space/agent" (lowercase). LoadOrStore guards the TOCTOU window
 	// between SessionExists() and CreateSession().
 	spawnInProgress sync.Map
+	// apiToken is the value of BOSS_API_TOKEN. When non-empty, all mutating
+	// HTTP requests must carry "Authorization: Bearer <token>". When empty the
+	// server runs in open mode (backward compatible for local development).
+	apiToken string
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -118,6 +125,7 @@ func NewServer(port, dataDir string) *Server {
 		logger:               NewLogger(os.Stdout),
 		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
 		personas:             newPersonaStore(dataDir),
+		apiToken:             os.Getenv("BOSS_API_TOKEN"),
 	}
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {
@@ -201,6 +209,8 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// Wire the domain StoragePort adapter over the GORM repository.
+	s.storage = sqliteadapter.New(s.repo)
 	// With SQLite as the primary store, switch the event journal to in-memory
 	// ring buffer mode so no .events.jsonl files are written to disk.
 	// Each event is also persisted to SQLite for cross-restart durability.
@@ -288,7 +298,7 @@ func (s *Server) Start() error {
 	}
 	s.port = ":" + strings.Split(listener.Addr().String(), ":")[len(strings.Split(listener.Addr().String(), ":"))-1]
 
-	s.httpServer = &http.Server{Handler: mux}
+	s.httpServer = &http.Server{Handler: securityHeadersMiddleware(s.authMiddleware(mux))}
 	s.running = true
 
 	go func() {
@@ -315,6 +325,22 @@ func (s *Server) Start() error {
 func (s *Server) localURL() string {
 	port := strings.TrimPrefix(s.port, ":")
 	return "http://" + s.host + ":" + port
+}
+
+// mcpServerName returns a unique MCP server name for this instance.
+// Default (localhost:8899) → "boss-mcp" (unchanged for backwards compat).
+// Non-default port on localhost → "boss-mcp-{port}".
+// Non-localhost host → "boss-mcp-{host}-{port}".
+func (s *Server) mcpServerName() string {
+	port := strings.TrimPrefix(s.port, ":")
+	isDefaultHost := s.host == "localhost" || s.host == "127.0.0.1" || s.host == ""
+	if isDefaultHost && port == "8899" {
+		return "boss-mcp"
+	}
+	if isDefaultHost {
+		return "boss-mcp-" + port
+	}
+	return "boss-mcp-" + s.host + "-" + port
 }
 
 func (s *Server) Stop() error {

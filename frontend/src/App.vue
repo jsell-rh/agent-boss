@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { SpaceSummary, KnowledgeSpace, SessionAgentStatus, AgentUpdate, HierarchyTree, HierarchyNode } from '@/types'
-import { api } from '@/api/client'
+import { api, authRequired, setStoredToken } from '@/api/client'
 import { useSSE } from '@/composables/useSSE'
 
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
@@ -19,6 +19,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SpaceOverview from '@/components/SpaceOverview.vue'
 import AgentDetail from '@/components/AgentDetail.vue'
@@ -31,6 +37,7 @@ import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
+import { notifyBossMessage } from '@/composables/useNotifications'
 
 const { theme, toggle: toggleTheme } = useTheme()
 
@@ -53,11 +60,23 @@ const broadcasting = ref(false)
 const restartAllProgress = ref<{ agents: string[]; completed: number } | null>(null)
 
 const sse = useSSE()
+
+// ── Auth token dialog ─────────────────────────────────────────────
+const tokenDialogInput = ref('')
+function saveTokenFromDialog() {
+  setStoredToken(tokenDialogInput.value.trim())
+  authRequired.value = false
+  tokenDialogInput.value = ''
+}
 const eventLogRef = ref<InstanceType<typeof EventLog> | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // ── Component refs ──────────────────────────────────────────────────
 const sidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null)
+
+// ── Global overlay drawers (Personas / Settings) ────────────────────
+const personasDrawerOpen = ref(false)
+const settingsDrawerOpen = ref(false)
 
 // ── Keyboard shortcut state ────────────────────────────────────────
 const showHelpOverlay = ref(false)
@@ -95,8 +114,10 @@ const showConversations = computed(() =>
 )
 
 const showKanban = computed(() => route.name === 'kanban')
-const showPersonas = computed(() => route.name === 'personas')
-const showSettings = computed(() => route.name === 'settings')
+// These are now drawer-based — the route handler below opens the drawer
+// and redirects back, so these computed values stay false in the main content
+const showPersonas = computed(() => false)
+const showSettings = computed(() => false)
 
 // Pending decision count across all agents in current space
 const pendingDecisionCount = computed(() => {
@@ -259,12 +280,42 @@ async function loadSessionStatus(space: string) {
 
 // ── Selection handlers (via router) ────────────────────────────────
 function handleSelectSpace(name: string) {
-  router.push('/' + name + '/kanban')
+  // Day 0: no agents → show overview with empty state CTAs
+  // Day 2: has agents → default to kanban
+  const spaceSummary = spaces.value.find(s => s.name === name)
+  const hasAgents = (spaceSummary?.agent_count ?? 0) > 0
+  router.push(hasAgents ? '/' + name + '/kanban' : '/' + name)
 }
 
 function handleSelectAgent(name: string) {
   router.push('/' + selectedSpace.value + '/' + name)
 }
+
+// ── Intercept /personas and /settings routes → open drawer overlay ──
+// The routes still exist in the router for back-compat, but instead of
+// rendering a full page, we open the global settings drawer and navigate back.
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'personas') {
+      personasDrawerOpen.value = true
+      // Navigate back to space (or home) so the space view stays visible behind the drawer
+      if (selectedSpace.value) {
+        router.replace('/' + selectedSpace.value)
+      } else {
+        router.replace('/')
+      }
+    } else if (name === 'settings') {
+      settingsDrawerOpen.value = true
+      if (selectedSpace.value) {
+        router.replace('/' + selectedSpace.value)
+      } else {
+        router.replace('/')
+      }
+    }
+  },
+  { immediate: true },
+)
 
 // ── Watch route params for data loading & SSE ──────────────────────
 watch(
@@ -658,6 +709,10 @@ function setupSSE() {
     if (selectedSpace.value && selectedSpace.value === data.space) {
       loadSpace(selectedSpace.value)
     }
+    // Notify boss when a message is directed to them
+    if (data.agent === 'boss') {
+      notifyBossMessage(data.sender, data.space)
+    }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })
 
@@ -888,6 +943,8 @@ onUnmounted(() => {
         @delete-space="handleDeleteSpace"
         @create-space="handleCreateSpace"
         @archive-space="handleArchiveSpace"
+        @open-personas="personasDrawerOpen = true"
+        @open-settings="settingsDrawerOpen = true"
       />
       <SidebarInset class="flex flex-col h-dvh">
         <!-- Header -->
@@ -1090,12 +1147,6 @@ onUnmounted(() => {
             @select-agent="handleSelectAgent"
           />
 
-          <!-- Personas management view -->
-          <PersonasView v-else-if="showPersonas" />
-
-          <!-- Settings view -->
-          <SettingsView v-else-if="showSettings" />
-
           <!-- Space overview -->
           <SpaceOverview
             v-else-if="currentSpace"
@@ -1113,6 +1164,7 @@ onUnmounted(() => {
             @delete-space="handleDeleteSpace(selectedSpace)"
             @archive-space="handleArchiveSpace(selectedSpace)"
             @clear-done-agents="handleClearDoneAgents"
+            @open-personas="personasDrawerOpen = true"
           />
 
           <!-- Empty state -->
@@ -1219,6 +1271,52 @@ onUnmounted(() => {
           <Button size="sm" :disabled="!kbMessageText.trim() || kbMessageSending" @click="handleKbSendMessage">
             {{ kbMessageSending ? 'Sending…' : 'Send' }}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Personas global overlay drawer -->
+    <Sheet v-model:open="personasDrawerOpen">
+      <SheetContent side="right" class="w-full sm:max-w-2xl p-0 flex flex-col">
+        <SheetHeader class="px-6 pt-6 pb-0 shrink-0">
+          <SheetTitle>Personas</SheetTitle>
+        </SheetHeader>
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <PersonasView />
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    <!-- Settings global overlay drawer -->
+    <Sheet v-model:open="settingsDrawerOpen">
+      <SheetContent side="right" class="w-full sm:max-w-lg p-0 flex flex-col">
+        <SheetHeader class="px-6 pt-6 pb-0 shrink-0">
+          <SheetTitle>Settings</SheetTitle>
+        </SheetHeader>
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <SettingsView />
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    <!-- Auth token dialog (TASK-011) -->
+    <Dialog :open="authRequired" @update:open="val => { if (!val) authRequired = false }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Authentication Required</DialogTitle>
+          <DialogDescription>Enter your BOSS_API_TOKEN to continue. The token is stored in localStorage.</DialogDescription>
+        </DialogHeader>
+        <div class="flex flex-col gap-3 py-2">
+          <input
+            v-model="tokenDialogInput"
+            type="password"
+            placeholder="Paste token here…"
+            class="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            @keydown.enter="saveTokenFromDialog"
+          />
+        </div>
+        <DialogFooter>
+          <Button size="sm" :disabled="!tokenDialogInput.trim()" @click="saveTokenFromDialog">Save Token</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
