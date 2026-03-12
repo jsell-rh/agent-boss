@@ -3979,3 +3979,55 @@ func TestConcurrentSpawnSameAgentRace(t *testing.T) {
 	// when n > 1 goroutines race. (Exact count depends on scheduling timing.)
 	t.Logf("%d/%d concurrent spawns rejected as 'already in progress'", inProgress, n)
 }
+
+// TestBackendByNameUnknownReturnsError verifies that backendByName returns an
+// explicit error for an unconfigured backend instead of silently falling back
+// to the default (TASK-134).
+func TestBackendByNameUnknownReturnsError(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	// "ambient" is not configured in test servers (no AMBIENT_API_URL env var).
+	b, err := srv.backendByName("ambient")
+	if err == nil {
+		t.Errorf("expected error for unconfigured backend, got backend %q", b.Name())
+	}
+	if !strings.Contains(err.Error(), "ambient") {
+		t.Errorf("expected error to mention backend name, got: %v", err)
+	}
+
+	// Empty name should always succeed (selects default).
+	b, err = srv.backendByName("")
+	if err != nil {
+		t.Errorf("expected no error for empty name (use default), got: %v", err)
+	}
+	if b == nil {
+		t.Error("expected a backend for empty name, got nil")
+	}
+
+	// Known backend "tmux" should succeed.
+	b, err = srv.backendByName("tmux")
+	if err != nil {
+		t.Errorf("expected no error for 'tmux' backend, got: %v", err)
+	}
+	if b == nil || b.Name() != "tmux" {
+		t.Errorf("expected tmux backend, got %v", b)
+	}
+}
+
+// TestSpawnUnknownBackendReturns400 verifies that POST /agent/{name}/spawn
+// with an unknown backend name surfaces a 400 response (TASK-134).
+func TestSpawnUnknownBackendReturns400(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	resp := postJSON(t, base+"/spaces/badbackend-test/agent/bot1/spawn", map[string]any{
+		"backend": "nonexistent-backend",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 400 for unknown backend, got %d: %s", resp.StatusCode, body)
+	}
+}

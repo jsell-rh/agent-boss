@@ -320,7 +320,10 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	}
 	_ = spawnPersonas // personas are embedded in buildIgnitionText
 
-	backend := s.backendByName(req.Backend)
+	backend, err := s.backendByName(req.Backend)
+	if err != nil {
+		return "", "", "", &lifecycleErr{StatusCode: http.StatusBadRequest, Msg: err.Error()}
+	}
 	sessionName := req.SessionID
 	if sessionName == "" {
 		sessionName = tmuxDefaultSession(spaceName, agentName)

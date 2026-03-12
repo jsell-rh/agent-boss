@@ -235,8 +235,10 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 
 		// Cascade: kill the backing session if one exists.
 		if sessionID != "" {
-			backend := s.backendByName(backendType)
-			if backend != nil {
+			backend, backendErr := s.backendByName(backendType)
+			if backendErr != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] warning: cascade delete skipped: %v", spaceName, canonical, backendErr))
+			} else {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				if err := backend.KillSession(ctx, sessionID); err != nil {
 					s.logEvent(fmt.Sprintf("[%s/%s] warning: cascade delete session %s: %v", spaceName, canonical, sessionID, err))
@@ -1045,8 +1047,8 @@ func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request
 			Registered: p.session != "",
 		}
 		if st.Registered {
-			backend := s.backendByName(p.backendType)
-			if backend.Available() {
+			backend, _ := s.backendByName(p.backendType)
+			if backend != nil && backend.Available() {
 				st.Exists = backend.SessionExists(p.session)
 				if st.Exists {
 					st.Idle = backend.IsIdle(p.session)
@@ -1370,9 +1372,9 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		backendName = "tmux"
 	}
 
-	backend := s.backendByName(backendName)
-	if backend == nil {
-		writeJSONError(w, fmt.Sprintf("unknown backend %q", backendName), http.StatusBadRequest)
+	backend, err := s.backendByName(backendName)
+	if err != nil {
+		writeJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

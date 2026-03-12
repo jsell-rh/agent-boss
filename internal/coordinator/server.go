@@ -158,15 +158,18 @@ func (s *Server) Port() string {
 	return s.port
 }
 
-// backendByName returns the SessionBackend with the given name,
-// falling back to the default backend if not found.
-func (s *Server) backendByName(name string) SessionBackend {
-	if name != "" {
-		if b, ok := s.backends[name]; ok {
-			return b
-		}
+// backendByName returns the SessionBackend registered under name.
+// An empty name selects the server default. A non-empty name that is not
+// registered returns a descriptive error instead of silently falling back,
+// so callers can surface a clear HTTP response to the client.
+func (s *Server) backendByName(name string) (SessionBackend, error) {
+	if name == "" {
+		return s.backends[s.defaultBackend], nil
 	}
-	return s.backends[s.defaultBackend]
+	if b, ok := s.backends[name]; ok {
+		return b, nil
+	}
+	return nil, fmt.Errorf("backend %q is not configured on this server", name)
 }
 
 // backendFor returns the SessionBackend for the given agent.

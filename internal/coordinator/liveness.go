@@ -53,7 +53,12 @@ func (s *Server) checkAllSessionLiveness() {
 	}
 	spaceResults := make(map[string][]statusEntry)
 	for _, p := range probes {
-		backend := s.backendByName(p.backendType)
+		backend, err := s.backendByName(p.backendType)
+		if err != nil {
+			s.emit(DomainEvent{Level: LevelWarn, EventType: EventServerError, Space: p.space, Agent: p.agent,
+				Msg: fmt.Sprintf("liveness: %v", err)})
+			continue
+		}
 		if !backend.Available() {
 			continue
 		}

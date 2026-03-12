@@ -561,7 +561,11 @@ func (s *Server) BroadcastCheckIn(spaceName, checkModel, workModel string) *Broa
 
 	var wg sync.WaitGroup
 	for i, t := range targets {
-		backend := s.backendByName(t.backendType)
+		backend, err := s.backendByName(t.backendType)
+		if err != nil {
+			result.addSkipped(t.agentName + " (" + err.Error() + ")")
+			continue
+		}
 		if !backend.Available() {
 			result.addSkipped(t.agentName + " (backend " + backend.Name() + " unavailable)")
 			continue

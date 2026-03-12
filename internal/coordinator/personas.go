@@ -532,9 +532,9 @@ func (s *Server) handlePersonaRestartOutdated(w http.ResponseWriter, r *http.Req
 			errors = append(errors, fmt.Sprintf("%s/%s: no session", t.Space, t.Agent))
 			continue
 		}
-		backend := s.backendByName(t.Backend)
-		if backend == nil {
-			errors = append(errors, fmt.Sprintf("%s/%s: backend not available", t.Space, t.Agent))
+		backend, err := s.backendByName(t.Backend)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s/%s: %v", t.Space, t.Agent, err))
 			continue
 		}
 		// Re-pin persona versions before restart.
