@@ -1337,7 +1337,6 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 type createAgentRequest struct {
 	Name           string `json:"name"`
 	WorkDir        string `json:"work_dir,omitempty"`
-	Command        string `json:"command,omitempty"`
 	Backend        string `json:"backend,omitempty"` // "tmux" (default) or "ambient"
 	Width          int    `json:"width,omitempty"`
 	Height         int    `json:"height,omitempty"`
@@ -1380,14 +1379,10 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 
 	var createOpts SessionCreateOpts
 	if backend.Name() == "ambient" {
-		command := req.Task
-		if command == "" {
-			command = req.Command
-		}
 		sessionName := tmuxDefaultSession(spaceName, req.Name)
 		createOpts = SessionCreateOpts{
 			SessionID: sessionName,
-			Command:   command,
+			Command:   req.Task,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: req.Name,
 				Repos:       req.Repos,
@@ -1395,8 +1390,8 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 		}
 	} else {
 		sessionName := tmuxDefaultSession(spaceName, req.Name)
-		spawnCommand := req.Command
-		if s.allowSkipPermissions && spawnCommand == "" {
+		spawnCommand := ""
+		if s.allowSkipPermissions {
 			spawnCommand = "claude --dangerously-skip-permissions"
 		}
 		createOpts = SessionCreateOpts{
@@ -1475,7 +1470,9 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				return
 			}
 		} else {
-			time.Sleep(5 * time.Second)
+			if err := waitForIdle(sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] create: timed out waiting for idle before ignite: %v — sending anyway", spaceName, agentNameForIgnite, err))
+			}
 		}
 		// Send plain-text ignition prompt directly — no slash command required.
 		s.mu.RLock()

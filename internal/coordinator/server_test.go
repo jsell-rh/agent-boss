@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -4029,5 +4030,63 @@ func TestSpawnUnknownBackendReturns400(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("expected 400 for unknown backend, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+// TestSpawnRequestHasNoCommandField verifies that the spawnRequest struct does
+// not accept a "command" field from callers, closing the arbitrary command
+// injection vector (TASK-136).
+func TestSpawnRequestHasNoCommandField(t *testing.T) {
+	// Verify at the type level: spawnRequest must not have a Command field.
+	// reflect.TypeOf is evaluated at compile time; any re-introduction of the
+	// field will cause the test to fail immediately.
+	rt := reflect.TypeOf(spawnRequest{})
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if strings.EqualFold(f.Name, "command") {
+			t.Errorf("spawnRequest must not have a Command field (TASK-136 security fix): found field %q", f.Name)
+		}
+		// Also check the json tag.
+		tag := f.Tag.Get("json")
+		if tag == "command" || strings.HasPrefix(tag, "command,") {
+			t.Errorf("spawnRequest must not expose a 'command' json field: found tag %q on field %q", tag, f.Name)
+		}
+	}
+}
+
+// TestCreateAgentRequestHasNoCommandField verifies that createAgentRequest also
+// does not accept a "command" field, preventing the same injection vector via
+// POST /spaces/{space}/agents (TASK-136).
+func TestCreateAgentRequestHasNoCommandField(t *testing.T) {
+	rt := reflect.TypeOf(createAgentRequest{})
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if strings.EqualFold(f.Name, "command") {
+			t.Errorf("createAgentRequest must not have a Command field (TASK-136 security fix): found field %q", f.Name)
+		}
+		tag := f.Tag.Get("json")
+		if tag == "command" || strings.HasPrefix(tag, "command,") {
+			t.Errorf("createAgentRequest must not expose a 'command' json field: found tag %q on field %q", tag, f.Name)
+		}
+	}
+}
+
+// TestSpawnCommandFieldIgnoredInJSON verifies that even if a caller sends
+// "command" in a spawn JSON body, it is silently ignored and does not influence
+// session creation (TASK-136).
+func TestSpawnCommandFieldIgnoredInJSON(t *testing.T) {
+	// Decode a JSON body that includes "command" into a spawnRequest.
+	// The field should be dropped (Go ignores unknown json fields by default).
+	body := `{"session_id":"sid1","command":"rm -rf /","backend":"tmux"}`
+	var req spawnRequest
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Command field is gone from the struct; session_id and backend should survive.
+	if req.SessionID != "sid1" {
+		t.Errorf("session_id not decoded: got %q", req.SessionID)
+	}
+	if req.Backend != "tmux" {
+		t.Errorf("backend not decoded: got %q", req.Backend)
 	}
 }

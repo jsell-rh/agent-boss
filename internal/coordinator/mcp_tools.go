@@ -974,7 +974,6 @@ func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space":           prop("string", "The workspace name"),
 			"name":            prop("string", "The agent name to spawn"),
-			"command":         prop("string", "Command to run (default: claude or claude --dangerously-skip-permissions based on server setting)"),
 			"work_dir":        prop("string", "Working directory for the session"),
 			"initial_message": prop("string", "First message to deliver to the agent after spawn"),
 			"parent":          prop("string", "Parent agent name (sets hierarchy relationship)"),
@@ -992,7 +991,6 @@ func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 		}
 
 		spawnReq := spawnRequest{
-			Command:        strArg(args, "command"),
 			InitialMessage: strArg(args, "initial_message"),
 			TaskID:         strArg(args, "task_id"),
 		}

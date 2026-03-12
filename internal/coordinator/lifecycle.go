@@ -100,7 +100,6 @@ func (s *Server) checkStaleness() {
 // spawnRequest is the optional body for POST /spaces/{space}/agent/{name}/spawn.
 type spawnRequest struct {
 	SessionID      string `json:"session_id,omitempty"`      // defaults to agent name
-	Command        string `json:"command,omitempty"`         // defaults to "claude"; --dangerously-skip-permissions applied via global server toggle
 	Width          int    `json:"width,omitempty"`           // tmux window width, default 220
 	Height         int    `json:"height,omitempty"`          // tmux window height, default 50
 	Backend        string `json:"backend,omitempty"`         // "tmux" (default) or "ambient"
@@ -296,7 +295,11 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	}
 	defer s.spawnInProgress.Delete(spawnKey)
 
-	// Apply AgentConfig defaults (unless overridden in req body).
+	// Apply AgentConfig defaults. The command is intentionally NOT read from
+	// req.Command — callers cannot specify an arbitrary command to execute.
+	// The only valid command sources are: stored AgentConfig.Command (set by
+	// admins via the config API) and the server-side allowSkipPermissions toggle.
+	var spawnCommand string
 	var spawnWorkDir string
 	var spawnRepos []SessionRepo
 	var spawnInitialPrompt string
@@ -308,8 +311,8 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 			if req.Backend == "" && cfg.Backend != "" {
 				req.Backend = cfg.Backend
 			}
-			if req.Command == "" && cfg.Command != "" {
-				req.Command = cfg.Command
+			if cfg.Command != "" {
+				spawnCommand = cfg.Command
 			}
 			spawnWorkDir = cfg.WorkDir
 			spawnRepos = cfg.Repos
@@ -349,7 +352,6 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	}
 
 	ctx := context.Background()
-	spawnCommand := req.Command
 	if backend.Name() == "tmux" && s.allowSkipPermissions && spawnCommand == "" {
 		spawnCommand = "claude --dangerously-skip-permissions"
 	}
@@ -357,7 +359,7 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	if backend.Name() == "ambient" {
 		createOpts = SessionCreateOpts{
 			SessionID: sessionName,
-			Command:   req.Command,
+			Command:   spawnCommand,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: agentName,
 				Repos:       spawnRepos,
@@ -442,7 +444,14 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 				return
 			}
 		} else {
-			time.Sleep(5 * time.Second)
+			// Poll for Claude Code's idle prompt instead of a fixed sleep.
+			// A 5-second sleep is unreliable: startup time varies with MCP
+			// registration and first-run config. Text sent before the prompt
+			// appears goes to the shell and is silently dropped.
+			if err := waitForIdle(sessionID, 60*time.Second); err != nil {
+				s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+					Msg: fmt.Sprintf("spawn: timed out waiting for idle before ignite: %v — sending anyway", err)})
+			}
 		}
 		s.mu.RLock()
 		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)
@@ -533,16 +542,15 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 	// Load AgentConfig to restore cwd, command, and initial_prompt on restart.
 	var restartWorkDir string
 	var restartInitialPrompt string
+	var restartCommand string
 	if cfg := ks.agentConfig(canonical); cfg != nil {
 		restartWorkDir = cfg.WorkDir
 		restartInitialPrompt = cfg.InitialPrompt
-		if req.Command == "" && cfg.Command != "" {
-			req.Command = cfg.Command
-		}
+		restartCommand = cfg.Command
 	}
 	s.mu.RUnlock()
 
-	command := req.Command
+	command := restartCommand
 	if command == "" {
 		command = "claude --dangerously-skip-permissions"
 	}
@@ -635,7 +643,10 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 				return
 			}
 		} else {
-			time.Sleep(5 * time.Second)
+			if err := waitForIdle(sessionID, 60*time.Second); err != nil {
+				s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: canonical,
+					Msg: fmt.Sprintf("restart: timed out waiting for idle before ignite: %v — sending anyway", err)})
+			}
 		}
 		s.mu.RLock()
 		igniteText := s.buildIgnitionText(spaceName, canonical, sessionID)
@@ -840,7 +851,10 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 
 			// Send ignition asynchronously
 			go func(agentName, sid, prompt string) {
-				time.Sleep(5 * time.Second)
+				if err := waitForIdle(sid, 60*time.Second); err != nil {
+					s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentRestarted, Space: spaceName, Agent: agentName,
+						Msg: fmt.Sprintf("restart-all: timed out waiting for idle before ignite: %v — sending anyway", err)})
+				}
 				s.mu.RLock()
 				igniteText := s.buildIgnitionText(spaceName, agentName, sid)
 				s.mu.RUnlock()
