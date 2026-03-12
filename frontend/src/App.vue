@@ -67,6 +67,9 @@ const { celebrate } = useConfetti()
 const mentionedAgents = ref<Set<string>>(new Set())
 const _mentionTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
+// Spawn warp — tracks agents that just spawned (600ms warp-in animation)
+const spawnedAgents = ref<Set<string>>(new Set())
+
 function pulseAgentMention(agentName: string) {
   // Clear any existing timer for this agent
   const existing = _mentionTimers.get(agentName)
@@ -718,6 +721,13 @@ function setupSSE() {
         } as AgentUpdate
       }
     }
+    // Spawn warp animation: mark agent as newly spawned for 600ms
+    spawnedAgents.value = new Set([...spawnedAgents.value, data.agent])
+    setTimeout(() => {
+      const next = new Set(spawnedAgents.value)
+      next.delete(data.agent)
+      spawnedAgents.value = next
+    }, 600)
     // Schedule a full reload to pick up the real agent record from the backend
     scheduleSpaceReload(data.space, 2000)
     scheduleSpacesReload(500)
@@ -1004,6 +1014,7 @@ onUnmounted(() => {
         :selected-agent="selectedAgent"
         :broadcasting="broadcasting"
         :mentioned-agents="mentionedAgents"
+        :spawned-agents="spawnedAgents"
         @select-space="handleSelectSpace"
         @select-agent="handleSelectAgent"
         @broadcast="handleBroadcastSpace"
