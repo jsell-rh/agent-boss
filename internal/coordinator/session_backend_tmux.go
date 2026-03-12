@@ -107,6 +107,20 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		command += fmt.Sprintf(" --mcp-config '%s' --strict-mcp-config", mcpJSON)
 	}
 
+	// Wrap in restart loop so agent stays alive after claude exits.
+	// Single-quoted heredoc delimiter prevents expansion of the command body,
+	// which is safe even though the command contains single quotes (--mcp-config '...').
+	wrapperPath := "/tmp/boss-agent-" + sessionID + ".sh"
+	heredoc := fmt.Sprintf(
+		"cat > %s <<'BOSSEOF'\n#!/bin/bash\nwhile true; do\n  %s\n  echo '[boss] claude exited (exit $?) -- restarting in 3s'\n  sleep 3\ndone\nBOSSEOF",
+		wrapperPath, command)
+	if err := tmuxSendKeys(sessionID, heredoc); err != nil {
+		exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionID).Run() //nolint:errcheck
+		return "", fmt.Errorf("write restart wrapper: %w", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	command = "bash " + wrapperPath
+
 	if err := tmuxSendKeys(sessionID, command); err != nil {
 		exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionID).Run() //nolint:errcheck
 		return "", fmt.Errorf("launch agent command: %w", err)
