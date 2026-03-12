@@ -240,6 +240,38 @@ make dev-restart
 make dev-stop
 ```
 
+### Spawning a dev sub-agent
+
+Agents that need a focused worker to iterate on a specific change can spawn a sub-agent with the full dev tool surface pre-wired:
+
+```bash
+make dev-spawn AGENT=<name> SPACE=<space>
+# e.g.
+make dev-spawn AGENT=worker1 SPACE="Agent Boss Dev"
+```
+
+This calls `scripts/spawn-dev-agent.sh`, which:
+
+1. Starts the dev instance (`make dev-start`) if it is not already running
+2. Reads the port from `data-dev/boss.port`
+3. Launches a new tmux session with **both** MCP servers in `--mcp-config`:
+   - `boss-mcp` — production coordinator (`http://localhost:8899/mcp`) for check-in, tasks, and messages; auth header set if `BOSS_API_TOKEN` is configured
+   - `boss-dev` — local dev instance (`http://localhost:<PORT>/mcp`) for testing API changes
+4. Uses `--strict-mcp-config` so the agent sees only these two servers
+5. Wraps Claude in the standard restart loop so session loss is handled automatically
+
+**What the spawned agent can do:**
+
+| Capability | How |
+|------------|-----|
+| Check in / post status / tasks / messages | `boss-mcp.*` tools |
+| Test API changes against local build | `boss-dev.*` tools |
+| Rebuild and redeploy local binary | `make dev-restart` |
+| Run Playwright e2e against dev instance | `make e2e-dev` |
+| Observe running sessions | `boss-observe.*` tools (if registered) |
+
+The dev instance is isolated (`data-dev/boss.db`), so the sub-agent can freely create spaces and post updates without affecting shared production state.
+
 ### What you can observe
 
 Once started, use the `boss-dev` MCP tools (or `http://localhost:<PORT>`) to:

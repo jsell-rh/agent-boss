@@ -233,6 +233,31 @@ Note: `BOSS_API_TOKEN` was implemented in PR #155 (feat/auth-phase1, merged 2026
 
 ---
 
+---
+
+### Check 6 — dev-spawn infrastructure is complete and documented
+
+Run this check after any sprint touching `scripts/spawn-dev-agent.sh`, `Makefile`, or the dev loop.
+
+```bash
+# Script exists and is executable
+test -x scripts/spawn-dev-agent.sh && echo "OK" || echo "MISSING: scripts/spawn-dev-agent.sh"
+
+# Makefile target exists
+grep -q "dev-spawn" Makefile && echo "OK" || echo "MISSING: dev-spawn target in Makefile"
+
+# CLAUDE.md Dev Loop section covers make dev-spawn
+grep -q "dev-spawn" CLAUDE.md && echo "OK" || echo "MISSING: dev-spawn in CLAUDE.md"
+
+# agent-experience-surface.md has Dev Agent section
+grep -q "Dev Agent Experience Surface" docs/design-docs/agent-experience-surface.md && echo "OK" || echo "MISSING section"
+```
+
+**Pass:** all four checks print "OK".
+**Fail:** add the missing piece — script, Makefile target, or doc update.
+
+---
+
 ### Drift found → action matrix
 
 | Drift type | Action |
@@ -243,6 +268,8 @@ Note: `BOSS_API_TOKEN` was implemented in PR #155 (feat/auth-phase1, merged 2026
 | Undocumented env vars | Edit CLAUDE.md env vars table, open PR |
 | Documented var not in code | Investigate: either remove from doc, or confirm var is planned (mark as `_(planned)_`) |
 | Auth var undocumented | Edit CLAUDE.md, verify session backend injects it; open PR |
+| dev-spawn script or target missing | File task (assign to arch); document what exists, note what is planned |
+| dev-spawn documented but script absent | Mark as `_(planned — TASK-NNN)_` in CLAUDE.md; update when merged |
 
 ---
 
