@@ -4,7 +4,7 @@ REGISTRY      := default-route-openshift-image-registry.apps.okd1.timslab
 IMAGE_TAG     := latest
 IMAGE         := $(REGISTRY)/$(NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)
 
-.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status e2e e2e-ui e2e-report e2e-dev e2e-screenshots
+.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status dev-spawn e2e e2e-ui e2e-report e2e-dev e2e-screenshots
 
 
 build:
@@ -93,6 +93,36 @@ dev-status:
 		echo "--- last 20 log lines ($(DEV_LOG)) ---"; \
 		tail -20 $(DEV_LOG); \
 	fi
+
+# ── Dev agent spawner ─────────────────────────────────────────────────────────
+# Spawn a tmux agent session pre-wired with both boss-mcp and boss-dev MCP servers.
+# Usage: make dev-spawn AGENT=myagent SPACE="My Space" [WORK_DIR=/path/to/dir]
+#
+# The spawned agent can use:
+#   boss-mcp.*   — production coordinator tools (post_status, check_messages, etc.)
+#   boss-dev.*   — local dev instance tools (test against your branch's code)
+#
+# Set BOSS_API_TOKEN in env to forward auth credentials to boss-mcp.
+
+AGENT     ?= dev-agent
+SPACE     ?= Agent Boss Dev
+WORK_DIR  ?= $(CURDIR)
+
+dev-spawn:
+	@bash scripts/spawn-dev-agent.sh "$(AGENT)" "$(SPACE)" "$(WORK_DIR)"
+
+# ── Dev E2E tests ──────────────────────────────────────────────────────────────
+# Run Playwright e2e tests against the dev instance instead of production.
+# Requires: make dev-start (dev instance must be running)
+
+e2e-dev:
+	@PORT=$$(cat $(DEV_PORT_F) 2>/dev/null || echo ""); \
+	if [ -z "$$PORT" ]; then \
+		echo "e2e-dev: dev instance not started — run 'make dev-start' first" >&2; \
+		exit 1; \
+	fi; \
+	echo "e2e-dev: running Playwright against http://localhost:$$PORT"; \
+	cd e2e && BASE_URL="http://localhost:$$PORT" npx playwright test
 
 # E2E tests (Playwright)
 e2e:
