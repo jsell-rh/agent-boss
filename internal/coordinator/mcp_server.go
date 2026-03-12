@@ -97,6 +97,7 @@ func (s *Server) buildMCPHandler() http.Handler {
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		text := strings.ReplaceAll(protocolTemplate, "{COORDINATOR_URL}", s.localURL())
+		text = strings.ReplaceAll(text, "{MCP_NAME}", s.mcpServerName())
 		return &mcp.ReadResourceResult{
 			Contents: []*mcp.ResourceContents{
 				{

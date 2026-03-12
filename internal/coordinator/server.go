@@ -317,6 +317,22 @@ func (s *Server) localURL() string {
 	return "http://" + s.host + ":" + port
 }
 
+// mcpServerName returns a unique MCP server name for this instance.
+// Default (localhost:8899) → "boss-mcp" (unchanged for backwards compat).
+// Non-default port on localhost → "boss-mcp-{port}".
+// Non-localhost host → "boss-mcp-{host}-{port}".
+func (s *Server) mcpServerName() string {
+	port := strings.TrimPrefix(s.port, ":")
+	isDefaultHost := s.host == "localhost" || s.host == "127.0.0.1" || s.host == ""
+	if isDefaultHost && port == "8899" {
+		return "boss-mcp"
+	}
+	if isDefaultHost {
+		return "boss-mcp-" + port
+	}
+	return "boss-mcp-" + s.host + "-" + port
+}
+
 func (s *Server) Stop() error {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
