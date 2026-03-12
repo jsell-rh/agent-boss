@@ -3793,3 +3793,114 @@ func TestCloseTasksOnDone(t *testing.T) {
 		}
 	}
 }
+
+// TestNotificationPersistence verifies that agent notifications survive a server restart.
+func TestNotificationPersistence(t *testing.T) {
+	dataDir := t.TempDir()
+	space := "notif-persist-space"
+
+	srv1 := NewServer(":0", dataDir)
+	if err := srv1.Start(); err != nil {
+		t.Fatal(err)
+	}
+	base1 := serverBaseURL(srv1)
+
+	// Register recipient and send a message to create a notification.
+	postJSON(t, base1+"/spaces/"+space+"/agent/Recipient", AgentUpdate{
+		Status:  StatusActive,
+		Summary: "Recipient: ready",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base1+"/spaces/"+space+"/agent/Recipient/message",
+		strings.NewReader(`{"message":"persist this notification"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "Sender")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("send message: expected 200, got %d", resp.StatusCode)
+	}
+	srv1.Stop()
+
+	// Restart and verify notification is still present.
+	srv2 := NewServer(":0", dataDir)
+	if err := srv2.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv2.Stop()
+	base2 := serverBaseURL(srv2)
+
+	code, body := getBody(t, base2+"/spaces/"+space+"/agent/Recipient")
+	if code != http.StatusOK {
+		t.Fatalf("GET agent after restart: expected 200, got %d", code)
+	}
+	var ag AgentUpdate
+	if err := json.Unmarshal([]byte(body), &ag); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(ag.Notifications) == 0 {
+		t.Fatal("expected notification to persist across restart, got none")
+	}
+	n := ag.Notifications[len(ag.Notifications)-1]
+	if n.From != "Sender" {
+		t.Errorf("notification from = %q, want Sender", n.From)
+	}
+	if n.Read {
+		t.Error("notification should still be unread after restart")
+	}
+}
+
+// TestSubtaskLinkPersistence verifies that parent-subtask relationships survive a server restart.
+func TestSubtaskLinkPersistence(t *testing.T) {
+	dataDir := t.TempDir()
+	space := "subtask-persist-space"
+
+	srv1 := NewServer(":0", dataDir)
+	if err := srv1.Start(); err != nil {
+		t.Fatal(err)
+	}
+	base1 := serverBaseURL(srv1)
+
+	// Create parent task then a subtask.
+	postTaskJSON(t, taskURL(base1, space, ""), map[string]any{"title": "Parent task"}, "Mgr").Body.Close()
+	postTaskJSON(t, taskURL(base1, space, ""), map[string]any{
+		"title":       "Child task",
+		"parent_task": "TASK-001",
+	}, "Mgr").Body.Close()
+	srv1.Stop()
+
+	// Restart and verify the parent still lists the subtask.
+	srv2 := NewServer(":0", dataDir)
+	if err := srv2.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv2.Stop()
+	base2 := serverBaseURL(srv2)
+
+	code, body := getBody(t, taskURL(base2, space, "TASK-001"))
+	if code != http.StatusOK {
+		t.Fatalf("GET parent task after restart: expected 200, got %d", code)
+	}
+	var parent Task
+	if err := json.Unmarshal([]byte(body), &parent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(parent.Subtasks) != 1 || parent.Subtasks[0] != "TASK-002" {
+		t.Errorf("parent.Subtasks after restart = %v, want [TASK-002]", parent.Subtasks)
+	}
+
+	// Verify child still has correct ParentTask field.
+	code, body = getBody(t, taskURL(base2, space, "TASK-002"))
+	if code != http.StatusOK {
+		t.Fatalf("GET child task after restart: expected 200, got %d", code)
+	}
+	var child Task
+	if err := json.Unmarshal([]byte(body), &child); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if child.ParentTask != "TASK-001" {
+		t.Errorf("child.ParentTask after restart = %q, want TASK-001", child.ParentTask)
+	}
+}
