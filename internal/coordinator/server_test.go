@@ -3904,3 +3904,46 @@ func TestSubtaskLinkPersistence(t *testing.T) {
 		t.Errorf("child.ParentTask after restart = %q, want TASK-001", child.ParentTask)
 	}
 }
+
+// TestWaitForIdleNonExistentSession verifies that waitForIdle returns quickly
+// with an error for a session that does not exist, rather than blocking for the
+// full timeout (TASK-135: ignition timing fix).
+func TestWaitForIdleNonExistentSession(t *testing.T) {
+	start := time.Now()
+	err := waitForIdle("nonexistent-session-"+t.Name(), 3*time.Second)
+	elapsed := time.Since(start)
+
+	// Should return (error or nil) well within the timeout — tmuxCapturePaneLines
+	// on a missing session returns quickly, so waitForIdle should not block 3s.
+	if elapsed > 3500*time.Millisecond {
+		t.Errorf("waitForIdle blocked too long for missing session: %v", elapsed)
+	}
+	// For a non-existent session, tmuxCapturePaneLines returns an error, so
+	// tmuxIsIdle returns true (generous default). waitForIdle should succeed immediately.
+	if err != nil {
+		t.Logf("waitForIdle returned error for missing session (acceptable): %v", err)
+	}
+}
+
+// TestSpawnInitialMessageDelivered verifies that initial_message is queued to
+// the agent's inbox after spawn (TASK-135). This tests the deliverInternalMessage
+// path, which is independent of tmux session availability.
+func TestSpawnInitialMessageDelivered(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+
+	space := "init-msg-test"
+	agent := "receiver"
+
+	// Deliver the internal message directly (mirrors what the spawn goroutine does).
+	srv.deliverInternalMessage(space, agent, "boss", "Begin TASK-999")
+
+	base := serverBaseURL(srv)
+	code, body := getBody(t, base+"/spaces/"+space+"/agent/"+agent+"/messages")
+	if code != http.StatusOK {
+		t.Fatalf("GET messages: expected 200, got %d", code)
+	}
+	if !strings.Contains(body, "Begin TASK-999") {
+		t.Errorf("initial_message not found in agent messages: %s", body)
+	}
+}

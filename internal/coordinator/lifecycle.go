@@ -426,7 +426,15 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 				return
 			}
 		} else {
-			time.Sleep(5 * time.Second)
+			// Poll for the Claude Code prompt rather than using a fixed sleep.
+			// A 5-second sleep is unreliable: Claude Code initialization takes variable
+			// time depending on MCP server setup and first-run configuration. Sending
+			// the ignition text before the prompt is ready causes it to be silently
+			// dropped by the shell.
+			if err := waitForIdle(sessionID, 60*time.Second); err != nil {
+				s.emit(DomainEvent{Level: LevelWarn, EventType: EventAgentSpawned, Space: spaceName, Agent: agentName,
+					Msg: fmt.Sprintf("spawn: timed out waiting for idle before ignite: %v — sending anyway", err)})
+			}
 		}
 		s.mu.RLock()
 		ignitePrompt := s.buildIgnitionText(spaceName, agentName, sessionID)

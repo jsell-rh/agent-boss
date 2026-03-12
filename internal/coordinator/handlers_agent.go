@@ -1473,7 +1473,13 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				return
 			}
 		} else {
-			time.Sleep(5 * time.Second)
+			// Poll for the Claude Code prompt rather than a fixed sleep — same fix
+			// as spawnAgentService (TASK-135). Claude Code initialization time varies;
+			// a 5-second sleep causes the ignition text to land on the shell prompt
+			// instead of the Claude input, where it is silently dropped.
+			if err := waitForIdle(sessionID, 60*time.Second); err != nil {
+				s.logEvent(fmt.Sprintf("[%s/%s] create: timed out waiting for idle before ignite: %v — sending anyway", spaceName, agentNameForIgnite, err))
+			}
 		}
 		// Send plain-text ignition prompt directly — no slash command required.
 		s.mu.RLock()
