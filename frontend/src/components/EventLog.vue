@@ -104,6 +104,11 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 // Track which server-side log messages we've already seen (to avoid duplicates)
 const seenServerMessages = new Set<string>()
 
+// Per-space event cache: keeps events when switching spaces so returning shows history
+const spaceEventCache = new Map<string, { entries: EventLogEntry[]; seen: Set<string> }>()
+// Whether we're showing cached events (true briefly when switching spaces before fresh load)
+const showingCached = ref(false)
+
 // Format a Date as a human-readable relative string ("2s ago", "5m ago", etc.)
 function formatRelative(date: Date, _tick: number): string {
   const diffMs = Date.now() - date.getTime()
@@ -259,6 +264,7 @@ async function loadEvents() {
         for (const r of raw) {
           seenServerMessages.add(r)
         }
+        showingCached.value = false
         if (isOpen.value) {
           nextTick(scrollToBottom)
         }
@@ -273,6 +279,8 @@ async function loadEvents() {
             added = true
           }
         }
+        // Fresh data loaded — clear the cached banner
+        showingCached.value = false
         if (added) {
           if (!isOpen.value) {
             unreadCount.value++
@@ -448,14 +456,34 @@ function startResize(e: MouseEvent | TouchEvent) {
   document.addEventListener('touchend', onEnd)
 }
 
-// Reload events when space changes
-watch(() => props.spaceName, () => {
-  entries.value = []
+// Reload events when space changes — save current to cache, restore from cache if available
+watch(() => props.spaceName, (newSpace, oldSpace) => {
+  // Save current space events to cache before switching
+  if (oldSpace && entries.value.length > 0) {
+    spaceEventCache.set(oldSpace, {
+      entries: [...entries.value],
+      seen: new Set(seenServerMessages),
+    })
+  }
+
+  // Reset per-space state
   seenServerMessages.clear()
-  nextId = 0
   activeTypes.value = new Set()
   searchQuery.value = ''
   unreadCount.value = 0
+
+  // Restore from cache if available (avoids blank log on space switch)
+  const cached = newSpace ? spaceEventCache.get(newSpace) : undefined
+  if (cached && cached.entries.length > 0) {
+    entries.value = cached.entries
+    for (const msg of cached.seen) seenServerMessages.add(msg)
+    showingCached.value = true
+    if (isOpen.value) nextTick(scrollToBottom)
+  } else {
+    entries.value = []
+    showingCached.value = false
+  }
+
   loadEvents()
 })
 
@@ -563,6 +591,14 @@ defineExpose({ pushSSEEvent, clearLog })
           <path d="m18 15-6-6-6 6" />
         </svg>
       </div>
+    </div>
+
+    <!-- Cached events banner — shown briefly when space just switched -->
+    <div
+      v-if="isOpen && showingCached"
+      class="px-4 py-1 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border-b border-amber-500/20 shrink-0"
+    >
+      Showing cached events — reconnecting…
     </div>
 
     <!-- Search + filter toolbar (shown when open and there are events) -->
