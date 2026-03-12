@@ -270,7 +270,10 @@ class ApiClient {
     agent: string,
     message: string,
     sender: string,
+    replyToDecisionId?: string,
   ): Promise<void> {
+    const body: Record<string, string> = { message }
+    if (replyToDecisionId) body.reply_to_decision_id = replyToDecisionId
     return this.requestVoid(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/message`,
       {
@@ -279,7 +282,7 @@ class ApiClient {
           'Content-Type': 'application/json',
           'X-Agent-Name': sender,
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
       },
     )
   }
