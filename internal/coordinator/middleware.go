@@ -60,17 +60,34 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// errBufMax is the maximum bytes buffered from an error response body.
+// Large enough to capture any writeJSONError message; small enough to be free.
+const errBufMax = 256
+
 // responseRecorder wraps http.ResponseWriter to capture the HTTP status code
-// written by a handler. The status defaults to 200 (matching net/http behaviour
-// when Write is called without an explicit WriteHeader).
+// and, for error responses (4xx/5xx), the first errBufMax bytes of the body.
+// The status defaults to 200 (matching net/http behaviour when Write is called
+// without an explicit WriteHeader).
 type responseRecorder struct {
 	http.ResponseWriter
 	status int
+	errBuf strings.Builder
 }
 
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.status = code
 	rr.ResponseWriter.WriteHeader(code)
+}
+
+// Write passes bytes through to the underlying writer. For error responses it
+// also buffers up to errBufMax bytes so the middleware can log the reason.
+func (rr *responseRecorder) Write(b []byte) (int, error) {
+	if rr.status >= 400 {
+		if remaining := errBufMax - rr.errBuf.Len(); remaining > 0 {
+			rr.errBuf.Write(b[:min(len(b), remaining)])
+		}
+	}
+	return rr.ResponseWriter.Write(b)
 }
 
 // requestLoggingMiddleware logs every HTTP request as a DomainEvent after the
@@ -95,16 +112,22 @@ func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
 		} else if rr.status >= 400 {
 			level = LevelWarn
 		}
+		msg := fmt.Sprintf("%s %s → %d (%s)", r.Method, r.URL.Path, rr.status, dur.Round(time.Millisecond))
+		fields := map[string]string{
+			"method":   r.Method,
+			"path":     r.URL.Path,
+			"status":   fmt.Sprintf("%d", rr.status),
+			"duration": dur.String(),
+		}
+		if body := strings.TrimSpace(rr.errBuf.String()); body != "" {
+			msg += " — " + body
+			fields["error_body"] = body
+		}
 		s.emit(DomainEvent{
 			Level:     level,
 			EventType: EventHTTPRequest,
-			Msg:       fmt.Sprintf("%s %s → %d (%s)", r.Method, r.URL.Path, rr.status, dur.Round(time.Millisecond)),
-			Fields: map[string]string{
-				"method":   r.Method,
-				"path":     r.URL.Path,
-				"status":   fmt.Sprintf("%d", rr.status),
-				"duration": dur.String(),
-			},
+			Msg:       msg,
+			Fields:    fields,
 		})
 	})
 }
