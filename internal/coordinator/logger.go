@@ -43,6 +43,9 @@ const (
 	EventSpaceDeleted   EventType = "persistence.space_deleted"
 	EventSpaceCompacted EventType = "persistence.space_compacted"
 
+	// HTTP events
+	EventHTTPRequest EventType = "http.request"
+
 	// Server events
 	EventServerStarted EventType = "server.started"
 	EventServerStopped EventType = "server.stopped"

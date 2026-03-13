@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // corsOrigins caches the computed allowed-origins list (init on first use).
@@ -59,14 +60,58 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// responseRecorder wraps http.ResponseWriter to capture the HTTP status code
+// written by a handler. The status defaults to 200 (matching net/http behaviour
+// when Write is called without an explicit WriteHeader).
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.status = code
+	rr.ResponseWriter.WriteHeader(code)
+}
+
+// requestLoggingMiddleware logs every HTTP request as a DomainEvent after the
+// handler returns. 4xx responses are logged at warn level; 5xx at error level;
+// everything else at info. SSE endpoints are skipped — they are long-lived
+// connections whose log entry would appear only after the stream closes.
+func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip SSE streams — they block until the client disconnects.
+		if r.URL.Path == "/events" || strings.HasSuffix(r.URL.Path, "/events") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rr := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(rr, r)
+		dur := time.Since(start)
+
+		level := LevelInfo
+		if rr.status >= 500 {
+			level = LevelError
+		} else if rr.status >= 400 {
+			level = LevelWarn
+		}
+		s.emit(DomainEvent{
+			Level:     level,
+			EventType: EventHTTPRequest,
+			Msg:       fmt.Sprintf("%s %s → %d (%s)", r.Method, r.URL.Path, rr.status, dur.Round(time.Millisecond)),
+			Fields: map[string]string{
+				"method":   r.Method,
+				"path":     r.URL.Path,
+				"status":   fmt.Sprintf("%d", rr.status),
+				"duration": dur.String(),
+			},
+		})
+	})
+}
+
 // authMiddleware wraps an http.Handler, requiring a Bearer token on mutating
 // requests (POST, PATCH, DELETE, PUT). If s.apiToken is empty, the middleware
 // is a no-op (open mode — backward compatible for local development).
-//
-// Two token classes are accepted:
-//  1. Workspace token (s.apiToken / BOSS_API_TOKEN) — full access to all endpoints.
-//  2. Per-agent token — valid only on agent-channel endpoints; the handler verifies
-//     the token belongs to the specific agent being posted to.
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.apiToken == "" {
@@ -84,43 +129,15 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		token := auth[7:] // strip "Bearer " (7 chars) preserving original case
-
-		// Workspace token: full access to all endpoints.
-		if hmac.Equal([]byte(token), []byte(s.apiToken)) {
-			next.ServeHTTP(w, r)
+		if !hmac.Equal([]byte(token), []byte(s.apiToken)) {
+			writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-
-		// Per-agent token: only permitted on agent-channel POST endpoints.
-		// The handler is responsible for verifying the token matches the
-		// specific agent (enforcing SEC-006 — agent channel isolation).
-		if s.repo != nil && isAgentChannelPath(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
+		next.ServeHTTP(w, r)
 	})
 }
 
-// isAgentChannelPath returns true when the path is an agent status-post endpoint:
-//
-//	/spaces/{space}/agent/{name}   (multi-space)
-//	/agent/{name}                  (legacy default-space)
-func isAgentChannelPath(path string) bool {
-	// /spaces/.../agent/...
-	if strings.Contains(path, "/agent/") {
-		return true
-	}
-	// /agent/{name} (legacy)
-	if strings.HasPrefix(path, "/agent/") {
-		return true
-	}
-	return false
-}
-
-// generateAgentToken creates a cryptographically random UUID-style token for
-// a specific agent, stores its SHA-256 hash in the DB, and returns the plain
+// generateAgentToken mints a fresh per-agent Bearer token and persists its
 // token for injection into the agent's tmux session. Safe to call on every
 // spawn/restart — a new token replaces any previous one.
 func (s *Server) generateAgentToken(spaceName, agentName string) string {

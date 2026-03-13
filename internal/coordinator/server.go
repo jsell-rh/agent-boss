@@ -303,7 +303,7 @@ func (s *Server) Start() error {
 	}
 	s.port = ":" + strings.Split(listener.Addr().String(), ":")[len(strings.Split(listener.Addr().String(), ":"))-1]
 
-	s.httpServer = &http.Server{Handler: securityHeadersMiddleware(s.authMiddleware(mux))}
+	s.httpServer = &http.Server{Handler: s.requestLoggingMiddleware(securityHeadersMiddleware(s.authMiddleware(mux)))}
 	s.running = true
 
 	go func() {
