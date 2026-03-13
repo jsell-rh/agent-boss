@@ -47,38 +47,28 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `boss — multi-agent coordination bus
+	fmt.Fprint(os.Stderr, `boss — multi-agent coordination bus
 
-Commands:
-  serve                     Start the coordinator server
-  init [space-name]         Create space and register MCP server with Claude
-  post                      Post an agent status update
-  get                       Get agent state or space markdown
-  spaces                    List all spaces
-  delete                    Delete a space or agent
-  ignite                    Generate ignition prompt for an agent
-  broadcast                 Trigger boss.check broadcast for a space
+Usage:
+  boss <command> [flags]
 
-Examples:
-  boss serve
-  boss init MyProject
-  boss init MyProject --open
-  boss post --space my-feature --agent api --status done --summary "shipped"
-  boss get --space my-feature --agent api
-  boss get --space my-feature --raw
-  boss spaces
-  boss delete --space my-feature
-  boss delete --space my-feature --agent api
-  boss ignite SDK sdk-backend-replacement
-  boss broadcast --space sdk-backend-replacement
+Server Commands:
+  serve         Start the coordinator HTTP server
+  init          Create a space and register the MCP server with Claude
 
-Environment:
-  BOSS_URL           Server URL (default: http://localhost:8899)
-  BOSS_API_TOKEN     Bearer token for authenticated requests (optional)
-  COORDINATOR_PORT   Server port (serve only, default: 8899)
-  COORDINATOR_HOST   Hostname used in agent-facing URLs (serve only, default: localhost)
-  DATA_DIR           Data directory (serve only, default: ./data)
-  FRONTEND_DIR       Vue frontend dist directory (serve only, optional)
+Client Commands:
+  post          Post an agent status update to a space
+  get           Get agent state or full space snapshot
+  spaces        List all spaces
+  delete        Delete a space or a single agent from a space
+  ignite        Print the ignition prompt for a new agent
+  broadcast     Send a boss.check broadcast to all agents in a space
+
+Use "boss <command> --help" for more information about a command.
+
+Environment (client commands):
+  BOSS_URL         Coordinator URL  (default: http://localhost:8899)
+  BOSS_API_TOKEN   Bearer token for authenticated requests (optional)
 `)
 }
 
@@ -105,6 +95,46 @@ func newClient(space string) *coordinator.Client {
 
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Start the coordinator HTTP server.
+
+Persists state to SQLite (or Postgres) and serves the agent dashboard and
+MCP endpoint. Reads all configuration from environment variables.
+
+Usage:
+  boss serve
+
+Examples:
+  # Start with default settings (data stored in ./data/, port 8899)
+  boss serve
+
+  # Custom data directory and port
+  DATA_DIR=/var/lib/boss COORDINATOR_PORT=9000 boss serve
+
+  # Postgres backend
+  DB_TYPE=postgres DB_DSN="host=db user=boss dbname=boss sslmode=disable" boss serve
+
+  # Development: serve frontend from disk instead of embedded
+  FRONTEND_DIR=./internal/coordinator/frontend boss serve
+
+Environment:
+  DATA_DIR              Data directory for SQLite and assets  (default: ./data)
+  COORDINATOR_PORT      Listen port                           (default: 8899)
+  COORDINATOR_HOST      Hostname for agent-facing URLs        (default: localhost)
+  COORDINATOR_EXTERNAL_URL  External URL injected into ambient sessions as BOSS_URL
+  DB_TYPE               Database backend: sqlite | postgres   (default: sqlite)
+  DB_DSN                Postgres DSN (required when DB_TYPE=postgres)
+  FRONTEND_DIR          Override embedded Vue dist directory  (optional)
+  BOSS_API_TOKEN        Bearer token for mutating endpoints   (optional — disables auth when unset)
+  BOSS_ALLOWED_ORIGINS  Extra CORS origins (comma-separated)  (optional)
+  BOSS_ALLOW_SKIP_PERMISSIONS  Pass --dangerously-skip-permissions to Claude (default: false)
+  STALENESS_THRESHOLD   Heartbeat staleness cutoff            (default: 5m)
+  LOG_FORMAT            Log format: text | json               (default: text)
+  AMBIENT_API_URL       Enable ambient session backend; set to API base URL
+  AMBIENT_TOKEN         Auth token for ambient API
+  AMBIENT_PROJECT       Project identifier for ambient sessions
+`)
+	}
 	fs.Parse(args)
 
 	dataDir, _ := os.Getwd()
@@ -147,6 +177,35 @@ func cmdServe(args []string) {
 
 func cmdPost(args []string) {
 	fs := flag.NewFlagSet("post", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Post a status update from an agent to its coordination space.
+
+Agents call this command to report their current status, phase, and next
+steps to the boss. Required for the blackboard pattern to work.
+
+Usage:
+  boss post --agent <name> --summary <text> [flags]
+
+Examples:
+  # Report progress (active, default status)
+  boss post --space my-feature --agent api --summary "wiring DB layer" --phase "implementation"
+
+  # Mark work complete
+  boss post --agent api --status done --summary "shipped auth endpoint"
+
+  # Signal a blocker
+  boss post --agent frontend --status blocked --summary "waiting on API spec" \
+      --next "unblock once /spec endpoint is merged"
+
+Options:
+  --space string    Space name                                         (default: "default")
+  --agent string    Agent name (required)
+  --status string   Agent status: active | done | blocked | idle | error  (default: "active")
+  --summary string  One-line summary of current work (required)
+  --phase string    Current work phase
+  --next string     Planned next steps
+`)
+	}
 	space := fs.String("space", "default", "Space name")
 	agent := fs.String("agent", "", "Agent name (required)")
 	status := fs.String("status", "active", "Status: active|done|blocked|idle|error")
@@ -177,6 +236,31 @@ func cmdPost(args []string) {
 
 func cmdGet(args []string) {
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Get the current state of an agent or an entire space.
+
+Without --agent, returns the full space snapshot as JSON.
+With --raw, returns the space as rendered Markdown instead of JSON.
+
+Usage:
+  boss get [--agent <name>] [--raw] [flags]
+
+Examples:
+  # Full space snapshot (JSON)
+  boss get --space my-feature
+
+  # Single agent state (JSON)
+  boss get --space my-feature --agent api
+
+  # Rendered Markdown for the whole space
+  boss get --space my-feature --raw
+
+Options:
+  --space string   Space name           (default: "default")
+  --agent string   Agent name (omit for full space snapshot)
+  --raw            Return rendered Markdown instead of JSON
+`)
+	}
 	space := fs.String("space", "default", "Space name")
 	agent := fs.String("agent", "", "Agent name (omit for full space)")
 	raw := fs.Bool("raw", false, "Get rendered markdown")
@@ -216,6 +300,16 @@ func cmdGet(args []string) {
 
 func cmdSpaces(args []string) {
 	fs := flag.NewFlagSet("spaces", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `List all coordination spaces and their agent counts.
+
+Usage:
+  boss spaces
+
+Examples:
+  boss spaces
+`)
+	}
 	fs.Parse(args)
 
 	client := newClient("")
@@ -235,6 +329,27 @@ func cmdSpaces(args []string) {
 
 func cmdIgnite(args []string) {
 	fs := flag.NewFlagSet("ignite", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Fetch and print the ignition prompt for a new agent.
+
+The ignition prompt is the startup instructions the agent receives to
+connect it to the coordination bus. Redirect the output into a file or
+pipe it directly to Claude.
+
+Usage:
+  boss ignite [--tmux <session>] <agent-name> <space-name>
+
+Examples:
+  # Print ignition prompt for agent "sdk" in space "sdk-backend-replacement"
+  boss ignite sdk sdk-backend-replacement
+
+  # Register a specific tmux session alongside the ignition prompt
+  boss ignite --tmux my-session sdk sdk-backend-replacement
+
+Options:
+  --tmux string   Tmux session name to register (default: auto-detected from $TMUX)
+`)
+	}
 	tmuxSession := fs.String("tmux", "", "Tmux session name to register (default: auto-detect)")
 	fs.Parse(args)
 
@@ -258,6 +373,22 @@ func cmdIgnite(args []string) {
 
 func cmdBroadcast(args []string) {
 	fs := flag.NewFlagSet("broadcast", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Send a boss.check broadcast to all agents in a space.
+
+The broadcast signals every registered agent to check in, report status,
+and review the shared task board.
+
+Usage:
+  boss broadcast [--space <name>]
+
+Examples:
+  boss broadcast --space sdk-backend-replacement
+
+Options:
+  --space string   Space name  (default: "default")
+`)
+	}
 	space := fs.String("space", "default", "Space name")
 	fs.Parse(args)
 
@@ -272,6 +403,24 @@ func cmdBroadcast(args []string) {
 
 func cmdDelete(args []string) {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Delete a space or a single agent from a space.
+
+Usage:
+  boss delete --space <name> [--agent <name>]
+
+Examples:
+  # Delete a single agent
+  boss delete --space my-feature --agent api
+
+  # Delete an entire space and all its agents
+  boss delete --space my-feature
+
+Options:
+  --space string   Space name (required)
+  --agent string   Agent name (omit to delete the entire space)
+`)
+	}
 	space := fs.String("space", "", "Space name (required)")
 	agent := fs.String("agent", "", "Agent name (omit to delete entire space)")
 	fs.Parse(args)
@@ -302,6 +451,26 @@ func cmdDelete(args []string) {
 
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Create a space and register the boss MCP server with the local Claude installation.
+
+Idempotent: safe to run multiple times. Re-registration replaces any existing
+boss-mcp entry so the URL is always current.
+
+Usage:
+  boss init [space-name] [--open]
+
+Examples:
+  # Create (or reconnect to) the default space
+  boss init
+
+  # Create a named space and open the dashboard
+  boss init my-feature --open
+
+Options:
+  --open   Open the space dashboard in your default browser after init
+`)
+	}
 	openBrowser := fs.Bool("open", false, "Open the space URL in your browser")
 	fs.Parse(args)
 
