@@ -104,7 +104,21 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 			mcpJSON = fmt.Sprintf(`{"mcpServers":{%q:{"type":"http","url":%q}}}`,
 				mcpServerName, mcpServerURL+"/mcp")
 		}
-		command += fmt.Sprintf(" --mcp-config '%s' --strict-mcp-config", mcpJSON)
+		allowedTools := strings.Join([]string{
+			"mcp__" + mcpServerName + "__post_status",
+			"mcp__" + mcpServerName + "__check_messages",
+			"mcp__" + mcpServerName + "__send_message",
+			"mcp__" + mcpServerName + "__ack_message",
+			"mcp__" + mcpServerName + "__request_decision",
+			"mcp__" + mcpServerName + "__create_task",
+			"mcp__" + mcpServerName + "__list_tasks",
+			"mcp__" + mcpServerName + "__move_task",
+			"mcp__" + mcpServerName + "__update_task",
+			"mcp__" + mcpServerName + "__spawn_agent",
+			"mcp__" + mcpServerName + "__restart_agent",
+			"mcp__" + mcpServerName + "__stop_agent",
+		}, ",")
+		command += fmt.Sprintf(" --mcp-config '%s' --strict-mcp-config --allowedTools %s", mcpJSON, allowedTools)
 	}
 
 	// Wrap in restart loop so agent stays alive after claude exits.
