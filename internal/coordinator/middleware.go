@@ -2,10 +2,12 @@ package coordinator
 
 import (
 	"crypto/hmac"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // corsOrigins caches the computed allowed-origins list (init on first use).
@@ -52,6 +54,78 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)
+	})
+}
+
+// errBufMax is the maximum bytes buffered from an error response body.
+// Large enough to capture any writeJSONError message; small enough to be free.
+const errBufMax = 256
+
+// responseRecorder wraps http.ResponseWriter to capture the HTTP status code
+// and, for error responses (4xx/5xx), the first errBufMax bytes of the body.
+// The status defaults to 200 (matching net/http behaviour when Write is called
+// without an explicit WriteHeader).
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+	errBuf strings.Builder
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.status = code
+	rr.ResponseWriter.WriteHeader(code)
+}
+
+// Write passes bytes through to the underlying writer. For error responses it
+// also buffers up to errBufMax bytes so the middleware can log the reason.
+func (rr *responseRecorder) Write(b []byte) (int, error) {
+	if rr.status >= 400 {
+		if remaining := errBufMax - rr.errBuf.Len(); remaining > 0 {
+			rr.errBuf.Write(b[:min(len(b), remaining)])
+		}
+	}
+	return rr.ResponseWriter.Write(b)
+}
+
+// requestLoggingMiddleware logs every HTTP request as a DomainEvent after the
+// handler returns. 4xx responses are logged at warn level; 5xx at error level;
+// everything else at info. SSE endpoints are skipped — they are long-lived
+// connections whose log entry would appear only after the stream closes.
+func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip SSE streams — they block until the client disconnects.
+		if r.URL.Path == "/events" || strings.HasSuffix(r.URL.Path, "/events") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rr := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(rr, r)
+		dur := time.Since(start)
+
+		level := LevelInfo
+		if rr.status >= 500 {
+			level = LevelError
+		} else if rr.status >= 400 {
+			level = LevelWarn
+		}
+		msg := fmt.Sprintf("%s %s → %d (%s)", r.Method, r.URL.Path, rr.status, dur.Round(time.Millisecond))
+		fields := map[string]string{
+			"method":   r.Method,
+			"path":     r.URL.Path,
+			"status":   fmt.Sprintf("%d", rr.status),
+			"duration": dur.String(),
+		}
+		if body := strings.TrimSpace(rr.errBuf.String()); body != "" {
+			msg += " — " + body
+			fields["error_body"] = body
+		}
+		s.emit(DomainEvent{
+			Level:     level,
+			EventType: EventHTTPRequest,
+			Msg:       msg,
+			Fields:    fields,
+		})
 	})
 }
 
