@@ -60,20 +60,20 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 		Name:        "post_status",
 		Description: "Post your current status to the coordinator. Call this regularly to report progress.",
 		InputSchema: jsonSchema([]string{"space", "agent", "status", "summary"}, map[string]map[string]any{
-			"space":      prop("string", "The workspace name"),
+			"space":      prop("string", "Workspace name"),
 			"agent":      prop("string", "Your agent name"),
-			"status":     prop("string", "Your current status: active, done, blocked, idle, review, or error"),
-			"summary":    prop("string", "One-line summary in format 'AgentName: what you are doing'"),
-			"branch":     prop("string", "Current git branch (sticky — send once)"),
-			"pr":         prop("string", "Pull request reference e.g. #123 (sticky)"),
-			"repo_url":   prop("string", "Repository URL (sticky — send once)"),
-			"phase":      prop("string", "Current work phase e.g. implementation, testing, review"),
-			"test_count": prop("number", "Number of tests passing"),
-			"items":      {"type": "array", "description": "List of completed or in-progress items", "items": map[string]any{"type": "string"}},
-			"next_steps": prop("string", "What you plan to do next"),
-			"mood":       prop("string", "Optional vibe/mood emoji+text e.g. '🚀 in the zone' or '😤 fighting a flaky test'"),
-			"session_id": prop("string", "Your tmux session ID (sticky — send once)"),
-			"questions":  {"type": "array", "description": "Questions needing human decision — each creates a decision request visible to the operator", "items": map[string]any{"type": "string"}},
+			"status":     prop("string", "Status: active|done|blocked|idle|review|error"),
+			"summary":    prop("string", "One-liner: 'AgentName: doing X'"),
+			"branch":     prop("string", "Git branch (sticky, send once)"),
+			"pr":         prop("string", "PR reference e.g. #123 (sticky)"),
+			"repo_url":   prop("string", "Repository URL (sticky, send once)"),
+			"phase":      prop("string", "Work phase e.g. implementation, testing, review"),
+			"test_count": prop("number", "Number of passing tests"),
+			"items":      {"type": "array", "description": "Completed or in-progress items", "items": map[string]any{"type": "string"}},
+			"next_steps": prop("string", "Planned next actions"),
+			"mood":       prop("string", "Mood emoji+text e.g. '🚀 in the zone'"),
+			"session_id": prop("string", "Tmux session ID (sticky, send once)"),
+			"questions":  {"type": "array", "description": "Questions needing human input (each becomes a decision request)", "items": map[string]any{"type": "string"}},
 		}),
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := parseArgs(req)
@@ -601,10 +601,11 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 		}
 		ks.UpdatedAt = now
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -748,12 +749,13 @@ func (s *Server) addToolMoveTask(srv *mcp.Server) {
 		}
 		appendTaskEvent(task, "moved", caller, moveDetail, now)
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 			"id": taskID, "from_status": string(fromStatus), "status": string(newStatus), "by": caller,
 		})
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -829,10 +831,11 @@ func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 
 		task.UpdatedAt = now
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
