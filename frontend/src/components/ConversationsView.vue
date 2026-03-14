@@ -346,11 +346,21 @@ async function replyToDecision(msgId: string, agentName: string) {
   decisionReplying.value[msgId] = true
   decisionFeedback.value[msgId] = { ok: true, msg: '' }
   try {
-    // Send the reply as a regular message to the agent
-    await api.sendMessage(props.space.name, agentName, text, 'boss')
+    // Send the reply to the agent, passing the decision ID so the backend marks it resolved.
+    await api.sendMessage(props.space.name, agentName, text, 'boss', msgId)
     decisionReplyTexts.value[msgId] = ''
     decisionFeedback.value[msgId] = { ok: true, msg: 'Reply sent' }
     setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
+    // Optimistically mark the decision resolved in the local reactive state so the embed
+    // immediately flips to "Resolved" without waiting for a full space reload.
+    const bossMessages = props.space.agents['boss']?.messages
+    if (bossMessages) {
+      const msg = bossMessages.find(m => m.id === msgId)
+      if (msg) {
+        msg.resolved = true
+        msg.resolution = text
+      }
+    }
   } catch (err) {
     decisionFeedback.value[msgId] = { ok: false, msg: err instanceof Error ? err.message : 'Failed' }
     setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)

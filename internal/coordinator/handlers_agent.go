@@ -295,11 +295,17 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		agentName = sender.Parent
 	}
 
-	var messageReq AgentMessage
-	if err := json.NewDecoder(r.Body).Decode(&messageReq); err != nil {
+	// sendMessageBody extends AgentMessage with an optional field to resolve a pending decision.
+	var sendBody struct {
+		AgentMessage
+		ReplyToDecisionID string `json:"reply_to_decision_id,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&sendBody); err != nil {
 		writeJSONError(w, fmt.Sprintf("decode: %v", err), http.StatusBadRequest)
 		return
 	}
+	messageReq := sendBody.AgentMessage
+	replyToDecisionID := sendBody.ReplyToDecisionID
 
 	// Validate required fields
 	if strings.TrimSpace(messageReq.Message) == "" {
@@ -406,6 +412,23 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 				filtered = append(filtered, m)
 			}
 			ag.Messages = filtered
+		}
+	}
+
+	// If the sender provided a decision message ID to resolve, mark it Resolved in the sender's
+	// own message list. Decision messages live in the sender's inbox (e.g. boss's messages when
+	// an agent calls request_decision), so we look in the canonical sender's messages.
+	if replyToDecisionID != "" {
+		senderRecord := ks.agentStatus(strings.ToLower(senderName))
+		if senderRecord != nil {
+			for i := range senderRecord.Messages {
+				if senderRecord.Messages[i].ID == replyToDecisionID &&
+					senderRecord.Messages[i].Type == "decision" {
+					senderRecord.Messages[i].Resolved = true
+					senderRecord.Messages[i].Resolution = messageReq.Message
+					break
+				}
+			}
 		}
 	}
 
