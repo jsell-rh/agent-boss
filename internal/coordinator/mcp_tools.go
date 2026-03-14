@@ -58,7 +58,7 @@ func parseArgs(req *mcp.CallToolRequest) (map[string]any, error) {
 func (s *Server) addToolPostStatus(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "post_status",
-		Description: "Post your current status to the coordinator. Call this regularly to report progress.",
+		Description: "Report your current status to the coordinator.",
 		InputSchema: jsonSchema([]string{"space", "agent", "status", "summary"}, map[string]map[string]any{
 			"space":      prop("string", "Workspace name"),
 			"agent":      prop("string", "Your agent name"),
@@ -226,7 +226,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "check_messages",
-		Description: "Check for new messages. Call this at the start of every work cycle.",
+		Description: "Check for new messages addressed to this agent.",
 		InputSchema: jsonSchema([]string{"space", "agent"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"agent": prop("string", "Your agent name"),
@@ -300,7 +300,7 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 func (s *Server) addToolSendMessage(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "send_message",
-		Description: "Send a message to another agent. Use this for coordination, delegation, and escalation.",
+		Description: "Send a message to another agent for coordination or escalation.",
 		InputSchema: jsonSchema([]string{"space", "from", "to", "message"}, map[string]map[string]any{
 			"space":    prop("string", "The workspace name"),
 			"from":     prop("string", "Your agent name (the sender)"),
@@ -429,7 +429,7 @@ func (s *Server) addToolSendMessage(srv *mcp.Server) {
 func (s *Server) addToolAckMessage(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "ack_message",
-		Description: "Acknowledge a message you have acted on. This marks it as read.",
+		Description: "Mark a message as read after acting on it.",
 		InputSchema: jsonSchema([]string{"space", "agent", "message_id"}, map[string]map[string]any{
 			"space":      prop("string", "The workspace name"),
 			"agent":      prop("string", "Your agent name"),
@@ -491,7 +491,7 @@ func (s *Server) addToolAckMessage(srv *mcp.Server) {
 func (s *Server) addToolRequestDecision(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "request_decision",
-		Description: "Request a decision from the human operator. Use this when you need human input to proceed. The operator will see your question in the conversations view and can reply.",
+		Description: "Request human operator input when blocked on a decision.",
 		InputSchema: jsonSchema([]string{"space", "agent", "question"}, map[string]map[string]any{
 			"space":    prop("string", "The workspace name"),
 			"agent":    prop("string", "Your agent name"),
@@ -527,7 +527,7 @@ func (s *Server) addToolRequestDecision(srv *mcp.Server) {
 func (s *Server) addToolCreateTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "create_task",
-		Description: "Create a new task. Always create a task BEFORE starting work on it.",
+		Description: "Create a tracked task before starting work.",
 		InputSchema: jsonSchema([]string{"space", "agent", "title"}, map[string]map[string]any{
 			"space":       prop("string", "The workspace name"),
 			"agent":       prop("string", "Your agent name (the creator)"),
@@ -626,7 +626,7 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 func (s *Server) addToolListTasks(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "list_tasks",
-		Description: "List tasks in a space, optionally filtered by status, assignee, priority, or label.",
+		Description: "List tasks in a space with optional filters.",
 		InputSchema: jsonSchema([]string{"space"}, map[string]map[string]any{
 			"space":       prop("string", "The workspace name"),
 			"status":      prop("string", "Filter by status: backlog, in_progress, review, done, blocked"),
@@ -705,7 +705,7 @@ func (s *Server) addToolListTasks(srv *mcp.Server) {
 func (s *Server) addToolMoveTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "move_task",
-		Description: "Change a task's status. Use this to move tasks through the workflow: backlog -> in_progress -> review -> done.",
+		Description: "Change a task's status (backlog→in_progress→review→done).",
 		InputSchema: jsonSchema([]string{"space", "agent", "task_id", "status"}, map[string]map[string]any{
 			"space":   prop("string", "The workspace name"),
 			"agent":   prop("string", "Your agent name"),
@@ -772,7 +772,7 @@ func (s *Server) addToolMoveTask(srv *mcp.Server) {
 func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "update_task",
-		Description: "Update task fields like title, description, assignee, priority, or linked PR.",
+		Description: "Update task fields: title, description, assignee, priority, or linked PR.",
 		InputSchema: jsonSchema([]string{"space", "agent", "task_id"}, map[string]map[string]any{
 			"space":         prop("string", "The workspace name"),
 			"agent":         prop("string", "Your agent name"),
@@ -1014,7 +1014,7 @@ func pruneReadMessages(ag *AgentUpdate) {
 func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "spawn_agent",
-		Description: "Spawn a new agent session in a space. Creates a tmux session, sends the ignition prompt, and returns the session ID.",
+		Description: "Spawn a new agent in a space.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space":           prop("string", "The workspace name"),
 			"name":            prop("string", "The agent name to spawn"),
@@ -1083,7 +1083,7 @@ func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "restart_agent",
-		Description: "Restart an existing agent: kills the current session and spawns a new one with the same config.",
+		Description: "Restart an agent using the same config.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to restart"),
@@ -1118,7 +1118,7 @@ func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 func (s *Server) addToolStopAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "stop_agent",
-		Description: "Stop an agent by killing its session and marking it as done.",
+		Description: "Stop an agent and mark it as done.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to stop"),
