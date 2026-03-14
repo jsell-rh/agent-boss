@@ -616,7 +616,7 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 			s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 		}
 
-		return toolJSON(taskCopy), nil
+		return toolJSON(toTaskSummary(&taskCopy)), nil
 	})
 }
 
@@ -691,7 +691,11 @@ func (s *Server) addToolListTasks(srv *mcp.Server) {
 
 		sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
 
-		return toolJSON(map[string]any{"tasks": tasks, "total": len(tasks)}), nil
+		summaries := make([]taskSummary, len(tasks))
+		for i, t := range tasks {
+			summaries[i] = toTaskSummary(t)
+		}
+		return toolJSON(map[string]any{"tasks": summaries, "total": len(summaries)}), nil
 	})
 }
 
@@ -840,11 +844,49 @@ func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 			s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 		}
 
-		return toolJSON(taskCopy), nil
+		return toolJSON(toTaskSummary(&taskCopy)), nil
 	})
 }
 
 // --- helpers ---
+
+// taskSummary returns the fields agents need for decision-making, omitting the
+// audit-trail fields (Events, Comments) that grow unboundedly and inflate tokens.
+type taskSummary struct {
+	ID           string       `json:"id"`
+	Space        string       `json:"space"`
+	Title        string       `json:"title"`
+	Description  string       `json:"description,omitempty"`
+	Status       TaskStatus   `json:"status"`
+	Priority     TaskPriority `json:"priority,omitempty"`
+	AssignedTo   string       `json:"assigned_to,omitempty"`
+	CreatedBy    string       `json:"created_by"`
+	Labels       []string     `json:"labels,omitempty"`
+	ParentTask   string       `json:"parent_task,omitempty"`
+	Subtasks     []string     `json:"subtasks,omitempty"`
+	LinkedBranch string       `json:"linked_branch,omitempty"`
+	LinkedPR     string       `json:"linked_pr,omitempty"`
+	IsStale      bool         `json:"is_stale,omitempty"`
+}
+
+func toTaskSummary(t *Task) taskSummary {
+	return taskSummary{
+		ID:           t.ID,
+		Space:        t.Space,
+		Title:        t.Title,
+		Description:  t.Description,
+		Status:       t.Status,
+		Priority:     t.Priority,
+		AssignedTo:   t.AssignedTo,
+		CreatedBy:    t.CreatedBy,
+		Labels:       t.Labels,
+		ParentTask:   t.ParentTask,
+		Subtasks:     t.Subtasks,
+		LinkedBranch: t.LinkedBranch,
+		LinkedPR:     t.LinkedPR,
+		IsStale:      t.IsStale,
+	}
+}
 
 func strArg(args map[string]any, key string) string {
 	if v, ok := args[key]; ok {
