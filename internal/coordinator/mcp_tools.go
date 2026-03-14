@@ -874,7 +874,7 @@ func toolError(msg string) *mcp.CallToolResult {
 }
 
 func toolJSON(v any) *mcp.CallToolResult {
-	data, _ := json.MarshalIndent(v, "", "  ")
+	data, _ := json.Marshal(v)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(data)},
