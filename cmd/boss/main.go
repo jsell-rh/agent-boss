@@ -35,6 +35,8 @@ func main() {
 		cmdIgnite(os.Args[2:])
 	case "broadcast":
 		cmdBroadcast(os.Args[2:])
+	case "attach":
+		cmdAttach(os.Args[2:])
 	case "init":
 		cmdInit(os.Args[2:])
 	case "help", "--help", "-h":
@@ -60,6 +62,7 @@ Client Commands:
   post          Post an agent status update to a space
   get           Get agent state or full space snapshot
   spaces        List all spaces
+  attach        Attach to an agent's tmux session
   delete        Delete a space or a single agent from a space
   ignite        Print the ignition prompt for a new agent
   broadcast     Send a boss.check broadcast to all agents in a space
@@ -399,6 +402,60 @@ Options:
 		os.Exit(1)
 	}
 	fmt.Println(msg)
+}
+
+func cmdAttach(args []string) {
+	fs := flag.NewFlagSet("attach", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Attach to an agent's tmux session.
+
+Looks up the agent's registered session ID and replaces the current process
+with tmux attach, handing the terminal directly to the running Claude pane.
+
+Usage:
+  boss attach --agent <name> [--space <name>]
+
+Examples:
+  boss attach --space my-feature --agent api
+
+Options:
+  --space string   Space name           (default: "default")
+  --agent string   Agent name (required)
+`)
+	}
+	space := fs.String("space", "default", "Space name")
+	agent := fs.String("agent", "", "Agent name (required)")
+	fs.Parse(args)
+
+	if *agent == "" {
+		fmt.Fprintln(os.Stderr, "boss attach: --agent is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	client := newClient(*space)
+	a, err := client.FetchAgent(*agent)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boss attach: %v\n", err)
+		os.Exit(1)
+	}
+	if a.SessionID == "" {
+		fmt.Fprintf(os.Stderr, "boss attach: agent %q has no tmux session\n", *agent)
+		os.Exit(1)
+	}
+
+	tmuxBin, err := lookPath("tmux")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boss attach: tmux not found in PATH\n")
+		os.Exit(1)
+	}
+
+	// Replace the current process with tmux attach so the terminal is handed
+	// over cleanly — no wrapper process sitting between the user and the pane.
+	if err := syscall.Exec(tmuxBin, []string{"tmux", "attach", "-t", a.SessionID}, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "boss attach: exec tmux: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdDelete(args []string) {
