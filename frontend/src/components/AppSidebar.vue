@@ -812,6 +812,8 @@ defineExpose({ openNewSpaceDialog })
   background-size: 200% 100%;
   background-clip: text;
   -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
   animation: pr-shimmer-travel 2.4s ease-in-out infinite;
 }
 @keyframes pr-shimmer-travel {
