@@ -367,9 +367,25 @@ export function playBlockedAlert(): void {
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
+    const theme = soundTheme.value
     const vol = effectiveVolume(0.12)
-    tone(ctx, 440,    t,       vol,          0.07, 'triangle') // A4
-    tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine')     // A#4 — minor second
+    if (theme === 'retro') {
+      // Chiptune minor second: E4 + F4 square
+      tone(ctx, 329.63, t,        vol,         0.08, 'square')
+      tone(ctx, 349.23, t + 0.01, vol * 1.1,  0.07, 'square')
+    } else if (theme === 'space') {
+      // Descending alarm sweep + dissonant overlay
+      sweep(ctx, 600, 200, t, 0.3, effectiveVolume(0.09), 'sine')
+      tone(ctx, 220, t + 0.05, 0.2, effectiveVolume(0.06), 'sine')
+    } else if (theme === 'nature') {
+      // Softer dissonance: B4 + C5 triangle (gentler but still tense)
+      tone(ctx, 493.88, t,        vol * 0.8, 0.1, 'triangle')
+      tone(ctx, 523.25, t + 0.01, vol * 0.9, 0.1, 'triangle')
+    } else {
+      // Classic: A4 triangle + A#4 sine — minor second
+      tone(ctx, 440,    t,        vol,         0.07, 'triangle')
+      tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine')
+    }
     setTimeout(() => ctx.close(), 500)
   } catch { /* AudioContext not available */ }
 }
@@ -377,12 +393,37 @@ export function playBlockedAlert(): void {
 // ── #6 Warp Arrival — agent spawned ───────────────────────────────────────
 export function playAgentSpawn(): void {
   if (!isCategoryEnabled('events')) return
-  if (prefersReducedMotion) return // skip sweeps in reduced-motion mode
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
-    sweep(ctx, 200, 1200, t, 0.25, effectiveVolume(0.08), 'sine')
-    tone(ctx, 1200, t + 0.28, 0.35, effectiveVolume(0.05), 'triangle')
+    const theme = soundTheme.value
+    if (theme === 'retro') {
+      // Chiptune ascending arpeggio — "new player entered"
+      tone(ctx, 261.63, t,        0.08, effectiveVolume(0.07), 'square') // C4
+      tone(ctx, 392.00, t + 0.09, 0.08, effectiveVolume(0.07), 'square') // G4
+      tone(ctx, 523.25, t + 0.18, 0.18, effectiveVolume(0.08), 'square') // C5
+    } else if (theme === 'space') {
+      // Massive sci-fi warp jump
+      if (!prefersReducedMotion) {
+        sweep(ctx, 80, 2000, t, 0.3, effectiveVolume(0.09), 'sine')
+        tone(ctx, 1400, t + 0.33, 0.35, effectiveVolume(0.05), 'triangle')
+      } else {
+        tone(ctx, 880, t, 0.3, effectiveVolume(0.06), 'sine')
+      }
+    } else if (theme === 'nature') {
+      // Gentle ascending C4→G4→C5 triangle tones — no sweep
+      tone(ctx, 261.63, t,        0.4,  effectiveVolume(0.04), 'triangle') // C4
+      tone(ctx, 392.00, t + 0.15, 0.35, effectiveVolume(0.04), 'triangle') // G4
+      tone(ctx, 523.25, t + 0.30, 0.45, effectiveVolume(0.05), 'triangle') // C5
+    } else {
+      // Classic: upward sine sweep + triangle landing
+      if (!prefersReducedMotion) {
+        sweep(ctx, 200, 1200, t, 0.25, effectiveVolume(0.08), 'sine')
+        tone(ctx, 1200, t + 0.28, 0.35, effectiveVolume(0.05), 'triangle')
+      } else {
+        tone(ctx, 1200, t, 0.35, effectiveVolume(0.05), 'triangle')
+      }
+    }
     setTimeout(() => ctx.close(), 800)
   } catch { /* AudioContext not available */ }
 }
@@ -396,15 +437,45 @@ export function playTaskTransition(toStatus: string): void {
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
+    const theme = soundTheme.value
     if (toStatus === 'in_progress') {
-      if (prefersReducedMotion) {
-        tone(ctx, 523.25, t, 0.2, effectiveVolume(0.06))
+      if (theme === 'retro') {
+        // Octave jump — punchy "go!" signal
+        tone(ctx, 261.63, t,       0.06, effectiveVolume(0.07), 'square') // C4
+        tone(ctx, 523.25, t + 0.08, 0.12, effectiveVolume(0.08), 'square') // C5
+      } else if (theme === 'space') {
+        if (!prefersReducedMotion) {
+          sweep(ctx, 200, 700, t, 0.22, effectiveVolume(0.07), 'sine')
+        } else {
+          tone(ctx, 659.25, t, 0.2, effectiveVolume(0.06), 'sine')
+        }
+      } else if (theme === 'nature') {
+        tone(ctx, 392.00, t,       0.25, effectiveVolume(0.05), 'triangle') // G4
+        tone(ctx, 523.25, t + 0.12, 0.3, effectiveVolume(0.05), 'triangle') // C5
       } else {
-        sweep(ctx, 330, 523, t, 0.2, effectiveVolume(0.06), 'sine')
+        // Classic: rising sine sweep
+        if (!prefersReducedMotion) {
+          sweep(ctx, 330, 523, t, 0.2, effectiveVolume(0.06), 'sine')
+        } else {
+          tone(ctx, 523.25, t, 0.2, effectiveVolume(0.06))
+        }
       }
     } else if (toStatus === 'review') {
-      tone(ctx, 523.25, t,       0.4, effectiveVolume(0.055)) // C5
-      tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045)) // D5 — suspended 2nd
+      if (theme === 'retro') {
+        tone(ctx, 523.25, t,        0.4, effectiveVolume(0.055), 'square') // C5
+        tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045), 'square') // D5
+      } else if (theme === 'space') {
+        // Minor third — more ambiguous "awaiting signal" feel
+        tone(ctx, 523.25, t,        0.5, effectiveVolume(0.055), 'sine') // C5
+        tone(ctx, 622.25, t + 0.05, 0.5, effectiveVolume(0.045), 'sine') // D#5
+      } else if (theme === 'nature') {
+        tone(ctx, 523.25, t,        0.5, effectiveVolume(0.05), 'triangle') // C5
+        tone(ctx, 587.33, t + 0.05, 0.5, effectiveVolume(0.04), 'triangle') // D5
+      } else {
+        // Classic: C5 + D5 suspended second
+        tone(ctx, 523.25, t,        0.4, effectiveVolume(0.055)) // C5
+        tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045)) // D5
+      }
     }
     setTimeout(() => ctx.close(), 800)
   } catch { /* AudioContext not available */ }
@@ -417,7 +488,20 @@ export function playMentionPing(): void {
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
-    tone(ctx, 1046.5, t, 0.15, effectiveVolume(0.09), 'sine') // C6 — bright, short
+    const theme = soundTheme.value
+    if (theme === 'retro') {
+      // High blip: E6 square — very chiptune
+      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square')
+    } else if (theme === 'space') {
+      // Rising blip: fast ascending sweep
+      sweep(ctx, 800, 1600, t, 0.12, effectiveVolume(0.08), 'sine')
+    } else if (theme === 'nature') {
+      // Softer, slightly lower: G5 triangle — still distinct
+      tone(ctx, 783.99, t, 0.2, effectiveVolume(0.07), 'triangle')
+    } else {
+      // Classic: C6 sine — bright, short
+      tone(ctx, 1046.5, t, 0.15, effectiveVolume(0.09), 'sine')
+    }
     setTimeout(() => ctx.close(), 400)
   } catch { /* AudioContext not available */ }
 }
@@ -437,16 +521,41 @@ export function notifyBossMessage(from: string, spaceName: string): void {
 }
 
 // ── #10 PR Shipped — agent sets a PR link ──────────────────────────────────
-// Descending whoosh (600→300Hz) + brief landing tone. "Code out the door."
+// Descending whoosh + brief landing tone. "Code out the door."
 export function playPRShipped(): void {
   if (!isCategoryEnabled('events')) return
-  if (prefersReducedMotion) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
-    sweep(ctx, 700, 350, t,       0.2, effectiveVolume(0.07), 'sine')
-    tone(ctx,  350, t + 0.22, 0.25, effectiveVolume(0.04), 'triangle')
-    setTimeout(() => ctx.close(), 600)
+    const theme = soundTheme.value
+    if (theme === 'retro') {
+      // Descending square arpeggio — "shipped" fanfare
+      tone(ctx, 659.25, t,        0.06, effectiveVolume(0.07), 'square') // E5
+      tone(ctx, 523.25, t + 0.08, 0.06, effectiveVolume(0.07), 'square') // C5
+      tone(ctx, 392.00, t + 0.16, 0.12, effectiveVolume(0.08), 'square') // G4
+    } else if (theme === 'space') {
+      // Mega-whoosh: 1200→150Hz warp-out + landing blip
+      if (!prefersReducedMotion) {
+        sweep(ctx, 1200, 150, t, 0.28, effectiveVolume(0.08), 'sine')
+        tone(ctx, 220, t + 0.30, 0.3, effectiveVolume(0.04), 'triangle')
+      } else {
+        tone(ctx, 440, t, 0.25, effectiveVolume(0.06), 'sine')
+      }
+    } else if (theme === 'nature') {
+      // Gentle descending: G5→C5 triangle cascade
+      tone(ctx, 783.99, t,        0.35, effectiveVolume(0.04), 'triangle') // G5
+      tone(ctx, 659.25, t + 0.14, 0.35, effectiveVolume(0.04), 'triangle') // E5
+      tone(ctx, 523.25, t + 0.28, 0.4,  effectiveVolume(0.05), 'triangle') // C5
+    } else {
+      // Classic: descending sine whoosh + landing tone
+      if (!prefersReducedMotion) {
+        sweep(ctx, 700, 350, t,       0.2, effectiveVolume(0.07), 'sine')
+        tone(ctx,  350, t + 0.22, 0.25, effectiveVolume(0.04), 'triangle')
+      } else {
+        tone(ctx, 392, t, 0.3, effectiveVolume(0.05), 'triangle')
+      }
+    }
+    setTimeout(() => ctx.close(), 700)
   } catch { /* AudioContext not available */ }
 }
 
@@ -457,10 +566,24 @@ export function playCollaborationChord(senderName: string, receiverName: string)
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
+    const theme = soundTheme.value
     const freqA = PENTATONIC_HZ[hashName(senderName)   % PENTATONIC_HZ.length]!
     const freqB = PENTATONIC_HZ[hashName(receiverName) % PENTATONIC_HZ.length]!
-    tone(ctx, freqA, t,        0.3, effectiveVolume(0.04), 'sine')
-    tone(ctx, freqB, t + 0.02, 0.3, effectiveVolume(0.04), 'triangle') // slight offset = conversation feel
+    if (theme === 'retro') {
+      tone(ctx, freqA, t,        0.25, effectiveVolume(0.04), 'square')
+      tone(ctx, freqB, t + 0.03, 0.25, effectiveVolume(0.04), 'square')
+    } else if (theme === 'space') {
+      // Slightly wider timing gap — signals crossing in space
+      tone(ctx, freqA, t,        0.35, effectiveVolume(0.035), 'sine')
+      tone(ctx, freqB, t + 0.04, 0.35, effectiveVolume(0.035), 'sine')
+    } else if (theme === 'nature') {
+      tone(ctx, freqA, t,        0.35, effectiveVolume(0.04), 'triangle')
+      tone(ctx, freqB, t + 0.02, 0.35, effectiveVolume(0.04), 'triangle')
+    } else {
+      // Classic: sine sender, triangle receiver — conversation feel
+      tone(ctx, freqA, t,        0.3, effectiveVolume(0.04), 'sine')
+      tone(ctx, freqB, t + 0.02, 0.3, effectiveVolume(0.04), 'triangle')
+    }
     setTimeout(() => ctx.close(), 600)
   } catch { /* AudioContext not available */ }
 }
@@ -475,11 +598,28 @@ export function playAgentMoodActive(agentName: string): void {
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
+    const theme = soundTheme.value
     const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
     const fifth = root * 1.498 // perfect fifth (3:2 ratio) — energizing, upward
-    // Ascending: root → fifth, short and punchy
-    tone(ctx, root,  t,       0.18, effectiveVolume(0.038), 'sine')
-    tone(ctx, fifth, t + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
+    if (theme === 'retro') {
+      tone(ctx, root,  t,       0.1,  effectiveVolume(0.04), 'square')
+      tone(ctx, fifth, t + 0.1, 0.1,  effectiveVolume(0.04), 'square')
+    } else if (theme === 'space') {
+      // Rising micro-sweep to root, then fifth — "powering up"
+      if (!prefersReducedMotion) {
+        sweep(ctx, root * 0.7, root, t, 0.1, effectiveVolume(0.035), 'sine')
+        tone(ctx, fifth, t + 0.12, 0.18, effectiveVolume(0.035), 'triangle')
+      } else {
+        tone(ctx, fifth, t, 0.18, effectiveVolume(0.038), 'sine')
+      }
+    } else if (theme === 'nature') {
+      tone(ctx, root,  t,       0.22, effectiveVolume(0.036), 'triangle')
+      tone(ctx, fifth, t + 0.1, 0.2,  effectiveVolume(0.036), 'triangle')
+    } else {
+      // Classic: ascending root→fifth, sine then triangle
+      tone(ctx, root,  t,       0.18, effectiveVolume(0.038), 'sine')
+      tone(ctx, fifth, t + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
+    }
     setTimeout(() => ctx.close(), 500)
   } catch { /* AudioContext not available */ }
 }
@@ -489,11 +629,27 @@ export function playAgentMoodIdle(agentName: string): void {
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
+    const theme = soundTheme.value
     const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
     const fifth = root * 1.498
-    // Descending: fifth → root, slower and softer — "settling down"
-    tone(ctx, fifth, t,       0.22, effectiveVolume(0.028), 'triangle')
-    tone(ctx, root,  t + 0.13, 0.28, effectiveVolume(0.022), 'sine')
+    if (theme === 'retro') {
+      tone(ctx, fifth, t,        0.12, effectiveVolume(0.03), 'square')
+      tone(ctx, root,  t + 0.13, 0.14, effectiveVolume(0.025), 'square')
+    } else if (theme === 'space') {
+      // Descending fade — "going offline"
+      if (!prefersReducedMotion) {
+        sweep(ctx, fifth, root * 0.7, t + 0.05, 0.25, effectiveVolume(0.025), 'sine')
+      } else {
+        tone(ctx, root, t, 0.28, effectiveVolume(0.022), 'sine')
+      }
+    } else if (theme === 'nature') {
+      tone(ctx, fifth, t,        0.28, effectiveVolume(0.026), 'triangle')
+      tone(ctx, root,  t + 0.13, 0.32, effectiveVolume(0.02),  'triangle')
+    } else {
+      // Classic: descending fifth→root, triangle then sine — "settling down"
+      tone(ctx, fifth, t,        0.22, effectiveVolume(0.028), 'triangle')
+      tone(ctx, root,  t + 0.13, 0.28, effectiveVolume(0.022), 'sine')
+    }
     setTimeout(() => ctx.close(), 600)
   } catch { /* AudioContext not available */ }
 }

@@ -112,7 +112,8 @@ sleep 0.3
 # The claude command uses --mcp-config for both servers, --strict-mcp-config to
 # exclude any globally registered servers (clean environment for dev testing).
 # Wrapped in a restart loop: if claude exits unexpectedly, it relaunches automatically.
-CLAUDE_CMD="claude --dangerously-skip-permissions --mcp-config $(printf '%q' "$MCP_CONFIG_FILE") --strict-mcp-config"
+ALLOWED_TOOLS="mcp__boss-mcp__post_status,mcp__boss-mcp__check_messages,mcp__boss-mcp__send_message,mcp__boss-mcp__ack_message,mcp__boss-mcp__request_decision,mcp__boss-mcp__create_task,mcp__boss-mcp__list_tasks,mcp__boss-mcp__move_task,mcp__boss-mcp__update_task,mcp__boss-mcp__spawn_agent,mcp__boss-mcp__restart_agent,mcp__boss-mcp__stop_agent,mcp__boss-dev__post_status,mcp__boss-dev__check_messages,mcp__boss-dev__send_message,mcp__boss-dev__ack_message,mcp__boss-dev__request_decision,mcp__boss-dev__create_task,mcp__boss-dev__list_tasks,mcp__boss-dev__move_task,mcp__boss-dev__update_task,mcp__boss-dev__spawn_agent,mcp__boss-dev__restart_agent,mcp__boss-dev__stop_agent"
+CLAUDE_CMD="claude --dangerously-skip-permissions --mcp-config $(printf '%q' "$MCP_CONFIG_FILE") --strict-mcp-config --allowedTools $ALLOWED_TOOLS"
 RESTART_LOOP="while true; do $CLAUDE_CMD; echo '[spawn-dev-agent] claude exited — restarting in 2s...'; sleep 2; done"
 
 tmux send-keys -t "$SESSION_ID" "$RESTART_LOOP" Enter
