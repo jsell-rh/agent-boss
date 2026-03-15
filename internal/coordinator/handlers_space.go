@@ -132,9 +132,17 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 			case "message":
 				// /spaces/{space}/agent/{agent}/message — send message
 				// /spaces/{space}/agent/{agent}/message/{id}/ack — ack message
-				if len(parts) >= 6 && strings.TrimRight(parts[5], "/") == "ack" {
+				// /spaces/{space}/agent/{agent}/message/{id}/resolve — resolve decision
+				if len(parts) >= 6 {
 					msgID := strings.TrimRight(parts[4], "/")
-					s.handleMessageAck(w, r, spaceName, agentName, msgID)
+					switch strings.TrimRight(parts[5], "/") {
+					case "ack":
+						s.handleMessageAck(w, r, spaceName, agentName, msgID)
+					case "resolve":
+						s.handleDecisionAck(w, r, spaceName, agentName, msgID)
+					default:
+						s.handleAgentMessage(w, r, spaceName, agentName)
+					}
 				} else {
 					s.handleAgentMessage(w, r, spaceName, agentName)
 				}
