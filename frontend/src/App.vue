@@ -1048,6 +1048,8 @@ onMounted(async () => {
   setupSSE()
   startPolling()
   document.addEventListener('keydown', handleKeydown)
+  _applyAmbientHue()
+  _chromaTimer = window.setInterval(_applyAmbientHue, 60_000)
 
   if (selectedSpace.value) {
     // Route already has a space — load its data and connect SSE
@@ -1063,12 +1065,32 @@ onMounted(async () => {
   }
 })
 
+// ── Time-of-day chromashift ─────────────────────────────────────────
+// Updates --ambient-hue CSS custom property every 60s so the dashboard
+// background tints shift gently over the day (barely perceptible, 3% opacity).
+// Dawn: amber 35° → Morning: teal 175° → Afternoon: blue 210° →
+// Dusk: purple 270° → Night: indigo 230°
+function _ambientHueFromHour(h: number): number {
+  if (h < 6)  return 230 // night: indigo
+  if (h < 9)  return 35  // dawn: amber
+  if (h < 12) return 175 // morning: teal
+  if (h < 17) return 210 // afternoon: blue
+  if (h < 20) return 270 // dusk: purple
+  return 240             // evening: deep indigo
+}
+let _chromaTimer = 0
+function _applyAmbientHue() {
+  const hue = _ambientHueFromHour(new Date().getHours())
+  document.documentElement.style.setProperty('--ambient-hue', String(hue))
+}
+
 onUnmounted(() => {
   sse.disconnect()
   stopPolling()
   if (_spaceReloadTimer !== null) clearTimeout(_spaceReloadTimer)
   if (_spacesReloadTimer !== null) clearTimeout(_spacesReloadTimer)
   document.removeEventListener('keydown', handleKeydown)
+  clearInterval(_chromaTimer)
 })
 </script>
 
@@ -1491,3 +1513,22 @@ onUnmounted(() => {
     </Dialog>
   </TooltipProvider>
 </template>
+
+<style>
+/* Time-of-day ambient tint — shifts over 24h, barely perceptible (3% opacity) */
+:root { --ambient-hue: 210; }
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    hsl(var(--ambient-hue) 40% 60% / 0.03) 0%,
+    transparent 70%
+  );
+  transition: background 2s ease;
+}
+</style>

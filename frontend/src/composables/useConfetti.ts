@@ -134,5 +134,119 @@ export function useConfetti() {
     }
   }
 
-  return { celebrate }
+  // ── PR Merge Firework ──────────────────────────────────────────────────────
+  // 3-4 rockets launch from the bottom, each explodes into a starburst of sparks.
+  // Triggered when a task with a linked PR moves to done — the "ship it" moment.
+  function firework() {
+    document.querySelector('.boss-firework-canvas')?.remove()
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduced) { celebrate(undefined, undefined, 'critical'); return }
+
+    const canvas = document.createElement('canvas')
+    canvas.className = 'boss-firework-canvas'
+    canvas.style.cssText = [
+      'position:fixed', 'inset:0', 'width:100%', 'height:100%',
+      'pointer-events:none', 'z-index:9999',
+    ].join(';')
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    document.body.appendChild(canvas)
+    const ctx = canvas.getContext('2d')!
+    const W = canvas.width
+    const H = canvas.height
+
+    interface Rocket { x: number; y: number; vy: number; color: string; burstAt: number; burst: boolean }
+    interface Spark  { x: number; y: number; vx: number; vy: number; color: string; opacity: number; size: number }
+
+    const rocketColors = ['#ffd700', '#ff6b6b', '#74c0fc', '#69db7c', '#da77f2']
+    const rocketCount = 4
+    const rockets: Rocket[] = Array.from({ length: rocketCount }, (_, i) => ({
+      x: rand(W * 0.2, W * 0.8),
+      y: H,
+      vy: rand(10, 16),
+      color: rocketColors[i % rocketColors.length]!,
+      burstAt: rand(H * 0.15, H * 0.45), // burst altitude
+      burst: false,
+    }))
+    const sparks: Spark[] = []
+
+    function explode(rx: number, ry: number, color: string) {
+      const count = 28
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + rand(-0.1, 0.1)
+        const speed = rand(3, 8)
+        sparks.push({
+          x: rx, y: ry,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color, opacity: 1,
+          size: rand(2, 5),
+        })
+      }
+    }
+
+    const start = performance.now()
+    const DURATION = 2600
+    let raf: number
+
+    function frame(now: number) {
+      const elapsed = now - start
+      ctx.clearRect(0, 0, W, H)
+
+      // Draw rockets
+      for (const r of rockets) {
+        if (r.burst) continue
+        r.y -= r.vy
+        r.vy *= 0.97
+        if (r.y <= r.burstAt) {
+          r.burst = true
+          explode(r.x, r.y, r.color)
+        } else {
+          ctx.save()
+          ctx.globalAlpha = 0.85
+          ctx.fillStyle = r.color
+          ctx.beginPath()
+          ctx.arc(r.x, r.y, 3, 0, Math.PI * 2)
+          ctx.fill()
+          // Tail
+          ctx.globalAlpha = 0.3
+          ctx.beginPath()
+          ctx.moveTo(r.x, r.y)
+          ctx.lineTo(r.x, r.y + 15)
+          ctx.strokeStyle = r.color
+          ctx.lineWidth = 2
+          ctx.stroke()
+          ctx.restore()
+        }
+      }
+
+      // Draw sparks
+      for (const s of sparks) {
+        s.x += s.vx
+        s.y += s.vy
+        s.vy += 0.18 // gravity
+        s.vx *= 0.98
+        s.opacity -= 0.018
+        if (s.opacity <= 0) continue
+        ctx.save()
+        ctx.globalAlpha = s.opacity
+        ctx.fillStyle = s.color
+        ctx.beginPath()
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      if (elapsed < DURATION) {
+        raf = requestAnimationFrame(frame)
+      } else {
+        canvas.remove()
+      }
+    }
+
+    raf = requestAnimationFrame(frame)
+    return () => { cancelAnimationFrame(raf); canvas.remove() }
+  }
+
+  return { celebrate, firework }
 }

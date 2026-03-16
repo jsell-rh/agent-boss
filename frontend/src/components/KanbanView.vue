@@ -150,7 +150,7 @@ async function onTaskDrop(taskId: string, newStatus: TaskStatus) {
   try {
     const updated = await api.moveTask(props.space.name, taskId, newStatus)
     Object.assign(task, updated)
-    if (newStatus === 'done') { celebrate(undefined, undefined, (task.priority ?? 'medium') as ConfettiPriority); playSuccess(task.priority ?? 'medium') }
+    if (newStatus === 'done') { celebrateTaskDone(task); playSuccess(task.priority ?? 'medium') }
     else { playTaskTransition(newStatus) }
   } catch {
     // Revert on error
@@ -192,7 +192,13 @@ function openTaskById(id: string) {
   }
 }
 
-const { celebrate } = useConfetti()
+const { celebrate, firework } = useConfetti()
+
+// Use firework for tasks that have a PR link (shipping moment), confetti otherwise.
+function celebrateTaskDone(task: Task) {
+  if (task.linked_pr) firework()
+  else celebrate(undefined, undefined, (task.priority ?? 'medium') as ConfettiPriority)
+}
 
 // ── SSE integration: auto-reload on task_updated events ────────────
 const sse = useSSE()
@@ -238,7 +244,7 @@ const unsubTaskUpdated = sse.on('task_updated', (data) => {
   // Celebrate when a remote agent moves a task to done
   const existing = tasks.value.find(t => t.id === data.id)
   if (data.status === 'done' && existing && existing.status !== 'done') {
-    celebrate(undefined, undefined, (existing.priority ?? 'medium') as ConfettiPriority)
+    celebrateTaskDone(existing)
     playSuccess(existing.priority ?? 'medium')
   } else if (data.status && data.status !== existing?.status && data.status !== 'done') {
     playTaskTransition(data.status)
