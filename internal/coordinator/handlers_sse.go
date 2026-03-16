@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -81,10 +82,16 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 		case <-ctx.Done():
 			return
 		case msg := <-client.ch:
-			w.Write(msg)
+			if _, err := w.Write(msg); err != nil {
+				slog.Warn("sse: write error, client likely disconnected", "space", space, "err", err)
+				return
+			}
 			flusher.Flush()
 		case t := <-keepalive.C:
-			fmt.Fprintf(w, ": keepalive %s\n\n", t.UTC().Format(time.RFC3339))
+			if _, err := fmt.Fprintf(w, ": keepalive %s\n\n", t.UTC().Format(time.RFC3339)); err != nil {
+				slog.Warn("sse: keepalive write error, client likely disconnected", "space", space, "err", err)
+				return
+			}
 			flusher.Flush()
 		}
 	}

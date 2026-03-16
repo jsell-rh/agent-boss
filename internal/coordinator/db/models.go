@@ -90,6 +90,7 @@ type Agent struct {
 	Stale          bool
 	Registration   string    `gorm:"type:text"` // JSON object
 	Config         string    `gorm:"type:text"` // JSON AgentConfig
+	TokenHash      string    `gorm:"type:text"` // SHA-256 hex of per-agent bearer token; empty = no per-agent token
 	LastHeartbeat  time.Time
 	HeartbeatStale bool
 	UpdatedAt      time.Time

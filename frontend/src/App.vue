@@ -1308,7 +1308,7 @@ onUnmounted(() => {
           leave-to-class="opacity-0 -translate-y-1"
         >
           <div
-            v-if="!sse.connected.value"
+            v-if="sse.error.value"
             class="flex items-center justify-center gap-2 bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-xs text-amber-600 dark:text-amber-400 shrink-0"
             role="alert"
             aria-live="assertive"
