@@ -380,6 +380,7 @@ function selectNewMsgAgent(agentName: string) {
 
 // ── Auto-scroll ─────────────────────────────────────────────────────
 const threadScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
+const scrollSentinelRef = ref<HTMLDivElement | null>(null)
 const isAtBottom = ref(true)
 
 function getThreadScrollEl(): HTMLElement | null {
@@ -393,18 +394,18 @@ function checkScrollPosition() {
 }
 
 function scrollThreadToBottom() {
-  // Double nextTick lets Vue flush DOM updates + Radix ScrollArea init.
-  // requestAnimationFrame ensures the browser has painted the new content
-  // so scrollHeight reflects the actual rendered size.
-  nextTick(() => nextTick(() => {
+  // Use the sentinel element at the bottom of the message list.
+  // scrollIntoView is far more reliable than setting scrollTop because
+  // it works even when the Radix ScrollArea viewport hasn't finished
+  // recalculating its internal scrollHeight after DOM mutations.
+  nextTick(() => {
     requestAnimationFrame(() => {
-      const el = getThreadScrollEl()
-      if (el) {
-        el.scrollTop = el.scrollHeight
+      if (scrollSentinelRef.value) {
+        scrollSentinelRef.value.scrollIntoView({ block: 'end' })
         isAtBottom.value = true
       }
     })
-  }))
+  })
 }
 
 // Wire up scroll listener for jump-to-bottom tracking
@@ -1068,6 +1069,8 @@ watch(composeRecipient, async (agent) => {
                 </div>
               </div>
             </template>
+            <!-- Scroll sentinel — scrollIntoView target for reliable bottom-scroll -->
+            <div ref="scrollSentinelRef" aria-hidden="true" style="height:1px" />
           </div>
         </ScrollArea>
 
