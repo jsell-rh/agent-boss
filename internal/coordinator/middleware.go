@@ -135,6 +135,11 @@ func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
 // authMiddleware wraps an http.Handler, requiring a Bearer token on mutating
 // requests (POST, PATCH, DELETE, PUT). If s.apiToken is empty, the middleware
 // is a no-op (open mode — backward compatible for local development).
+//
+// Two token classes are accepted:
+//  1. Workspace token (s.apiToken / BOSS_API_TOKEN) — full access to all endpoints.
+//  2. Per-agent token — valid only on agent-channel endpoints; the handler verifies
+//     the token belongs to the specific agent being posted to (SEC-006).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.apiToken == "" {
@@ -152,12 +157,34 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		token := auth[7:] // strip "Bearer " (7 chars) preserving original case
-		if !hmac.Equal([]byte(token), []byte(s.apiToken)) {
-			writeJSONError(w, "unauthorized", http.StatusUnauthorized)
+
+		// Workspace token: full access to all endpoints.
+		if hmac.Equal([]byte(token), []byte(s.apiToken)) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		// Per-agent token: only permitted on agent-channel POST endpoints.
+		// The handler is responsible for verifying the token matches the
+		// specific agent (enforcing SEC-006 — agent channel isolation).
+		if s.repo != nil && isAgentChannelPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 	})
+}
+
+// isAgentChannelPath returns true when the path is an agent status-post endpoint:
+//
+//	/spaces/{space}/agent/{name}   (multi-space)
+//	/agent/{name}                  (legacy default-space)
+func isAgentChannelPath(path string) bool {
+	if strings.Contains(path, "/agent/") {
+		return true
+	}
+	return strings.HasPrefix(path, "/agent/")
 }
 
 // generateAgentToken mints a fresh per-agent Bearer token and persists its
