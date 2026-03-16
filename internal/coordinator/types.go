@@ -242,9 +242,10 @@ type Task struct {
 	LinkedPR     string `json:"linked_pr,omitempty"`
 
 	// Timestamps
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DueAt     *time.Time `json:"due_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	StatusChangedAt time.Time  `json:"status_changed_at"`
+	DueAt           *time.Time `json:"due_at,omitempty"`
 
 	// Activity
 	Comments []TaskComment `json:"comments,omitempty"`

@@ -243,6 +243,7 @@ export interface Task {
   linked_pr?: string
   created_at: string
   updated_at: string
+  status_changed_at?: string
   due_at?: string
   comments?: TaskComment[]
   events?: TaskEvent[]

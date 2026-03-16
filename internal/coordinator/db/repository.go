@@ -196,7 +196,7 @@ func (r *Repository) UpsertTask(t *Task) error {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"title", "description", "status", "priority", "assigned_to",
 			"labels", "parent_task", "subtasks", "linked_branch", "linked_pr",
-			"updated_at", "due_at",
+			"updated_at", "status_changed_at", "due_at",
 		}),
 	}).Create(t).Error
 }

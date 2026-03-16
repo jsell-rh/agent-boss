@@ -356,21 +356,22 @@ func coordinatorAgentToDB(spaceName, agentName string, a *AgentUpdate) *bossdb.A
 
 func coordinatorTaskToDB(spaceName string, t *Task) *bossdb.Task {
 	task := &bossdb.Task{
-		ID:           t.ID,
-		SpaceName:    spaceName,
-		Title:        t.Title,
-		Description:  t.Description,
-		Status:       string(t.Status),
-		Priority:     string(t.Priority),
-		AssignedTo:   t.AssignedTo,
-		CreatedBy:    t.CreatedBy,
-		Labels:       bossdb.MarshalJSON(t.Labels),
-		ParentTask:   t.ParentTask,
-		Subtasks:     bossdb.MarshalJSON(t.Subtasks),
-		LinkedBranch: t.LinkedBranch,
-		LinkedPR:     t.LinkedPR,
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
+		ID:              t.ID,
+		SpaceName:       spaceName,
+		Title:           t.Title,
+		Description:     t.Description,
+		Status:          string(t.Status),
+		Priority:        string(t.Priority),
+		AssignedTo:      t.AssignedTo,
+		CreatedBy:       t.CreatedBy,
+		Labels:          bossdb.MarshalJSON(t.Labels),
+		ParentTask:      t.ParentTask,
+		Subtasks:        bossdb.MarshalJSON(t.Subtasks),
+		LinkedBranch:    t.LinkedBranch,
+		LinkedPR:        t.LinkedPR,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
+		StatusChangedAt: t.StatusChangedAt,
 	}
 	if t.DueAt != nil {
 		task.DueAt = sql.NullTime{Time: *t.DueAt, Valid: true}
@@ -456,19 +457,20 @@ func dbNotificationToUpdate(n *bossdb.AgentNotification) AgentNotification {
 
 func dbTaskToCoordinator(t *bossdb.Task, comments []*bossdb.TaskComment, events []*bossdb.TaskEvent) *Task {
 	task := &Task{
-		ID:           t.ID,
-		Space:        t.SpaceName,
-		Title:        t.Title,
-		Description:  t.Description,
-		Status:       TaskStatus(t.Status),
-		Priority:     TaskPriority(t.Priority),
-		AssignedTo:   t.AssignedTo,
-		CreatedBy:    t.CreatedBy,
-		ParentTask:   t.ParentTask,
-		LinkedBranch: t.LinkedBranch,
-		LinkedPR:     t.LinkedPR,
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
+		ID:              t.ID,
+		Space:           t.SpaceName,
+		Title:           t.Title,
+		Description:     t.Description,
+		Status:          TaskStatus(t.Status),
+		Priority:        TaskPriority(t.Priority),
+		AssignedTo:      t.AssignedTo,
+		CreatedBy:       t.CreatedBy,
+		ParentTask:      t.ParentTask,
+		LinkedBranch:    t.LinkedBranch,
+		LinkedPR:        t.LinkedPR,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
+		StatusChangedAt: t.StatusChangedAt,
 	}
 	if t.DueAt.Valid {
 		d := t.DueAt.Time

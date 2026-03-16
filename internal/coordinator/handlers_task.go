@@ -117,21 +117,22 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 		initialStatus = req.Status
 	}
 	task := &Task{
-		ID:           id,
-		Space:        spaceName,
-		Title:        strings.TrimSpace(req.Title),
-		Description:  req.Description,
-		Status:       initialStatus,
-		Priority:     req.Priority,
-		AssignedTo:   req.AssignedTo,
-		CreatedBy:    caller,
-		Labels:       req.Labels,
-		ParentTask:   req.ParentTask,
-		LinkedBranch: req.LinkedBranch,
-		LinkedPR:     req.LinkedPR,
-		DueAt:        req.DueAt,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:              id,
+		Space:           spaceName,
+		Title:           strings.TrimSpace(req.Title),
+		Description:     req.Description,
+		Status:          initialStatus,
+		Priority:        req.Priority,
+		AssignedTo:      req.AssignedTo,
+		CreatedBy:       caller,
+		Labels:          req.Labels,
+		ParentTask:      req.ParentTask,
+		LinkedBranch:    req.LinkedBranch,
+		LinkedPR:        req.LinkedPR,
+		DueAt:           req.DueAt,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		StatusChangedAt: now,
 	}
 	appendTaskEvent(task, "created", caller, fmt.Sprintf("Task created by %s", caller), now)
 	if ks.Tasks == nil {
@@ -422,6 +423,7 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	task.Status = req.Status
 	now := time.Now().UTC()
 	task.UpdatedAt = now
+	task.StatusChangedAt = now
 	moveDetail := fmt.Sprintf("Moved from %s to %s by %s", fromStatus, req.Status, caller)
 	if req.Reason != "" {
 		moveDetail += ": " + req.Reason
@@ -759,20 +761,21 @@ func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request,
 	id := fmt.Sprintf("TASK-%03d", ks.NextTaskSeq)
 	now := time.Now().UTC()
 	task := &Task{
-		ID:           id,
-		Space:        spaceName,
-		Title:        strings.TrimSpace(req.Title),
-		Description:  req.Description,
-		Status:       TaskStatusBacklog,
-		Priority:     req.Priority,
-		AssignedTo:   req.AssignedTo,
-		CreatedBy:    caller,
-		Labels:       req.Labels,
-		ParentTask:   parentID,
-		LinkedBranch: req.LinkedBranch,
-		LinkedPR:     req.LinkedPR,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:              id,
+		Space:           spaceName,
+		Title:           strings.TrimSpace(req.Title),
+		Description:     req.Description,
+		Status:          TaskStatusBacklog,
+		Priority:        req.Priority,
+		AssignedTo:      req.AssignedTo,
+		CreatedBy:       caller,
+		Labels:          req.Labels,
+		ParentTask:      parentID,
+		LinkedBranch:    req.LinkedBranch,
+		LinkedPR:        req.LinkedPR,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		StatusChangedAt: now,
 	}
 	appendTaskEvent(task, "created", caller,
 		fmt.Sprintf("Subtask created under %s by %s", parentID, caller), now)
@@ -860,6 +863,7 @@ func (s *Server) closeAgentTasks(spaceName, agentName string) {
 		if strings.EqualFold(task.AssignedTo, agentName) && task.Status == TaskStatusInProgress {
 			task.Status = TaskStatusDone
 			task.UpdatedAt = now
+			task.StatusChangedAt = now
 			appendTaskEvent(task, "updated", agentName, "Closed: agent posted done with close_tasks=true", now)
 			closed = append(closed, task.ID)
 		}

@@ -102,6 +102,16 @@ func migrate(db *gorm.DB) error {
 		db.Migrator().DropColumn(&Agent{}, "tmux_session")
 	}
 
+	// Backfill status_changed_at for existing tasks that have a zero value.
+	// Set to the timestamp of the last "moved" event, or created_at if none exists.
+	db.Exec(`UPDATE tasks
+		SET status_changed_at = COALESCE(
+			(SELECT MAX(te.created_at) FROM task_events te
+			 WHERE te.task_id = tasks.id AND te.space_name = tasks.space_name AND te.type = 'moved'),
+			tasks.created_at
+		)
+		WHERE status_changed_at IS NULL OR status_changed_at = '0001-01-01 00:00:00+00:00' OR status_changed_at = ''`)
+
 	return nil
 }
 

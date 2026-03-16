@@ -77,6 +77,11 @@ const filteredTasks = computed(() => {
   })
 })
 
+function statusChangedSortKey(task: Task): number {
+  const ts = task.status_changed_at || task.created_at
+  return new Date(ts).getTime()
+}
+
 const tasksByStatus = computed(() => {
   const groups: Record<TaskStatus, Task[]> = {
     backlog: [], in_progress: [], review: [], blocked: [], done: [],
@@ -87,9 +92,15 @@ const tasksByStatus = computed(() => {
       groups[t.status]?.push(t)
     }
   }
-  // Sort each column: overdue tasks first (by due_at asc), then tasks with due dates, then no due date
+  // Sort each column by when tasks entered the column (oldest first = top of column).
+  // Overdue tasks bubble to the top within the column.
   for (const col of Object.values(groups)) {
-    col.sort((a, b) => dueSortKey(a) - dueSortKey(b))
+    col.sort((a, b) => {
+      const aOverdue = isTaskOverdue(a) ? 0 : 1
+      const bOverdue = isTaskOverdue(b) ? 0 : 1
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue
+      return statusChangedSortKey(a) - statusChangedSortKey(b)
+    })
   }
   return groups
 })

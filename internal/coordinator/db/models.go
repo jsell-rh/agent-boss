@@ -144,11 +144,12 @@ type Task struct {
 	Labels       string    `gorm:"type:text"` // JSON array
 	ParentTask   string    `gorm:"index"`
 	Subtasks     string    `gorm:"type:text"` // JSON array of task IDs
-	LinkedBranch string
-	LinkedPR     string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DueAt        sql.NullTime
+	LinkedBranch    string
+	LinkedPR        string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	StatusChangedAt time.Time    // when the task last entered its current status column
+	DueAt           sql.NullTime
 }
 
 func (Task) TableName() string { return "tasks" }
