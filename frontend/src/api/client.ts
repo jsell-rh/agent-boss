@@ -150,6 +150,10 @@ class ApiClient {
     return this.request(url)
   }
 
+  fetchSpaceMessages(space: string): Promise<Record<string, { messages: import('@/types').AgentMessage[] }>> {
+    return this.request(`/spaces/${encodeURIComponent(space)}/messages`)
+  }
+
   ackMessage(space: string, agent: string, messageId: string, agentName: string): Promise<void> {
     return this.requestVoid(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/message/${encodeURIComponent(messageId)}/ack`,
