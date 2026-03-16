@@ -46,6 +46,7 @@ interface Conversation {
 // Messages fetched from /spaces/:space/messages — decoupled from the space JSON
 // (which no longer embeds message histories after the perf fix in PR #195).
 const spaceMessages = ref<Record<string, { messages: import('@/types').AgentMessage[]; has_more: boolean }>>({})
+const messagesLoading = ref(false)
 const loadingEarlier = ref(false)
 // Tracks whether any agent in the current conversation has more messages to load.
 const conversationHasMore = computed(() => {
@@ -58,10 +59,13 @@ const conversationHasMore = computed(() => {
 const MESSAGE_LIMIT = 50
 
 async function loadSpaceMessages() {
+  messagesLoading.value = true
   try {
     spaceMessages.value = await api.fetchSpaceMessages(props.space.name, { limit: MESSAGE_LIMIT })
   } catch {
     // non-fatal: falls back to agentData.messages (empty after PR #195)
+  } finally {
+    messagesLoading.value = false
   }
 }
 
@@ -830,9 +834,29 @@ watch(composeRecipient, async (agent) => {
               </button>
             </div>
 
-            <!-- Empty thread state -->
+            <!-- Skeleton loader — while initial messages fetch is in flight -->
+            <template v-if="messagesLoading">
+              <div
+                v-for="i in 5"
+                :key="'skel-' + i"
+                class="flex items-start gap-2.5 mt-4"
+                aria-hidden="true"
+              >
+                <div class="skel-avatar shrink-0" />
+                <div class="flex flex-col gap-1.5 flex-1 pt-0.5">
+                  <div class="flex items-center gap-2 mb-1">
+                    <div class="skel-line" :style="{ width: (40 + (i * 17) % 30) + 'px', height: '10px' }" />
+                    <div class="skel-line" style="width: 50px; height: 8px; margin-left: 4px;" />
+                  </div>
+                  <div class="skel-bubble" :style="{ width: (45 + (i * 23) % 40) + '%' }" />
+                  <div v-if="i % 2 === 0" class="skel-bubble" :style="{ width: (30 + (i * 11) % 30) + '%' }" />
+                </div>
+              </div>
+            </template>
+
+            <!-- Empty thread state (only shown after loading completes) -->
             <div
-              v-if="selectedConversation.messages.length === 0"
+              v-else-if="selectedConversation.messages.length === 0"
               class="flex flex-col items-center justify-center py-16 text-center text-muted-foreground gap-2"
               role="status"
             >
@@ -844,6 +868,7 @@ watch(composeRecipient, async (agent) => {
             </div>
 
             <template
+              v-if="!messagesLoading"
               v-for="(msg, i) in selectedConversation.messages"
               :key="msg.id"
             >
@@ -1268,4 +1293,36 @@ watch(composeRecipient, async (agent) => {
 /* Jump-to-bottom fade */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* Skeleton loaders */
+@keyframes skel-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.skel-avatar,
+.skel-line,
+.skel-bubble {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted-foreground) / 0.12) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% auto;
+  animation: skel-shimmer 1.6s linear infinite;
+  border-radius: 4px;
+}
+.skel-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+.skel-bubble {
+  height: 36px;
+  border-radius: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-avatar, .skel-line, .skel-bubble { animation: none; }
+}
 </style>
