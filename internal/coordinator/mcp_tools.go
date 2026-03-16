@@ -601,11 +601,10 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 		}
 		ks.UpdatedAt = now
 		taskCopy := *task
-		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-		s.saveSpace(snap)
+		s.saveSpaceByName(spaceName)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -745,13 +744,12 @@ func (s *Server) addToolMoveTask(srv *mcp.Server) {
 		}
 		appendTaskEvent(task, "moved", caller, moveDetail, now)
 		taskCopy := *task
-		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 			"id": taskID, "from_status": string(fromStatus), "status": string(newStatus), "by": caller,
 		})
-		s.saveSpace(snap)
+		s.saveSpaceByName(spaceName)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -827,11 +825,10 @@ func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 
 		task.UpdatedAt = now
 		taskCopy := *task
-		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
-		s.saveSpace(snap)
+		s.saveSpaceByName(spaceName)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,

@@ -1666,9 +1666,8 @@ func (s *Server) handleAgentConfig(w http.ResponseWriter, r *http.Request, space
 		}
 		ks.setAgentConfig(canonical, cfg)
 		ks.UpdatedAt = time.Now().UTC()
-		snap := ks.snapshot()
 		s.mu.Unlock()
-		s.saveSpace(snap)
+		s.saveSpaceByName(spaceName)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cfg)
 
@@ -1768,10 +1767,9 @@ func (s *Server) handleAgentDuplicate(w http.ResponseWriter, r *http.Request, sp
 	}
 	ks.Agents[newCanonical] = newRec
 	ks.UpdatedAt = now
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	s.logEvent(fmt.Sprintf("[%s/%s] duplicated from %s", spaceName, req.NewName, agentName))
 
 	w.Header().Set("Content-Type", "application/json")

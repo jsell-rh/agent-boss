@@ -147,11 +147,10 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	ks.UpdatedAt = now
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	// Broadcast SSE
 	if sseData, err := json.Marshal(map[string]any{
@@ -184,6 +183,9 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request, spaceNam
 	filterLabel := r.URL.Query().Get("label")
 	filterPriority := r.URL.Query().Get("priority")
 	filterSearch := strings.ToLower(r.URL.Query().Get("search"))
+	// ?include_events=true opts into full task data including events and comments.
+	// Default is false: the kanban view only needs summary fields.
+	includeEvents := r.URL.Query().Get("include_events") == "true"
 
 	s.mu.RLock()
 	tasks := make([]*Task, 0, len(ks.Tasks))
@@ -217,6 +219,10 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request, spaceNam
 			}
 		}
 		cp := *t
+		if !includeEvents {
+			cp.Events = nil
+			cp.Comments = nil
+		}
 		computeTaskStaleness(&cp)
 		tasks = append(tasks, &cp)
 	}
@@ -330,11 +336,10 @@ func (s *Server) handleTaskUpdate(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	task.UpdatedAt = now
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -367,11 +372,10 @@ func (s *Server) handleTaskDelete(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	delete(ks.Tasks, taskID)
 	ks.UpdatedAt = time.Now().UTC()
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskDeleted, "", map[string]string{"id": taskID})
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	s.deleteTaskFromDB(spaceName, taskID)
 
 	if sseData, err := json.Marshal(map[string]any{"id": taskID, "space": spaceName, "deleted": true}); err == nil {
@@ -424,13 +428,12 @@ func (s *Server) handleTaskMove(w http.ResponseWriter, r *http.Request, spaceNam
 	}
 	appendTaskEvent(task, "moved", caller, moveDetail, now)
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 		"id": taskID, "from_status": string(fromStatus), "status": string(req.Status), "by": caller,
 	})
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -484,13 +487,12 @@ func (s *Server) handleTaskAssign(w http.ResponseWriter, r *http.Request, spaceN
 	}
 	appendTaskEvent(task, "assigned", caller, detail, now)
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskAssigned, "", map[string]string{
 		"id": taskID, "from_agent": fromAgent, "assigned_to": req.AssignedTo, "by": caller,
 	})
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -551,13 +553,12 @@ func (s *Server) handleTaskComment(w http.ResponseWriter, r *http.Request, space
 	appendTaskEvent(task, "commented", caller,
 		fmt.Sprintf("Comment added by %s", caller), now)
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCommented, "", map[string]any{
 		"task_id": taskID, "comment": comment,
 	})
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskID, "space": spaceName, "status": taskCopy.Status,
@@ -616,10 +617,9 @@ func (s *Server) notifyTaskComment(spaceName, taskID, taskTitle, assignedTo, com
 	ag.Notifications = append(ag.Notifications, notif)
 	pruneNotifications(ag)
 	ks.UpdatedAt = time.Now().UTC()
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
 
 	sseData, _ := json.Marshal(map[string]interface{}{
@@ -678,10 +678,9 @@ func (s *Server) notifyTaskAssigned(spaceName, taskID, taskTitle, assignedTo, as
 	pruneNotifications(ag)
 
 	ks.UpdatedAt = time.Now().UTC()
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	s.logEvent(fmt.Sprintf("[%s/%s] Task %s assigned by %s — notification delivered", spaceName, canonical, taskID, assignedBy))
 	s.journal.Append(spaceName, EventMessageSent, canonical, &msg)
 
@@ -787,11 +786,10 @@ func (s *Server) handleTaskCreateSubtask(w http.ResponseWriter, r *http.Request,
 	}
 	ks.UpdatedAt = now
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
 	s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 
 	if sseData, err := json.Marshal(map[string]any{
 		"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -831,10 +829,9 @@ func (s *Server) assignTaskToAgent(spaceName, taskID, agentName, caller string) 
 	task.UpdatedAt = now
 	appendTaskEvent(task, "assigned", caller, fmt.Sprintf("Assigned to %s by %s (via spawn)", agentName, caller), now)
 	taskCopy := *task
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	s.journal.Append(spaceName, EventTaskAssigned, "", map[string]string{
 		"id": taskID, "from_agent": prevAssignee, "assigned_to": agentName, "by": caller,
 	})
@@ -872,10 +869,9 @@ func (s *Server) closeAgentTasks(spaceName, agentName string) {
 		return
 	}
 	ks.UpdatedAt = now
-	snap := ks.snapshot()
 	s.mu.Unlock()
 
-	s.saveSpace(snap)
+	s.saveSpaceByName(spaceName)
 	for _, taskID := range closed {
 		s.logEvent(fmt.Sprintf("[%s/%s] task %s closed (agent done)", spaceName, agentName, taskID))
 		if sseData, err := json.Marshal(map[string]any{

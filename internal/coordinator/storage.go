@@ -148,6 +148,21 @@ func (s *Server) saveSpace(ks *KnowledgeSpace) error {
 	return nil
 }
 
+// saveSpaceByName snapshots the named space under a brief RLock and persists it.
+// Call this AFTER releasing the write lock so the expensive JSON deep-copy in
+// snapshot() does not block concurrent reads and writes.
+func (s *Server) saveSpaceByName(spaceName string) {
+	s.mu.RLock()
+	ks, ok := s.spaces[spaceName]
+	if !ok {
+		s.mu.RUnlock()
+		return
+	}
+	snap := ks.snapshot()
+	s.mu.RUnlock()
+	s.saveSpace(snap)
+}
+
 func (s *Server) refreshProtocol(ks *KnowledgeSpace) {
 	if protocolTemplate == "" {
 		return
