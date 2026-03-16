@@ -34,12 +34,14 @@ import KanbanView from '@/components/KanbanView.vue'
 import PersonasView from '@/components/PersonasView.vue'
 import SettingsView from '@/components/SettingsView.vue'
 import AudioGuidePanel from '@/components/AudioGuidePanel.vue'
+import AudioEventLog from '@/components/AudioEventLog.vue'
 import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import {
   soundEnabled,
+  audioLogEnabled,
   notifyBossMessage,
   playSprintComplete,
   playAgentSignatureChime,
@@ -334,8 +336,14 @@ async function loadSpace(name: string, showLoader = false) {
     if (showLoader) spaceRevealKey.value++
   } catch (err) {
     console.error(`Failed to load space ${name}:`, err)
-    currentSpace.value = null
-    showError(`Failed to load space "${name}".`)
+    // Only null out currentSpace on initial load (showLoader=true) when there's
+    // genuinely nothing to show. For background refreshes (SSE-triggered), keep
+    // the stale data visible so the page doesn't blank on transient network errors.
+    if (showLoader && !currentSpace.value) {
+      showError(`Failed to load space "${name}".`)
+    }
+    // Transient errors (NetworkError etc.) are silently ignored — the next SSE
+    // event or poll will retry. Avoids blanking the entire UI on a single hiccup.
   } finally {
     spaceLoading.value = false
   }
@@ -854,9 +862,12 @@ function setupSSE() {
   })
 
   sse.on('agent_message', (data) => {
-    // Messages require a full reload since SSE doesn't carry message body content
+    // ConversationsView subscribes to agent_message directly and refreshes
+    // its own message data via the /messages API. No full space reload needed
+    // here — that was causing expensive fetches on every message event.
+    // Only schedule a debounced space reload for metadata (agent list, etc.).
     if (selectedSpace.value && selectedSpace.value === data.space) {
-      loadSpace(selectedSpace.value)
+      scheduleSpaceReload(selectedSpace.value, 2000)
     }
     // Notify boss when a message is directed to them
     if (data.agent === 'boss') {
@@ -1532,6 +1543,9 @@ onUnmounted(() => {
       :agents="Object.keys(currentSpace?.agents ?? {})"
       @close="audioGuideOpen = false"
     />
+
+    <!-- Minecraft-style audio event log — shows what each sound means -->
+    <AudioEventLog :enabled="audioLogEnabled" />
 
     <!-- Auth token dialog (TASK-011) -->
     <Dialog :open="authRequired" @update:open="val => { if (!val) authRequired = false }">

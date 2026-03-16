@@ -42,6 +42,34 @@ const LS_CATEGORIES = 'boss_sound_categories'
 
 export type SoundCategory = 'urgent' | 'events' | 'celebrations' | 'ambient' | 'social'
 
+// ── Audio Event Log (Minecraft-style accessibility log) ────────────────────
+// Shows what each sound cue means in a bottom-right overlay.
+const LS_AUDIO_LOG = 'boss_audio_log_enabled'
+export const audioLogEnabled = ref(
+  localStorage.getItem(LS_AUDIO_LOG) === 'true',
+)
+watch(audioLogEnabled, (v) => localStorage.setItem(LS_AUDIO_LOG, String(v)))
+
+export interface AudioLogEntry {
+  id: number
+  text: string
+  icon: string
+  category: SoundCategory | 'info'
+  ts: number
+}
+
+let _logId = 0
+export const audioEventLog = ref<AudioLogEntry[]>([])
+
+function logAudioEvent(text: string, icon: string, category: SoundCategory | 'info' = 'info') {
+  if (!audioLogEnabled.value) return
+  audioEventLog.value.push({ id: ++_logId, text, icon, category, ts: Date.now() })
+  // Keep only last 10 entries
+  if (audioEventLog.value.length > 10) {
+    audioEventLog.value = audioEventLog.value.slice(-10)
+  }
+}
+
 export const SOUND_CATEGORY_META: { id: SoundCategory; label: string; description: string; defaultOn: boolean }[] = [
   { id: 'urgent',       label: 'Urgent',       description: 'Blocked/error alerts',                      defaultOn: true  },
   { id: 'events',       label: 'Events',       description: 'Task transitions, spawn, PR shipped',        defaultOn: true  },
@@ -210,6 +238,7 @@ export function playChime(): void {
 // priority='critical' (#4 Boss Level): adds an ascending run before the chord for extra fanfare.
 export function playSuccess(priority?: string): void {
   if (!isCategoryEnabled('celebrations')) return
+  logAudioEvent(priority === 'critical' ? 'Boss-level task completed!' : 'Task completed', '\u2713', 'celebrations')
   const isCritical = priority === 'critical'
   try {
     _activeCueCount++
@@ -260,6 +289,7 @@ export function playSuccess(priority?: string): void {
 // All-agents-idle "sprint complete" fanfare
 export function playSprintComplete(): void {
   if (!isCategoryEnabled('celebrations')) return
+  logAudioEvent('Sprint complete \u2014 all agents idle', '\u2605', 'celebrations')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -554,6 +584,7 @@ export function stopBlockedPulse(agentKey: string): void {
 // Minor second interval (two adjacent semitones) — tense but not alarming.
 export function playBlockedAlert(): void {
   if (!isCategoryEnabled('urgent')) return
+  logAudioEvent('Agent blocked / error', '\u26a0', 'urgent')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -600,6 +631,7 @@ export function playBlockedAlert(): void {
 export function playAgentSpawn(agentName?: string): void {
   if (!isCategoryEnabled('events')) return
   if (agentName && !_agentDebounceOk(agentName)) return // guard against rapid spawn+status-update stacks
+  logAudioEvent(agentName ? `Agent spawned: ${agentName}` : 'Agent spawned', '\u21e1', 'events')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -651,6 +683,8 @@ export function playAgentSpawn(agentName?: string): void {
 // review→done / any→done: playSuccess() (already wired at call site)
 export function playTaskTransition(toStatus: string): void {
   if (!isCategoryEnabled('events')) return
+  const label = toStatus === 'in_progress' ? 'Task started' : toStatus === 'review' ? 'Task in review' : `Task \u2192 ${toStatus}`
+  logAudioEvent(label, '\u25b6', 'events')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -707,6 +741,7 @@ export function playTaskTransition(toStatus: string): void {
 // senderName: who sent the @mention. recipientName: who was mentioned (50% softer, inverted pan).
 export function playMentionPing(senderName?: string, recipientName?: string): void {
   if (!isCategoryEnabled('social')) return
+  logAudioEvent(senderName && recipientName ? `@mention: ${senderName} \u2192 ${recipientName}` : '@mention received', '@', 'social')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -748,6 +783,7 @@ export function playMentionPing(senderName?: string, recipientName?: string): vo
 export function playAgentMessage(senderName: string): void {
   if (!isCategoryEnabled('social')) return
   if (!_agentDebounceOk(senderName)) return
+  logAudioEvent(`Message from ${senderName}`, '\u2709', 'social')
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -778,6 +814,7 @@ export function notifyBossMessage(from: string, spaceName: string): void {
 // Descending whoosh + brief landing tone. "Code out the door."
 export function playPRShipped(): void {
   if (!isCategoryEnabled('events')) return
+  logAudioEvent('PR shipped', '\u2193', 'events')
   try {
     _activeCueCount++
     const ctx = new AudioContext()

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import type { KnowledgeSpace, AgentUpdate } from '@/types'
+import type { KnowledgeSpace, AgentUpdate, AgentMessage } from '@/types'
+import { useSSE } from '@/composables/useSSE'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,22 @@ async function loadEarlierMessages() {
 
 onMounted(loadSpaceMessages)
 watch(() => props.space.name, loadSpaceMessages)
+
+// Subscribe to SSE agent_message events so conversations refresh in real time.
+// Post PR #195, messages aren't embedded in the space JSON — the only source of
+// truth is the /messages API, so we must re-fetch when new messages arrive.
+const sse = useSSE()
+let _unsubMessage: (() => void) | null = null
+onMounted(() => {
+  _unsubMessage = sse.on('agent_message', (data) => {
+    if (data.space === props.space.name) {
+      loadSpaceMessages()
+    }
+  })
+})
+onUnmounted(() => {
+  _unsubMessage?.()
+})
 
 // Reconstruct pairwise conversation threads from all agents' message inboxes.
 const conversations = computed((): Conversation[] => {
@@ -376,14 +393,17 @@ function checkScrollPosition() {
 }
 
 function scrollThreadToBottom() {
-  // Double nextTick: first tick lets Vue update the v-if/v-for DOM,
-  // second tick lets Radix ScrollArea initialize its internal viewport.
+  // Double nextTick lets Vue flush DOM updates + Radix ScrollArea init.
+  // requestAnimationFrame ensures the browser has painted the new content
+  // so scrollHeight reflects the actual rendered size.
   nextTick(() => nextTick(() => {
-    const el = getThreadScrollEl()
-    if (el) {
-      el.scrollTop = el.scrollHeight
-      isAtBottom.value = true
-    }
+    requestAnimationFrame(() => {
+      const el = getThreadScrollEl()
+      if (el) {
+        el.scrollTop = el.scrollHeight
+        isAtBottom.value = true
+      }
+    })
   }))
 }
 
@@ -442,6 +462,22 @@ async function sendInlineCompose() {
   try {
     await api.sendMessage(props.space.name, recipient, text, 'boss')
     inlineMessage.value = ''
+    // Optimistic: inject the sent message so it appears immediately without
+    // waiting for the SSE round-trip + API re-fetch.
+    const optimistic: AgentMessage = {
+      id: `optimistic-${Date.now()}`,
+      message: text,
+      sender: 'boss',
+      timestamp: new Date().toISOString(),
+      read: true,
+    }
+    const bucket = spaceMessages.value[recipient]
+    if (bucket) {
+      bucket.messages.push(optimistic)
+    } else {
+      spaceMessages.value[recipient] = { messages: [optimistic], has_more: false }
+    }
+    scrollThreadToBottom()
   } catch (err) {
     inlineSendError.value = err instanceof Error ? err.message : 'Failed to send message'
   } finally {

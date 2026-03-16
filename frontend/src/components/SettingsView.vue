@@ -8,11 +8,17 @@ import {
   soundTheme,
   soundVolume,
   soundCategories,
+  audioLogEnabled,
   SOUND_THEMES,
   SOUND_CATEGORY_META,
   activityTickEnabled,
   requestNotificationPermission,
   playChime,
+  playSuccess,
+  playBlockedAlert,
+  playTaskTransition,
+  playAgentMessage,
+  playActivityTick,
 } from '@/composables/useNotifications'
 
 defineEmits<{ 'open-audio-guide': [] }>()
@@ -22,6 +28,7 @@ const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
 const notifPermission = ref(typeof Notification !== 'undefined' ? Notification.permission : 'denied')
+const playingCategory = ref<string | null>(null)
 
 async function toggleNotifications(value: boolean) {
   notificationsEnabled.value = value
@@ -30,6 +37,20 @@ async function toggleNotifications(value: boolean) {
     notifPermission.value = granted ? 'granted' : 'denied'
     if (!granted) notificationsEnabled.value = false
   }
+}
+
+// Preview a sound category
+function previewCategory(catId: string) {
+  if (!soundEnabled.value) return
+  playingCategory.value = catId
+  switch (catId) {
+    case 'urgent': playBlockedAlert(); break
+    case 'events': playTaskTransition('in_progress'); break
+    case 'celebrations': playSuccess('medium'); break
+    case 'ambient': playActivityTick(); break
+    case 'social': playAgentMessage('preview-agent'); break
+  }
+  setTimeout(() => { if (playingCategory.value === catId) playingCategory.value = null }, 1200)
 }
 
 // API token management
@@ -215,26 +236,17 @@ async function toggleSkipPermissions(value: boolean) {
             <div class="flex flex-col gap-0.5">
               <span class="font-medium text-sm">Sound Effects</span>
               <span class="text-xs text-muted-foreground">
-                Play audio cues for key events: message arrivals, task completion, and sprint-complete celebrations. Off by default.
+                Audio cues for key events. Off by default.
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="text-xs text-muted-foreground hover:text-foreground underline"
-                @click="soundEnabled ? playChime() : undefined"
-                :disabled="!soundEnabled"
-                :class="!soundEnabled ? 'opacity-50 cursor-not-allowed' : ''"
-              >
-                Preview
-              </button>
               <button
                 type="button"
                 class="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted transition-colors"
                 @click="$emit('open-audio-guide')"
                 title="Open the audio guide to learn what each sound means"
               >
-                🎵 Audio Guide
+                Audio Guide
               </button>
               <button
                 type="button"
@@ -256,7 +268,7 @@ async function toggleSkipPermissions(value: boolean) {
             </div>
           </div>
 
-          <!-- Sound theme picker (always visible so it's discoverable) -->
+          <!-- Sound theme picker -->
           <div class="flex flex-col gap-2">
             <span class="text-xs font-medium text-foreground">Sound Theme</span>
             <div class="grid grid-cols-2 gap-2">
@@ -274,7 +286,6 @@ async function toggleSkipPermissions(value: boolean) {
                 <span class="text-xs text-muted-foreground">{{ theme.description }}</span>
               </button>
             </div>
-            <p class="text-xs text-muted-foreground">Clicking a theme previews its sound.</p>
           </div>
 
           <!-- Volume slider -->
@@ -293,19 +304,31 @@ async function toggleSkipPermissions(value: boolean) {
             />
           </div>
 
-          <!-- Per-category toggles -->
+          <!-- Per-category toggles with preview buttons -->
           <div class="flex flex-col gap-2 pt-2 border-t border-border">
             <span class="text-sm font-medium">Sound Categories</span>
-            <p class="text-xs text-muted-foreground -mt-1">Fine-tune which events make noise.</p>
+            <p class="text-xs text-muted-foreground -mt-1">Toggle and preview each category. Click the play button to hear a sample.</p>
             <div class="flex flex-col gap-1">
               <div
                 v-for="cat in SOUND_CATEGORY_META"
                 :key="cat.id"
-                class="flex items-center justify-between gap-4 py-1.5"
+                class="flex items-center justify-between gap-3 py-1.5"
               >
-                <div class="flex flex-col gap-0.5 min-w-0">
-                  <span class="text-xs font-medium">{{ cat.label }}</span>
-                  <span class="text-xs text-muted-foreground">{{ cat.description }}</span>
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                  <button
+                    type="button"
+                    class="shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-xs hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    :class="playingCategory === cat.id ? 'bg-primary/20 border-primary/50' : ''"
+                    :disabled="!soundEnabled || !soundCategories[cat.id]"
+                    :title="`Preview ${cat.label} sound`"
+                    @click="previewCategory(cat.id)"
+                  >
+                    {{ playingCategory === cat.id ? '||' : '\u25B6' }}
+                  </button>
+                  <div class="flex flex-col gap-0.5 min-w-0">
+                    <span class="text-xs font-medium">{{ cat.label }}</span>
+                    <span class="text-xs text-muted-foreground">{{ cat.description }}</span>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -323,10 +346,29 @@ async function toggleSkipPermissions(value: boolean) {
             </div>
           </div>
 
-          <!-- Activity tick toggle -->
+          <!-- Audio event log toggle (Minecraft-style) -->
           <div class="flex items-center justify-between gap-4 pt-2 border-t border-border">
             <div class="flex flex-col gap-0.5 min-w-0">
-              <span class="text-sm font-medium">Ambient activity tick</span>
+              <span class="text-sm font-medium">Audio Event Log</span>
+              <span class="text-xs text-muted-foreground">
+                Shows a Minecraft-style overlay in the bottom-right describing what each sound cue means as it plays.
+                Helpful for learning the audio language.
+              </span>
+            </div>
+            <button
+              role="switch"
+              :aria-checked="audioLogEnabled"
+              :class="['relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors', audioLogEnabled ? 'bg-primary' : 'bg-input']"
+              @click="audioLogEnabled = !audioLogEnabled"
+            >
+              <span :class="['block h-4 w-4 rounded-full bg-background shadow transition-transform', audioLogEnabled ? 'translate-x-4' : 'translate-x-0']" />
+            </button>
+          </div>
+
+          <!-- Activity tick toggle (moved here from standalone section) -->
+          <div class="flex items-center justify-between gap-4 pt-2 border-t border-border">
+            <div class="flex flex-col gap-0.5 min-w-0">
+              <span class="text-sm font-medium">Activity Tick</span>
               <span class="text-xs text-muted-foreground">
                 Soft tick on each agent update — server-room ambience. Very quiet.
               </span>

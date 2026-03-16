@@ -231,9 +231,11 @@ function playSpawnDemo() {
   right: 0;
   bottom: 0;
   width: 340px;
-  background: hsl(var(--background));
+  background-color: hsl(var(--background));
+  /* Ensure fully opaque even if --background resolves oddly */
+  backdrop-filter: blur(20px);
   border-left: 1px solid hsl(var(--border));
-  box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.25);
   z-index: 50;
   display: flex;
   flex-direction: column;
