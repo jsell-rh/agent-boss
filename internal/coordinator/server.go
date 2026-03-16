@@ -124,7 +124,7 @@ func NewServer(port, dataDir string) *Server {
 		defaultBackend:       "tmux",
 		logger:               NewLogger(os.Stdout),
 		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
-		personas:             newPersonaStore(dataDir),
+		personas:             nil, // initialized in Start() after DB is ready
 		apiToken:             os.Getenv("BOSS_API_TOKEN"),
 	}
 
@@ -209,6 +209,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("open db: %w", err)
 	}
 	s.repo = bossdb.New(gdb)
+	// Migrate personas from JSON file to SQLite on first run.
+	if err := s.repo.ImportPersonasFromJSON(s.dataDir); err != nil {
+		return fmt.Errorf("migrate personas: %w", err)
+	}
+	s.personas = newPersonaStore(s.repo)
 	// Wire the domain StoragePort adapter over the GORM repository.
 	s.storage = sqliteadapter.New(s.repo)
 	// With SQLite as the primary store, switch the event journal to in-memory

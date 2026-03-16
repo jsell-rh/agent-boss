@@ -783,7 +783,7 @@ type PersonaRef struct {
 }
 
 // Persona is a global, reusable prompt fragment that can be assigned to agents.
-// Personas are stored in DATA_DIR/personas.json and are independent of spaces.
+// Personas are stored in SQLite (personas table) and are independent of spaces.
 type Persona struct {
 	ID          string           `json:"id"`
 	Name        string           `json:"name"`
