@@ -150,8 +150,15 @@ class ApiClient {
     return this.request(url)
   }
 
-  fetchSpaceMessages(space: string): Promise<Record<string, { messages: import('@/types').AgentMessage[] }>> {
-    return this.request(`/spaces/${encodeURIComponent(space)}/messages`)
+  fetchSpaceMessages(
+    space: string,
+    opts?: { limit?: number; before?: string },
+  ): Promise<Record<string, { messages: import('@/types').AgentMessage[]; has_more: boolean }>> {
+    const params = new URLSearchParams()
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+    if (opts?.before) params.set('before', opts.before)
+    const qs = params.toString()
+    return this.request(`/spaces/${encodeURIComponent(space)}/messages${qs ? `?${qs}` : ''}`)
   }
 
   ackMessage(space: string, agent: string, messageId: string, agentName: string): Promise<void> {

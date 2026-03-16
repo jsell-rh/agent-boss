@@ -45,13 +45,57 @@ interface Conversation {
 
 // Messages fetched from /spaces/:space/messages — decoupled from the space JSON
 // (which no longer embeds message histories after the perf fix in PR #195).
-const spaceMessages = ref<Record<string, { messages: import('@/types').AgentMessage[] }>>({})
+const spaceMessages = ref<Record<string, { messages: import('@/types').AgentMessage[]; has_more: boolean }>>({})
+const loadingEarlier = ref(false)
+// Tracks whether any agent in the current conversation has more messages to load.
+const conversationHasMore = computed(() => {
+  if (!selectedKey.value) return false
+  const conv = conversations.value.find(c => c.key === selectedKey.value)
+  if (!conv) return false
+  return conv.participants.some(p => spaceMessages.value[p]?.has_more)
+})
+
+const MESSAGE_LIMIT = 50
 
 async function loadSpaceMessages() {
   try {
-    spaceMessages.value = await api.fetchSpaceMessages(props.space.name)
+    spaceMessages.value = await api.fetchSpaceMessages(props.space.name, { limit: MESSAGE_LIMIT })
   } catch {
     // non-fatal: falls back to agentData.messages (empty after PR #195)
+  }
+}
+
+async function loadEarlierMessages() {
+  if (loadingEarlier.value || !selectedKey.value) return
+  const conv = conversations.value.find(c => c.key === selectedKey.value)
+  if (!conv || conv.messages.length === 0) return
+
+  // Find the oldest message timestamp across the conversation.
+  const oldest = conv.messages[0]!.timestamp
+  loadingEarlier.value = true
+  try {
+    const older = await api.fetchSpaceMessages(props.space.name, {
+      limit: MESSAGE_LIMIT,
+      before: oldest,
+    })
+    // Merge older messages in front of existing ones, deduplicating by id.
+    for (const [agent, data] of Object.entries(older)) {
+      const existing = spaceMessages.value[agent]
+      if (!existing) {
+        spaceMessages.value[agent] = data
+      } else {
+        const existingIds = new Set(existing.messages.map(m => m.id))
+        const prepend = data.messages.filter(m => !existingIds.has(m.id))
+        spaceMessages.value[agent] = {
+          messages: [...prepend, ...existing.messages],
+          has_more: data.has_more,
+        }
+      }
+    }
+  } catch {
+    // non-fatal
+  } finally {
+    loadingEarlier.value = false
   }
 }
 
@@ -751,6 +795,21 @@ watch(composeRecipient, async (agent) => {
             aria-label="Conversation thread"
             aria-live="polite"
           >
+            <!-- Load earlier button — shown when there are older messages to fetch -->
+            <div
+              v-if="conversationHasMore && selectedConversation.messages.length > 0"
+              class="flex justify-center py-2 mb-2"
+            >
+              <button
+                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-3 py-1 rounded-full border border-border/50 hover:border-border transition-colors disabled:opacity-50"
+                :disabled="loadingEarlier"
+                @click="loadEarlierMessages"
+              >
+                <Loader2 v-if="loadingEarlier" class="size-3 animate-spin" aria-hidden="true" />
+                {{ loadingEarlier ? 'Loading…' : 'Load earlier messages' }}
+              </button>
+            </div>
+
             <!-- Empty thread state -->
             <div
               v-if="selectedConversation.messages.length === 0"
