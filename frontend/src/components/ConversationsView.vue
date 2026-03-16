@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { KnowledgeSpace, AgentUpdate } from '@/types'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2 } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -106,7 +106,8 @@ const filteredConversations = computed(() => {
   const q = searchQuery.value.toLowerCase()
   if (!q) return conversations.value
   return conversations.value.filter(conv =>
-    conv.participants.some(p => p.toLowerCase().includes(q)),
+    conv.participants.some(p => p.toLowerCase().includes(q)) ||
+    conv.messages.some(m => m.message.toLowerCase().includes(q)),
   )
 })
 
@@ -314,19 +315,41 @@ function selectNewMsgAgent(agentName: string) {
 
 // ── Auto-scroll ─────────────────────────────────────────────────────
 const threadScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
+const isAtBottom = ref(true)
+
+function getThreadScrollEl(): HTMLElement | null {
+  return threadScrollRef.value?.$el?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+}
+
+function checkScrollPosition() {
+  const el = getThreadScrollEl()
+  if (!el) return
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
 
 function scrollThreadToBottom() {
   nextTick(() => {
-    const el = threadScrollRef.value?.$el?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
-    if (el) el.scrollTop = el.scrollHeight
+    const el = getThreadScrollEl()
+    if (el) {
+      el.scrollTop = el.scrollHeight
+      isAtBottom.value = true
+    }
   })
 }
+
+// Wire up scroll listener for jump-to-bottom tracking
+watchEffect((onCleanup) => {
+  const el = getThreadScrollEl()
+  if (!el) return
+  el.addEventListener('scroll', checkScrollPosition, { passive: true })
+  onCleanup(() => el.removeEventListener('scroll', checkScrollPosition))
+})
 
 watch(selectedKey, () => scrollThreadToBottom())
 watch(
   () => selectedConversation.value?.messages.length,
   () => {
-    scrollThreadToBottom()
+    if (isAtBottom.value) scrollThreadToBottom()
     // ACK any new unread messages that arrived while this conversation is open
     const conv = selectedConversation.value
     if (conv) ackBossMessages(conv)
@@ -483,10 +506,12 @@ watch(composeRecipient, async (agent) => {
           </Tooltip>
         </div>
 
+        <!-- Backdrop to close picker on click-outside (M11) -->
+        <div v-if="newMsgPickerOpen" class="fixed inset-0 z-10" aria-hidden="true" @click="newMsgPickerOpen = false" />
         <!-- New message agent picker -->
         <div
           v-if="newMsgPickerOpen"
-          class="mt-2 rounded-md border bg-popover shadow-md"
+          class="mt-2 rounded-md border bg-popover shadow-md relative z-20"
         >
           <div class="p-2 border-b">
             <Input
@@ -695,7 +720,7 @@ watch(composeRecipient, async (agent) => {
     <!-- Right panel: thread view + task widget -->
     <div class="flex-1 flex flex-row min-h-0 min-w-0">
       <!-- Thread column -->
-      <div class="flex-1 flex flex-col min-h-0 min-w-0">
+      <div class="flex-1 flex flex-col min-h-0 min-w-0 relative">
       <template v-if="selectedConversation">
         <!-- Thread header -->
         <div class="flex items-center gap-3 px-4 py-3 border-b shrink-0">
@@ -905,6 +930,19 @@ watch(composeRecipient, async (agent) => {
             </template>
           </div>
         </ScrollArea>
+
+        <!-- Jump-to-bottom button (H14) -->
+        <Transition name="fade">
+          <button
+            v-if="!isAtBottom"
+            class="absolute bottom-20 right-4 z-10 flex items-center gap-1 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground shadow-md hover:text-foreground transition-colors"
+            aria-label="Jump to latest messages"
+            @click="scrollThreadToBottom"
+          >
+            <ChevronDown class="size-3" />
+            Latest
+          </button>
+        </Transition>
 
         <!-- Note shown when boss is not a participant (agent-to-agent thread) -->
         <div v-if="selectedConversation && !composeRecipient" class="border-t p-3 shrink-0">
@@ -1153,4 +1191,8 @@ watch(composeRecipient, async (agent) => {
 @media (prefers-reduced-motion: reduce) {
   .message-ink-reveal { animation: none; }
 }
+
+/* Jump-to-bottom fade */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
