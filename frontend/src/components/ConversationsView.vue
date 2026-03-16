@@ -43,12 +43,28 @@ interface Conversation {
   lastMessageAt: string
 }
 
+// Messages fetched from /spaces/:space/messages — decoupled from the space JSON
+// (which no longer embeds message histories after the perf fix in PR #195).
+const spaceMessages = ref<Record<string, { messages: import('@/types').AgentMessage[] }>>({})
+
+async function loadSpaceMessages() {
+  try {
+    spaceMessages.value = await api.fetchSpaceMessages(props.space.name)
+  } catch {
+    // non-fatal: falls back to agentData.messages (empty after PR #195)
+  }
+}
+
+onMounted(loadSpaceMessages)
+watch(() => props.space.name, loadSpaceMessages)
+
 // Reconstruct pairwise conversation threads from all agents' message inboxes.
 const conversations = computed((): Conversation[] => {
   const convMap = new Map<string, Conversation>()
 
   for (const [agentName, agentData] of Object.entries(props.space.agents)) {
-    for (const msg of agentData.messages ?? []) {
+    const msgs = spaceMessages.value[agentName]?.messages ?? agentData.messages ?? []
+    for (const msg of msgs) {
       const sorted = [agentName, msg.sender].sort()
       const participants = sorted as [string, string]
       const key = participants.join('\u2194')
@@ -353,7 +369,7 @@ async function replyToDecision(msgId: string, agentName: string) {
     setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
     // Optimistically mark the decision resolved in the local reactive state so the embed
     // immediately flips to "Resolved" without waiting for a full space reload.
-    const bossMessages = props.space.agents['boss']?.messages
+    const bossMessages = spaceMessages.value['boss']?.messages
     if (bossMessages) {
       const msg = bossMessages.find(m => m.id === msgId)
       if (msg) {
