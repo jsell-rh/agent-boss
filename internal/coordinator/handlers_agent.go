@@ -1358,6 +1358,76 @@ func (s *Server) handleMessageAck(w http.ResponseWriter, r *http.Request, spaceN
 	json.NewEncoder(w).Encode(map[string]string{"status": "acked", "message_id": msgID})
 }
 
+// handleDecisionAck marks a decision message as resolved with the operator's reply text.
+// POST /spaces/{space}/agent/{agent}/message/{id}/resolve
+func (s *Server) handleDecisionAck(w http.ResponseWriter, r *http.Request, spaceName, agentName, msgID string) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Resolution string `json:"resolution"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck — empty body is fine (resolution can be empty)
+
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+
+	s.mu.Lock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.agentStatusOk(canonical)
+	if !exists {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("agent %q not found", canonical), http.StatusNotFound)
+		return
+	}
+
+	found := false
+	for i := range agent.Messages {
+		if agent.Messages[i].ID == msgID {
+			if agent.Messages[i].Type != MessageTypeDecision {
+				s.mu.Unlock()
+				writeJSONError(w, "message is not a decision request", http.StatusBadRequest)
+				return
+			}
+			agent.Messages[i].Resolved = true
+			agent.Messages[i].Resolution = body.Resolution
+			found = true
+			break
+		}
+	}
+	if !found {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("message %q not found", msgID), http.StatusNotFound)
+		return
+	}
+
+	ks.UpdatedAt = time.Now().UTC()
+	if err := s.saveSpace(ks); err != nil {
+		s.mu.Unlock()
+		writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.mu.Unlock()
+
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgAcked, Space: spaceName, Agent: canonical,
+		Msg:    fmt.Sprintf("decision %q resolved", msgID),
+		Fields: map[string]string{"message_id": msgID}})
+
+	// Broadcast agent_message so App.vue reloads the space and the embed shows as resolved.
+	sseData, _ := json.Marshal(map[string]any{
+		"space": spaceName, "agent": canonical, "message_id": msgID, "type": "decision_resolved",
+	})
+	s.broadcastSSE(spaceName, canonical, "agent_message", string(sseData))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "resolved", "message_id": msgID})
+}
+
 // createAgentRequest is the body for POST /spaces/{space}/agents.
 type createAgentRequest struct {
 	Name           string `json:"name"`

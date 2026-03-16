@@ -169,7 +169,15 @@ func (s *Server) buildMCPHandler() http.Handler {
 
 // handleSettings handles GET and PATCH /settings.
 // Exposes server-wide configuration toggles.
+// For browser direct navigation (Accept: text/html GET), serves the Vue SPA
+// so that /settings routes to the settings drawer via Vue Router.
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	// Content negotiation: browser direct navigation → serve SPA.
+	if r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/html") {
+		s.handleRoot(w, r)
+		return
+	}
+
 	type settingsPayload struct {
 		AllowSkipPermissions bool `json:"allow_skip_permissions"`
 	}

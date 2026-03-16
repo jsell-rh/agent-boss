@@ -269,25 +269,61 @@ function hashName(name: string): number {
 
 const _chimePlayed = new Set<string>()
 
+// 4-dimension agent voice system — 4×5×3×2 = 120 distinct voices, all pentatonically consonant.
+// Dimension 1: Waveform  (h % 4)       — sine, triangle, square, sawtooth
+// Dimension 2: Interval  ((h>>4) % 5)  — major 3rd, P4, P5, major 6th, octave
+// Dimension 3: Envelope  ((h>>8) % 3)  — pluck, sustained, staccato
+// Dimension 4: Register  ((h>>12) % 2) — upper register, lower register (−1 octave)
 function _playAgentVoice(agentName: string): void {
   const ctx = new AudioContext()
   const t = ctx.currentTime
   const h = hashName(agentName)
-  const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]!
-  // Major-third partner (ratio 5:4) — always consonant
-  const partner = root * 1.25
 
-  const waveforms: OscillatorType[] = ['sine', 'triangle']
-  const wave = waveforms[(h >> 4) % waveforms.length] as OscillatorType
+  // Dim 1 — Waveform
+  const waveforms: OscillatorType[] = ['sine', 'triangle', 'square', 'sawtooth']
+  const wave = waveforms[h % 4] as OscillatorType
+  // Square/sawtooth are brighter — lower their volume so perceived loudness stays consistent
+  const waveVol = (wave === 'square' || wave === 'sawtooth') ? 0.038 : 0.055
 
-  // Micro-variation: ±5% pitch + ±15ms timing offset so each play feels organic
-  const pitchVariation = 0.975 + Math.random() * 0.05
-  const timingVariation = Math.random() * 0.015
+  // Dim 2 — Interval (ratio above root)
+  const intervals = [1.25, 1.333, 1.498, 1.667, 2.0] // M3, P4, P5, M6, octave
+  const interval = intervals[(h >> 4) % 5]!
 
-  tone(ctx, root * pitchVariation,    t + timingVariation,        0.35, 0.055, wave)
-  tone(ctx, partner * pitchVariation, t + 0.06 + timingVariation, 0.30, 0.045, wave)
+  // Dim 3 — Envelope type
+  const envelopeType = (h >> 8) % 3 // 0=pluck, 1=sustained, 2=staccato
 
-  setTimeout(() => ctx.close(), 800)
+  // Dim 4 — Register
+  const registerShift = (h >> 12) % 2 // 0=upper, 1=lower (half freq)
+  const baseIdx = h % PENTATONIC_HZ.length
+  const root = PENTATONIC_HZ[baseIdx]! * (registerShift === 0 ? 1.0 : 0.5)
+  const partner = root * interval
+
+  // Micro-variation: ±8 cents pitch drift + up to 18ms timing humanization
+  const centsDrift = Math.pow(2, (Math.random() * 16 - 8) / 1200)
+  const timeHuman = Math.random() * 0.018
+
+  // Optional 8% grace note (a semitone above root, very brief)
+  const hasGrace = Math.random() < 0.08
+
+  if (envelopeType === 0) {
+    // Pluck: fast attack, medium decay (~350ms)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave)
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.35, waveVol,        wave)
+    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.30, waveVol * 0.82, wave)
+  } else if (envelopeType === 1) {
+    // Sustained: slower attack, longer ring (~550ms)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave)
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.55, waveVol * 0.82, wave)
+    tone(ctx, partner * centsDrift, t + 0.08 + timeHuman, 0.50, waveVol * 0.68, wave)
+  } else {
+    // Staccato: very short punchy notes + brief echo
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.10, waveVol * 1.1,  wave)
+    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.10, waveVol * 0.95, wave)
+    // Echo at half volume, offset by ~160ms
+    tone(ctx, root    * centsDrift, t + 0.18 + timeHuman, 0.08, waveVol * 0.4,  wave)
+  }
+
+  setTimeout(() => ctx.close(), 900)
 }
 
 export function playAgentSignatureChime(agentName: string): void {

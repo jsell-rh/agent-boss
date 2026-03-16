@@ -176,6 +176,17 @@ const attentionSectionClass = computed(() => {
   return 'bg-amber-500/10 border-amber-500/30'
 })
 
+// --------------- Attach command ---------------
+const attachCopied = ref(false)
+
+function copyAttachCommand() {
+  const cmd = `boss attach --space "${props.spaceName}" --agent ${props.agentName}`
+  navigator.clipboard.writeText(cmd).then(() => {
+    attachCopied.value = true
+    setTimeout(() => { attachCopied.value = false }, 2000)
+  })
+}
+
 // --------------- Lifecycle ---------------
 const lifecycleLoading = ref<'spawn' | 'stop' | 'interrupt' | 'restart' | null>(null)
 const lifecycleToast = ref<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -569,6 +580,27 @@ watch(() => props.agentName, () => {
                 </div>
               </TooltipTrigger>
               <TooltipContent>{{ tmuxDisplay.tooltip }}</TooltipContent>
+            </Tooltip>
+
+            <!-- Copy attach command -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  :class="attachCopied ? 'text-green-500 hover:text-green-500' : ''"
+                  aria-label="Copy boss attach command"
+                  @click="copyAttachCommand"
+                >
+                  <CheckCircle2 v-if="attachCopied" class="size-3.5" />
+                  <Copy v-else class="size-3.5" />
+                  {{ attachCopied ? 'Copied!' : 'Attach' }}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Copy: <code class="text-xs">boss attach --space "{{ spaceName }}" --agent {{ agentName }}</code>
+              </TooltipContent>
             </Tooltip>
 
             <!-- Lifecycle actions grouped -->

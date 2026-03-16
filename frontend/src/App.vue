@@ -1097,7 +1097,7 @@ onUnmounted(() => {
         @open-personas="personasDrawerOpen = true"
         @open-settings="settingsDrawerOpen = true"
       />
-      <SidebarInset class="flex flex-col h-dvh">
+      <SidebarInset class="flex flex-col h-dvh min-w-0 overflow-x-hidden">
         <!-- Header -->
         <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4 overflow-hidden">
           <SidebarTrigger class="-ml-1" />
@@ -1246,6 +1246,24 @@ onUnmounted(() => {
         <div aria-live="polite" aria-atomic="true" class="sr-only">
           {{ statusAnnouncement }}
         </div>
+
+        <!-- SSE reconnection banner — shown when live connection is lost -->
+        <Transition
+          enter-active-class="transition-all duration-200"
+          enter-from-class="opacity-0 -translate-y-1"
+          leave-active-class="transition-all duration-150"
+          leave-to-class="opacity-0 -translate-y-1"
+        >
+          <div
+            v-if="!sse.connected.value"
+            class="flex items-center justify-center gap-2 bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-xs text-amber-600 dark:text-amber-400 shrink-0"
+            role="alert"
+            aria-live="assertive"
+          >
+            <span class="inline-block size-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            Live connection lost — reconnecting… Data may be stale.
+          </div>
+        </Transition>
 
         <!-- Main content -->
         <main class="flex-1 min-h-0 overflow-hidden flex flex-col" aria-label="Dashboard content">

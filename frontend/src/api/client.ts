@@ -287,6 +287,17 @@ class ApiClient {
     )
   }
 
+  resolveDecision(space: string, agent: string, messageId: string, resolution: string): Promise<void> {
+    return this.requestVoid(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/message/${encodeURIComponent(messageId)}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      },
+    )
+  }
+
   resolveInterrupt(space: string, id: string, answer = 'dismissed'): Promise<void> {
     return this.requestVoid(
       `/spaces/${encodeURIComponent(space)}/factory/interrupts`,

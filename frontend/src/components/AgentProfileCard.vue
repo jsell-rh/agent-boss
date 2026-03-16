@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { AgentUpdate } from '@/types'
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useTime } from '@/composables/useTime'
 import { useRouter } from 'vue-router'
 import AgentAvatar from './AgentAvatar.vue'
 import StatusBadge from './StatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare, Crown } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare, Crown, Music2 } from 'lucide-vue-next'
 import { prLink } from '@/lib/utils'
+import { previewAgentVoice, soundEnabled } from '@/composables/useNotifications'
 
 const props = defineProps<{
   agentName: string
@@ -101,6 +102,42 @@ const summaryText = computed(() => {
   // Strip "AgentName: " prefix pattern
   return s.replace(/^[^:]+:\s*/, '').slice(0, 120)
 })
+
+// ── Summon: hold-to-charge voice trigger ─────────────────────────────────
+// Hold the button for SUMMON_MS ms to charge up and play the agent's voice.
+const SUMMON_MS = 600
+const summonProgress = ref(0) // 0–1
+const summonFired = ref(false)
+let _summonStart = 0
+let _summonRaf = 0
+
+function _summonTick() {
+  const elapsed = Date.now() - _summonStart
+  summonProgress.value = Math.min(elapsed / SUMMON_MS, 1)
+  if (summonProgress.value >= 1 && !summonFired.value) {
+    summonFired.value = true
+    previewAgentVoice(props.agentName)
+    // Hold the full ring for 400ms, then fade out
+    setTimeout(_cancelSummon, 400)
+    return
+  }
+  if (!summonFired.value) _summonRaf = requestAnimationFrame(_summonTick)
+}
+
+function _startSummon() {
+  if (summonFired.value) return
+  _summonStart = Date.now()
+  _summonRaf = requestAnimationFrame(_summonTick)
+}
+
+function _cancelSummon() {
+  cancelAnimationFrame(_summonRaf)
+  summonProgress.value = 0
+  summonFired.value = false
+}
+
+onUnmounted(_cancelSummon)
+
 </script>
 
 <template>
@@ -213,8 +250,8 @@ const summaryText = computed(() => {
             <p class="text-xs text-muted-foreground italic">No data available</p>
           </div>
 
-          <!-- Footer: View Details + Message -->
-          <div class="border-t px-3 py-2 flex gap-1">
+          <!-- Footer: View Details + Message + Summon -->
+          <div class="border-t px-3 py-2 flex gap-1 items-center">
             <Button
               variant="ghost"
               size="sm"
@@ -234,6 +271,49 @@ const summaryText = computed(() => {
               <MessageSquare class="size-3" />
               Message
             </Button>
+            <!-- Summon: hold-to-charge voice trigger (only when sound is enabled) -->
+            <button
+              v-if="soundEnabled"
+              class="relative flex items-center justify-center w-7 h-7 rounded-full select-none transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              :class="summonFired ? 'text-primary' : summonProgress > 0 ? 'text-primary/80' : 'text-muted-foreground hover:text-foreground hover:bg-accent'"
+              title="Hold to hear voice"
+              aria-label="Hold to hear agent voice"
+              @mousedown.stop.prevent="_startSummon"
+              @mouseup.stop="_cancelSummon"
+              @mouseleave.stop="_cancelSummon"
+              @touchstart.stop.prevent="_startSummon"
+              @touchend.stop.prevent="_cancelSummon"
+              @touchcancel.stop="_cancelSummon"
+              @click.stop
+            >
+              <!-- Charge ring -->
+              <svg
+                class="absolute inset-0 w-full h-full -rotate-90"
+                viewBox="0 0 28 28"
+                aria-hidden="true"
+              >
+                <!-- Track ring -->
+                <circle
+                  cx="14" cy="14" r="11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-opacity="0.15"
+                />
+                <!-- Progress ring -->
+                <circle
+                  cx="14" cy="14" r="11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  :stroke-dasharray="`${69.12 * summonProgress} 69.12`"
+                  stroke-dashoffset="0"
+                  class="transition-none"
+                />
+              </svg>
+              <Music2 class="size-3 relative z-10" />
+            </button>
           </div>
         </template>
       </div>
