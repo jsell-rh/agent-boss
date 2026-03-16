@@ -95,6 +95,29 @@ func (r *Repository) ListAgents(spaceName string) ([]*Agent, error) {
 	return agents, r.db.Where("space_name = ?", spaceName).Find(&agents).Error
 }
 
+// SaveAgentTokenHash stores the SHA-256 hex of a per-agent bearer token.
+// It upserts only the token_hash column, leaving all other fields unchanged.
+// Agent-name lookup is case-insensitive (LIKE in SQLite behaves case-insensitively
+// for ASCII; for full Unicode safety we also lowercase the input).
+func (r *Repository) SaveAgentTokenHash(spaceName, agentName, tokenHash string) error {
+	return r.db.Model(&Agent{}).
+		Where("space_name = ? AND LOWER(agent_name) = LOWER(?)", spaceName, agentName).
+		Update("token_hash", tokenHash).Error
+}
+
+// GetAgentTokenHash returns the stored SHA-256 hex token hash for an agent, or "" if none.
+// Agent-name lookup is case-insensitive.
+func (r *Repository) GetAgentTokenHash(spaceName, agentName string) (string, error) {
+	var a Agent
+	err := r.db.Select("token_hash").
+		Where("space_name = ? AND LOWER(agent_name) = LOWER(?)", spaceName, agentName).
+		First(&a).Error
+	if err == gorm.ErrRecordNotFound {
+		return "", nil
+	}
+	return a.TokenHash, err
+}
+
 // DeleteAgent removes an agent record.
 func (r *Repository) DeleteAgent(spaceName, agentName string) error {
 	return r.db.Where("space_name = ? AND agent_name = ?", spaceName, agentName).Delete(&Agent{}).Error

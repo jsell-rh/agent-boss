@@ -4396,3 +4396,105 @@ func TestCORSAllowlistNarrowsWildcard(t *testing.T) {
 		}
 	})
 }
+
+// TestPerAgentTokenIsolation verifies SEC-006: per-agent tokens allow an agent
+// to post only to its own channel, not to a sibling agent's channel.
+func TestPerAgentTokenIsolation(t *testing.T) {
+	const wsToken = "workspace-secret"
+	srv, cleanup := mustStartServerWithToken(t, wsToken)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Seed both agents via the workspace token so they exist in the DB.
+	for _, name := range []string{"alice", "bob"} {
+		resp := postJSONWithToken(t, base+"/spaces/sec006/agent/"+name, wsToken, map[string]any{
+			"status": "active", "summary": name + ": online",
+		})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+			t.Fatalf("seed %s: expected 200/202, got %d", name, resp.StatusCode)
+		}
+	}
+
+	// Generate per-agent tokens for alice and bob.
+	aliceToken := srv.generateAgentToken("sec006", "alice")
+	bobToken := srv.generateAgentToken("sec006", "bob")
+
+	if aliceToken == wsToken || bobToken == wsToken {
+		t.Fatal("generateAgentToken should return a distinct per-agent token, not the workspace token")
+	}
+	if aliceToken == bobToken {
+		t.Fatal("generateAgentToken must produce distinct tokens for different agents")
+	}
+
+	postAs := func(token, channel, caller string) int {
+		data, _ := json.Marshal(map[string]any{"status": "active", "summary": caller + ": posting"})
+		req, _ := http.NewRequest(http.MethodPost, base+"/spaces/sec006/agent/"+channel, strings.NewReader(string(data)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Agent-Name", caller)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST: %v", err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	ok := func(code int) bool { return code == http.StatusOK || code == http.StatusAccepted }
+
+	// alice's token → alice's channel: allowed.
+	if code := postAs(aliceToken, "alice", "alice"); !ok(code) {
+		t.Errorf("alice→alice: expected 200/202, got %d", code)
+	}
+
+	// bob's token → bob's channel: allowed.
+	if code := postAs(bobToken, "bob", "bob"); !ok(code) {
+		t.Errorf("bob→bob: expected 200/202, got %d", code)
+	}
+
+	// alice's token → bob's channel: SEC-006 — must be rejected.
+	if code := postAs(aliceToken, "bob", "bob"); ok(code) {
+		t.Errorf("alice token → bob channel: should be rejected (SEC-006), got %d", code)
+	}
+
+	// bob's token → alice's channel: SEC-006 — must be rejected.
+	if code := postAs(bobToken, "alice", "alice"); ok(code) {
+		t.Errorf("bob token → alice channel: should be rejected (SEC-006), got %d", code)
+	}
+
+	// Workspace token → either channel: always allowed (operator access).
+	if code := postAs(wsToken, "alice", "alice"); !ok(code) {
+		t.Errorf("workspace token → alice: expected 200/202, got %d", code)
+	}
+	if code := postAs(wsToken, "bob", "bob"); !ok(code) {
+		t.Errorf("workspace token → bob: expected 200/202, got %d", code)
+	}
+}
+
+// TestMCPCORSAllowsAuthorizationHeader verifies that the /mcp CORS preflight
+// includes Authorization in Access-Control-Allow-Headers, enabling browser-based
+// MCP clients that need to pass Bearer tokens.
+func TestMCPCORSAllowsAuthorizationHeader(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	req, err := http.NewRequest(http.MethodOptions, base+"/mcp", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Origin", "http://localhost:8899")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "Authorization")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /mcp: %v", err)
+	}
+	defer resp.Body.Close()
+
+	allowed := resp.Header.Get("Access-Control-Allow-Headers")
+	if !strings.Contains(strings.ToLower(allowed), "authorization") {
+		t.Errorf("CORS preflight: Authorization not in Access-Control-Allow-Headers: %q", allowed)
+	}
+}

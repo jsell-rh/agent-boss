@@ -49,6 +49,14 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			writeJSONError(w, fmt.Sprintf("agent %q cannot post to %q's channel", callerName, agentName), http.StatusForbidden)
 			return
 		}
+		// Per-agent token enforcement (SEC-006): when auth is enabled and the
+		// caller is not using the workspace operator token, verify the token was
+		// specifically issued for this agent. Prevents one agent from posting to
+		// another agent's channel by presenting a sibling's per-agent token.
+		if !s.verifyAgentToken(r, spaceName, agentName) {
+			writeJSONError(w, "unauthorized: token does not match this agent", http.StatusUnauthorized)
+			return
+		}
 
 		contentType := r.Header.Get("Content-Type")
 		defer r.Body.Close()
@@ -1504,7 +1512,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				Height:               req.Height,
 				MCPServerURL:         s.localURL(),
 				MCPServerName:        s.mcpServerName(),
-				AgentToken:           s.apiToken,
+				AgentToken:           s.generateAgentToken(spaceName, req.Name),
 				AllowSkipPermissions: s.allowSkipPermissions,
 			},
 		}
