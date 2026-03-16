@@ -80,7 +80,7 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
               </p>
               <p
                 v-if="agentToolInfo(agentName).promptText"
-                class="text-xs text-muted-foreground mt-1 line-clamp-2 font-mono bg-muted rounded px-1.5 py-1"
+                class="text-xs text-muted-foreground mt-1 font-mono bg-muted rounded px-1.5 py-1 break-all"
               >
                 {{ agentToolInfo(agentName).promptText }}
               </p>
