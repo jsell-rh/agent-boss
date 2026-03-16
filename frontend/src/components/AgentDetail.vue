@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentUpdate, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task, AgentConfig, Persona } from '@/types'
+import type { AgentUpdate, AgentMessage, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task, AgentConfig, Persona } from '@/types'
 import { SESSION_STATUS_DISPLAY, getSessionDisplayState } from '@/types'
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
@@ -343,6 +343,22 @@ async function loadAgentTasks() {
 
 onMounted(loadAgentTasks)
 watch(() => props.agentName, loadAgentTasks)
+
+// --------------- Agent Messages ---------------
+// PR #195 stripped messages from the space endpoint for perf; fetch them separately.
+const agentMessages = ref<AgentMessage[]>([])
+
+async function loadAgentMessages() {
+  try {
+    const result = await api.fetchAgentMessages(props.spaceName, props.agentName)
+    agentMessages.value = result.messages
+  } catch {
+    agentMessages.value = []
+  }
+}
+
+onMounted(loadAgentMessages)
+watch(() => props.agentName, loadAgentMessages)
 
 // --------------- Personas + Agent Config ---------------
 const agentConfig = ref<AgentConfig | null>(null)
@@ -1270,13 +1286,13 @@ watch(() => props.agentName, () => {
             </TooltipTrigger>
             <TooltipContent>Direct channel between you (boss) and {{ agentName }}. Messages sent here go directly to the agent's inbox.</TooltipContent>
           </Tooltip>
-          <Badge v-if="agent.messages?.length" variant="secondary" class="h-4 min-w-4 px-1 text-[10px] font-semibold tabular-nums">
-            {{ agent.messages.length }}
+          <Badge v-if="agentMessages.length" variant="secondary" class="h-4 min-w-4 px-1 text-[10px] font-semibold tabular-nums">
+            {{ agentMessages.length }}
           </Badge>
         </div>
         <div class="h-[500px] rounded-xl border bg-card text-card-foreground flex flex-col overflow-hidden">
           <AgentMessages
-            :messages="agent.messages ?? []"
+            :messages="agentMessages"
             :agent-name="agentName"
             class="min-h-0 flex-1"
             @send-message="(text: string) => emit('send-message', text, 'boss')"
