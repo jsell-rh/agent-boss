@@ -158,7 +158,7 @@ function _noiseBurst(
   const filt = ctx.createBiquadFilter()
   filt.type = 'bandpass'
   filt.frequency.value = cutoffHz
-  filt.Q.value = 2.5
+  filt.Q.value = 1.2 // wider band = clearly textural, less tonally colored (audio-sme tuning)
   const gain = ctx.createGain()
   gain.gain.setValueAtTime(vol * soundVolume.value, t)
   gain.gain.exponentialRampToValueAtTime(0.001, t + durationS)
@@ -212,6 +212,7 @@ export function playSuccess(priority?: string): void {
   if (!isCategoryEnabled('celebrations')) return
   const isCritical = priority === 'critical'
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -252,16 +253,15 @@ export function playSuccess(priority?: string): void {
       tone(ctx, 783.99, t + offset + 0.16, 0.4)  // G5
     }
 
-    setTimeout(() => ctx.close(), isCritical ? 2000 : 1500)
-  } catch {
-    // AudioContext not available
-  }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, isCritical ? 2000 : 1500)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // All-agents-idle "sprint complete" fanfare
 export function playSprintComplete(): void {
   if (!isCategoryEnabled('celebrations')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -292,10 +292,8 @@ export function playSprintComplete(): void {
       tone(ctx, 880,    t + 0.36, 0.55, 0.09) // A5 held
     }
 
-    setTimeout(() => ctx.close(), 2000)
-  } catch {
-    // AudioContext not available
-  }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 2000)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── Agent signature chimes ─────────────────────────────────────────────────
@@ -601,6 +599,7 @@ export function playBlockedAlert(): void {
 // agentName: when provided, appends the agent's identity voice after the warp cue (grammar).
 export function playAgentSpawn(agentName?: string): void {
   if (!isCategoryEnabled('events')) return
+  if (agentName && !_agentDebounceOk(agentName)) return // guard against rapid spawn+status-update stacks
   try {
     _activeCueCount++
     const ctx = new AudioContext()
@@ -616,8 +615,8 @@ export function playAgentSpawn(agentName?: string): void {
     } else if (theme === 'space') {
       if (!prefersReducedMotion) {
         sweep(ctx, 80, 2000, t, 0.3, effectiveVolume(0.09), 'sine')
-        tone(ctx, 1400, t + 0.33, 0.35, effectiveVolume(0.05), 'triangle')
-        warpDur = 0.68
+        tone(ctx, 1400, t + 0.33, 0.18, effectiveVolume(0.05), 'triangle') // trimmed 0.35→0.18 (audio-sme)
+        warpDur = 0.51
       } else {
         tone(ctx, 880, t, 0.3, effectiveVolume(0.06), 'sine')
         warpDur = 0.3
@@ -653,6 +652,7 @@ export function playAgentSpawn(agentName?: string): void {
 export function playTaskTransition(toStatus: string): void {
   if (!isCategoryEnabled('events')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -697,8 +697,8 @@ export function playTaskTransition(toStatus: string): void {
         tone(ctx, 587.33, chord + 0.05, 0.4, effectiveVolume(0.045)) // D5
       }
     }
-    setTimeout(() => ctx.close(), 800)
-  } catch { /* AudioContext not available */ }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 800)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── #9 @mention ping — grammar-wired ──────────────────────────────────────
@@ -714,20 +714,21 @@ export function playMentionPing(senderName?: string, recipientName?: string): vo
     const theme = soundTheme.value
     let pingDur = 0.12 // action cue duration
 
-    // Action cue: must use sweep or percussive texture (structural distinguishability rule)
+    // Action cue: must use sweep or percussive texture (structural distinguishability rule).
+    // Nature uses a triangle-wave sweep — softer than sine but still directional (no static tones).
+    // Classic sweep extended to 120ms minimum for perceptible directionality (audio-sme tuning).
     if (theme === 'retro') {
-      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square') // high blip
+      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square') // high blip — percussive
       pingDur = 0.1
     } else if (theme === 'space') {
       sweep(ctx, 800, 1600, t, 0.12, effectiveVolume(0.08), 'sine')
       pingDur = 0.12
     } else if (theme === 'nature') {
-      tone(ctx, 783.99, t, 0.15, effectiveVolume(0.07), 'triangle')
-      pingDur = 0.15
+      sweep(ctx, 440, 880, t, 0.18, effectiveVolume(0.07), 'triangle') // gentle ascending sweep
+      pingDur = 0.18
     } else {
-      // Classic: ascending sweep (fixes static C6 — now structurally distinct from identity voices)
-      sweep(ctx, 600, 1200, t, 0.08, effectiveVolume(0.09), 'sine')
-      pingDur = 0.08
+      sweep(ctx, 600, 1200, t, 0.12, effectiveVolume(0.09), 'sine') // 120ms for perceptible directionality
+      pingDur = 0.12
     }
 
     // Grammar: sender voice at t + pingDur + 0.05 (50ms urgent gap)
@@ -751,8 +752,8 @@ export function playAgentMessage(senderName: string): void {
     _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
-    // Action cue: noise-burst (structurally distinct from any melodic identity voice)
-    _noiseBurst(ctx, t, 900, effectiveVolume(0.055), 0.025)
+    // Action cue: noise-burst at 1.5x identity voice volume so action is never masked (audio-sme tuning)
+    _noiseBurst(ctx, t, 900, effectiveVolume(0.080), 0.025)
     // Grammar: sender's identity voice after 100ms gap
     _voiceInCtx(ctx, t + 0.025 + 0.1, senderName, 1.0, false)
     setTimeout(() => { ctx.close(); _activeCueCount-- }, 1500)
@@ -778,6 +779,7 @@ export function notifyBossMessage(from: string, spaceName: string): void {
 export function playPRShipped(): void {
   if (!isCategoryEnabled('events')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -808,8 +810,8 @@ export function playPRShipped(): void {
         tone(ctx, 392, t, 0.3, effectiveVolume(0.05), 'triangle')
       }
     }
-    setTimeout(() => ctx.close(), 700)
-  } catch { /* AudioContext not available */ }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 700)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── #8 Collaboration Harmony — two agents conversing ──────────────────────
@@ -885,7 +887,7 @@ export function playAgentMoodIdle(agentName: string): void {
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
-    tone(ctx, root, t, 0.07, effectiveVolume(0.018), 'sine')
+    tone(ctx, root, t, 0.09, effectiveVolume(0.025), 'sine') // ambient-tier but audible on laptop speakers
     setTimeout(() => ctx.close(), 300)
   } catch { /* AudioContext not available */ }
 }

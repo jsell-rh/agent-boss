@@ -19,7 +19,8 @@
       <div class="audio-guide-rule">
         <span class="rule-icon">&#8593;</span> Ascending = progress &nbsp;&bull;&nbsp;
         <span class="rule-icon">&#8595;</span> Descending = shipping &nbsp;&bull;&nbsp;
-        <span class="rule-icon">&#126;</span> Dissonant = needs attention
+        <span class="rule-icon">&#126;</span> Dissonant = needs attention &nbsp;&bull;&nbsp;
+        <span class="rule-icon">&#9632;</span> Noise burst = message / communication
       </div>
 
       <section class="audio-guide-section">
