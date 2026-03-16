@@ -269,6 +269,96 @@ func (s *Server) handleSpaceView(w http.ResponseWriter, r *http.Request, spaceNa
 	s.handleRoot(w, r)
 }
 
+// agentStatusPublic mirrors AgentUpdate but omits Messages and Notifications.
+// Those fields can be 100KB+ per agent and are available via dedicated endpoints.
+type agentStatusPublic struct {
+	Status         AgentStatus        `json:"status"`
+	Summary        string             `json:"summary"`
+	Branch         string             `json:"branch,omitempty"`
+	Worktree       string             `json:"worktree,omitempty"`
+	PR             string             `json:"pr,omitempty"`
+	Phase          string             `json:"phase,omitempty"`
+	Mood           string             `json:"mood,omitempty"`
+	TestCount      *int               `json:"test_count,omitempty"`
+	Items          []string           `json:"items,omitempty"`
+	Sections       []Section          `json:"sections,omitempty"`
+	Questions      []string           `json:"questions,omitempty"`
+	Blockers       []string           `json:"blockers,omitempty"`
+	NextSteps      string             `json:"next_steps,omitempty"`
+	FreeText       string             `json:"free_text,omitempty"`
+	Documents      []AgentDocument    `json:"documents,omitempty"`
+	SessionID      string             `json:"session_id,omitempty"`
+	BackendType    string             `json:"backend_type,omitempty"`
+	RepoURL        string             `json:"repo_url,omitempty"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	Parent         string             `json:"parent,omitempty"`
+	Children       []string           `json:"children,omitempty"`
+	Role           string             `json:"role,omitempty"`
+	InferredStatus string             `json:"inferred_status,omitempty"`
+	Stale          bool               `json:"stale,omitempty"`
+	Registration   *AgentRegistration `json:"registration,omitempty"`
+	LastHeartbeat  time.Time          `json:"last_heartbeat,omitempty"`
+	HeartbeatStale bool               `json:"heartbeat_stale,omitempty"`
+	UnreadCount    int                `json:"unread_count,omitempty"`
+}
+
+// agentRecordPublic is the public JSON representation of an AgentRecord.
+// It pairs the durable config with the stripped status (no message bodies).
+type agentRecordPublic struct {
+	Config *AgentConfig       `json:"config,omitempty"`
+	Status *agentStatusPublic `json:"status"`
+}
+
+// spacePublic is the JSON shape for GET /spaces/{space}/.
+// Uses agentRecordPublic so message bodies are never included at the space level.
+type spacePublic struct {
+	Name            string                        `json:"name"`
+	Agents          map[string]*agentRecordPublic `json:"agents"`
+	Tasks           map[string]*Task              `json:"tasks,omitempty"`
+	NextTaskSeq     int                           `json:"next_task_seq,omitempty"`
+	SharedContracts string                        `json:"shared_contracts,omitempty"`
+	Archive         string                        `json:"archive,omitempty"`
+	CreatedAt       time.Time                     `json:"created_at"`
+	UpdatedAt       time.Time                     `json:"updated_at"`
+}
+
+// buildSpacePublic constructs a spacePublic from ks. Caller must hold s.mu (at least RLock).
+func buildSpacePublic(ks *KnowledgeSpace) spacePublic {
+	agents := make(map[string]*agentRecordPublic, len(ks.Agents))
+	for name, rec := range ks.Agents {
+		if rec == nil {
+			continue
+		}
+		pr := &agentRecordPublic{Config: rec.Config}
+		if st := rec.Status; st != nil {
+			unread := 0
+			for _, m := range st.Messages {
+				if !m.Read {
+					unread++
+				}
+			}
+			pr.Status = &agentStatusPublic{
+				Status: st.Status, Summary: st.Summary, Branch: st.Branch,
+				Worktree: st.Worktree, PR: st.PR, Phase: st.Phase, Mood: st.Mood,
+				TestCount: st.TestCount, Items: st.Items, Sections: st.Sections,
+				Questions: st.Questions, Blockers: st.Blockers, NextSteps: st.NextSteps,
+				FreeText: st.FreeText, Documents: st.Documents, SessionID: st.SessionID,
+				BackendType: st.BackendType, RepoURL: st.RepoURL, UpdatedAt: st.UpdatedAt,
+				Parent: st.Parent, Children: st.Children, Role: st.Role,
+				InferredStatus: st.InferredStatus, Stale: st.Stale,
+				Registration: st.Registration, LastHeartbeat: st.LastHeartbeat,
+				HeartbeatStale: st.HeartbeatStale, UnreadCount: unread,
+			}
+		}
+		agents[name] = pr
+	}
+	return spacePublic{
+		Name: ks.Name, Agents: agents, Tasks: ks.Tasks,
+		NextTaskSeq: ks.NextTaskSeq, SharedContracts: ks.SharedContracts,
+		Archive: ks.Archive, CreatedAt: ks.CreatedAt, UpdatedAt: ks.UpdatedAt,
+	}
+}
+
 func (s *Server) handleSpaceJSON(w http.ResponseWriter, r *http.Request, spaceName string) {
 	if r.Method == http.MethodDelete {
 		s.handleDeleteSpace(w, r, spaceName)
@@ -283,10 +373,13 @@ func (s *Server) handleSpaceJSON(w http.ResponseWriter, r *http.Request, spaceNa
 		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
+	// Fix 1: strip messages/notifications (100KB+ per agent) from space overview.
+	// Fix 2: release RLock before encoding so writes are not starved during serialisation.
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	pub := buildSpacePublic(ks)
+	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ks)
+	json.NewEncoder(w).Encode(pub)
 }
 
 func (s *Server) handleDeleteSpace(w http.ResponseWriter, _ *http.Request, spaceName string) {
