@@ -1239,12 +1239,14 @@ onUnmounted(() => {
             </span>
             <Button
               variant="ghost"
-              size="icon-sm"
-              aria-label="Keyboard shortcuts (?)"
-              title="Keyboard shortcuts (?)"
+              size="sm"
+              class="gap-1 px-2 text-muted-foreground"
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts"
               @click="showHelpOverlay = !showHelpOverlay"
             >
               <Keyboard class="size-4" />
+              <kbd class="hidden sm:inline text-[10px] font-mono border border-border rounded px-1 bg-muted leading-5">?</kbd>
             </Button>
             <Button
               variant="ghost"

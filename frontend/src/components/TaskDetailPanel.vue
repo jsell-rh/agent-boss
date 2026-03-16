@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import AgentAvatar from './AgentAvatar.vue'
-import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock, X } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, ChevronDown, Trash2, Send, ChevronsUpDown, ListTree, Plus, Clock, X, Pencil } from 'lucide-vue-next'
 import { relativeTime } from '@/composables/useTime'
 import { renderMarkdown } from '@/lib/markdown'
 
@@ -236,10 +236,12 @@ async function setDueDate(value: string) {
               />
               <SheetTitle
                 v-else
-                class="text-base font-semibold leading-snug cursor-text mt-0.5"
+                class="group flex items-center gap-1 text-base font-semibold leading-snug cursor-text mt-0.5"
+                title="Click to edit title"
                 @click="editingTitle = true"
               >
                 {{ task.title }}
+                <Pencil class="size-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0" />
               </SheetTitle>
             </div>
             <Button variant="ghost" size="sm" class="text-destructive hover:text-destructive shrink-0" @click="deleteConfirmOpen = true">

@@ -222,7 +222,9 @@ async function toggleSkipPermissions(value: boolean) {
               <button
                 type="button"
                 class="text-xs text-muted-foreground hover:text-foreground underline"
-                @click="playChime"
+                @click="soundEnabled ? playChime() : undefined"
+                :disabled="!soundEnabled"
+                :class="!soundEnabled ? 'opacity-50 cursor-not-allowed' : ''"
               >
                 Preview
               </button>

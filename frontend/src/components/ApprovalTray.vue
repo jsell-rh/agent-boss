@@ -87,16 +87,18 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
             </div>
           </div>
           <div class="flex gap-2">
+            <!-- Approve once: neutral — safer single-use action -->
             <button
               type="button"
-              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors bg-destructive hover:bg-destructive/90 text-destructive-foreground px-3"
+              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors border bg-background hover:bg-accent hover:text-accent-foreground px-3"
               @click.stop="emit('approve', agentName, false)"
             >
               Approve once
             </button>
+            <!-- Always allow: destructive — permanent bypass is the dangerous action -->
             <button
               type="button"
-              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors border bg-background hover:bg-accent hover:text-accent-foreground px-3"
+              class="flex-1 h-7 text-xs inline-flex items-center justify-center rounded-md font-medium transition-colors bg-destructive hover:bg-destructive/90 text-destructive-foreground px-3"
               @click.stop="emit('approve', agentName, true)"
             >
               Always allow

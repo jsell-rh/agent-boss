@@ -224,6 +224,38 @@ function getDateKey(timestamp: string): string {
   return new Date(timestamp).toDateString()
 }
 
+// Conversation display title — if boss is a participant, show just the other agent's name
+function convTitle(conv: { participants: string[] }): string {
+  const { participants } = conv
+  if (participants.includes('boss')) {
+    const other = participants.find(p => p !== 'boss')
+    return other ?? participants.join(' ↔ ')
+  }
+  return participants.join(' ↔ ')
+}
+
+// Strip basic markdown for plain-text previews (bold, italic, code, headers, bullets)
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/\n+/g, ' ')
+    .trim()
+}
+
+// Auto-resize textarea as user types (H-NEW-5)
+function autoResizeTextarea(e: Event) {
+  const el = e.target as HTMLTextAreaElement
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+}
+
 // ── Agent detail slideover ──────────────────────────────────────────
 const slideoverAgentName = ref<string | null>(null)
 
@@ -551,7 +583,7 @@ watch(composeRecipient, async (agent) => {
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1 justify-between">
                   <span class="text-sm font-medium truncate">
-                    {{ conv.participants[0] }} ↔ {{ conv.participants[1] }}
+                    {{ convTitle(conv) }}
                   </span>
                   <div class="flex items-center gap-1 shrink-0">
                     <!-- Priority badge — show highest priority in thread -->
@@ -584,7 +616,7 @@ watch(composeRecipient, async (agent) => {
                 </div>
                 <p v-if="conv.messages.length > 0" class="text-xs text-muted-foreground truncate mt-0.5">
                   <span class="font-medium">{{ conv.messages[conv.messages.length - 1]!.sender }}:</span>
-                  {{ conv.messages[conv.messages.length - 1]!.message }}
+                  {{ stripMarkdown(conv.messages[conv.messages.length - 1]!.message) }}
                 </p>
                 <p class="text-xs text-muted-foreground/70 mt-0.5">
                   {{ conv.messages.length }}
@@ -638,7 +670,7 @@ watch(composeRecipient, async (agent) => {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-1 justify-between">
                     <span class="text-sm font-medium truncate">
-                      {{ conv.participants[0] }} ↔ {{ conv.participants[1] }}
+                      {{ convTitle(conv) }}
                     </span>
                     <time :datetime="conv.lastMessageAt" class="text-xs text-muted-foreground shrink-0">
                       {{ formatRelativeTime(conv.lastMessageAt) }}
@@ -646,7 +678,7 @@ watch(composeRecipient, async (agent) => {
                   </div>
                   <p v-if="conv.messages.length > 0" class="text-xs text-muted-foreground truncate mt-0.5">
                     <span class="font-medium">{{ conv.messages[conv.messages.length - 1]!.sender }}:</span>
-                    {{ conv.messages[conv.messages.length - 1]!.message }}
+                    {{ stripMarkdown(conv.messages[conv.messages.length - 1]!.message) }}
                   </p>
                   <p class="text-xs text-muted-foreground/70 mt-0.5">
                     {{ conv.messages.length }}
@@ -677,7 +709,7 @@ watch(composeRecipient, async (agent) => {
           </div>
           <div>
             <h2 class="text-sm font-semibold">
-              {{ selectedConversation.participants[0] }} ↔ {{ selectedConversation.participants[1] }}
+              {{ convTitle(selectedConversation) }}
             </h2>
             <p class="text-xs text-muted-foreground">
               {{ selectedConversation.messages.length }}
@@ -886,9 +918,9 @@ watch(composeRecipient, async (agent) => {
               :ref="(el) => { composeRef = el as HTMLTextAreaElement | null }"
               v-model="inlineMessage"
               :placeholder="`Message ${composeRecipient}… (Enter to send, Shift+Enter for newline)`"
-              class="flex-1 min-h-[38px] max-h-40 resize-none text-sm"
-              :rows="1"
+              class="flex-1 min-h-[38px] max-h-40 resize-none text-sm overflow-y-auto"
               :disabled="inlineSending"
+              @input="autoResizeTextarea"
               @keydown="handleComposeKeydown"
             />
             <Button
