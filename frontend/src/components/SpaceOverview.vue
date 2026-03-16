@@ -336,6 +336,24 @@ const headerSummary = computed(() => {
 
 // inboxPending removed — decisions now surface in conversations view
 
+/** Presence bar — agents active within the last 5 minutes */
+const PRESENCE_WINDOW_MS = 5 * 60 * 1000
+const recentlyActiveAgents = computed(() => {
+  const now = Date.now()
+  return Object.entries(props.space.agents)
+    .filter(([, agent]) => now - new Date(agent.updated_at).getTime() < PRESENCE_WINDOW_MS)
+    .sort(([, a], [, b]) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+})
+
+function presenceDotClass(status: string): string {
+  if (status === 'active') return 'bg-blue-400'
+  if (status === 'blocked') return 'bg-orange-400'
+  if (status === 'error') return 'bg-red-500'
+  if (status === 'idle') return 'bg-gray-400'
+  if (status === 'done') return 'bg-green-400'
+  return 'bg-teal-400'
+}
+
 /** Returns Tailwind bg class for the freshness dot on the avatar */
 function freshnessDotClass(dateStr: string): string {
   const tier = freshness(dateStr)
@@ -629,6 +647,34 @@ const activeSections = computed(() => [
 
         <TabsContent value="agents">
           <div class="space-y-6">
+            <!-- Presence bar — agents active in the last 5 minutes -->
+            <div v-if="recentlyActiveAgents.length > 0" class="flex items-center gap-2.5 py-1.5">
+              <span class="text-[11px] text-muted-foreground shrink-0 font-medium">Online</span>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <Tooltip v-for="[pName, pAgent] in recentlyActiveAgents" :key="pName">
+                  <TooltipTrigger as-child>
+                    <button
+                      class="relative focus-visible:outline-2 focus-visible:outline-ring focus-visible:rounded-md"
+                      :aria-label="`${pName}: ${pAgent.status}`"
+                      @click="emit('select-agent', pName)"
+                    >
+                      <AgentAvatar :name="pName" :size="22" aria-hidden="true" />
+                      <span
+                        class="absolute -bottom-0.5 -right-0.5 block size-1.5 rounded-full ring-1 ring-card"
+                        :class="presenceDotClass(pAgent.status)"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <span class="font-medium">{{ pName }}</span>
+                    <span class="text-muted-foreground ml-1">· {{ pAgent.status }}</span>
+                    <span v-if="pAgent.summary" class="block text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">{{ pAgent.summary }}</span>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div class="flex-1 h-px bg-border/40" />
+            </div>
+
             <!-- Grouped sections: Needs Attention + Active (full cards) -->
             <template v-for="section in activeSections" :key="section.key">
               <div v-if="section.agents.length > 0">
@@ -646,7 +692,9 @@ const activeSections = computed(() => [
                   <div class="flex-1 border-t" :class="section.dividerClass" />
                 </div>
                 <!-- Cards grid -->
-                <div
+                <TransitionGroup
+                  tag="div"
+                  name="agent-card"
                   class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                   role="list"
                   :aria-label="section.ariaLabel"
@@ -656,7 +704,7 @@ const activeSections = computed(() => [
                     :key="name"
                     role="listitem"
                     tabindex="0"
-                    class="group cursor-pointer transition-all duration-150 hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 relative flex flex-col !py-0 !gap-0 min-h-[180px]"
+                    class="group cursor-pointer transition-all duration-200 hover:bg-accent/50 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 relative flex flex-col !py-0 !gap-0 min-h-[180px]"
                     :class="[
                       agent.blockers?.length
                         ? 'border-l-4 border-l-orange-500 shadow-md shadow-orange-500/5'
@@ -681,6 +729,21 @@ const activeSections = computed(() => [
                           >
                             <div class="flex items-center gap-2.5 min-w-0" @click.stop>
                               <div class="relative inline-block shrink-0">
+                                <span
+                                  v-if="agent.status === 'active'"
+                                  class="agent-pulse-ring pulse-active"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  v-else-if="agent.status === 'blocked'"
+                                  class="agent-pulse-ring pulse-blocked"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  v-else-if="agent.status === 'error'"
+                                  class="agent-pulse-ring pulse-error"
+                                  aria-hidden="true"
+                                />
                                 <AgentAvatar :name="name" :size="28" aria-hidden="true" />
                                 <span
                                   class="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-card"
@@ -920,7 +983,7 @@ const activeSections = computed(() => [
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+                </TransitionGroup>
               </div>
             </template>
 
@@ -1273,3 +1336,56 @@ const activeSections = computed(() => [
     </div>
   </ScrollArea>
 </template>
+
+<style scoped>
+/* Agent card enter animation — plays when a new agent joins the grid */
+.agent-card-enter-active {
+  transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.agent-card-enter-from {
+  opacity: 0;
+  transform: scale(0.88) translateY(8px);
+}
+
+/* Agent status pulse rings — expand outward from avatar, then fade */
+.agent-pulse-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+
+.pulse-active {
+  animation: pulse-active 2s ease-out infinite;
+}
+
+.pulse-blocked {
+  animation: pulse-blocked 1.2s ease-out infinite;
+}
+
+.pulse-error {
+  animation: pulse-error 0.7s ease-out infinite;
+}
+
+@keyframes pulse-active {
+  0%   { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0.7); }
+  70%  { box-shadow: 0 0 0 7px rgba(96, 165, 250, 0); }
+  100% { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0); }
+}
+
+@keyframes pulse-blocked {
+  0%   { box-shadow: 0 0 0 0px rgba(251, 146, 60, 0.75); }
+  70%  { box-shadow: 0 0 0 6px rgba(251, 146, 60, 0); }
+  100% { box-shadow: 0 0 0 0px rgba(251, 146, 60, 0); }
+}
+
+@keyframes pulse-error {
+  0%   { box-shadow: 0 0 0 0px rgba(248, 113, 113, 0.8); }
+  70%  { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+  100% { box-shadow: 0 0 0 0px rgba(248, 113, 113, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-pulse-ring { animation: none; }
+}
+</style>
