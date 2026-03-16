@@ -71,6 +71,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 			"test_count": prop("number", "Number of tests passing"),
 			"items":      {"type": "array", "description": "List of completed or in-progress items", "items": map[string]any{"type": "string"}},
 			"next_steps": prop("string", "What you plan to do next"),
+			"mood":       prop("string", "Optional vibe/mood emoji+text e.g. '🚀 in the zone' or '😤 fighting a flaky test'"),
 			"session_id": prop("string", "Your tmux session ID (sticky — send once)"),
 			"questions":  {"type": "array", "description": "Questions needing human decision — each creates a decision request visible to the operator", "items": map[string]any{"type": "string"}},
 		}),
@@ -90,6 +91,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 			RepoURL:   strArg(args, "repo_url"),
 			Phase:     strArg(args, "phase"),
 			NextSteps: strArg(args, "next_steps"),
+			Mood:      strArg(args, "mood"),
 			SessionID: strArg(args, "session_id"),
 			UpdatedAt: time.Now().UTC(),
 		}

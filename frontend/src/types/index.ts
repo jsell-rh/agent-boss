@@ -43,6 +43,7 @@ export interface AgentUpdate {
   worktree?: string
   pr?: string
   phase?: string
+  mood?: string
   test_count?: number
   items?: string[]
   sections?: Section[]

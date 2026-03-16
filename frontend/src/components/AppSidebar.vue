@@ -560,6 +560,7 @@ defineExpose({ openNewSpaceDialog })
                           <span /><span /><span />
                         </span>
                       </div>
+                      <div v-if="agent.mood" class="text-[10px] text-muted-foreground truncate italic leading-none">{{ agent.mood }}</div>
                       <div v-if="agent.branch || agent.pr" class="flex items-center gap-1.5">
                         <Tooltip v-if="agent.branch">
                           <TooltipTrigger as-child>

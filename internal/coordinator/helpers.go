@@ -74,6 +74,7 @@ func sanitizeInput(s string) string {
 func sanitizeAgentUpdate(u *AgentUpdate) {
 	u.Summary = sanitizeInput(u.Summary)
 	u.Phase = sanitizeInput(u.Phase)
+	u.Mood = sanitizeInput(u.Mood)
 	u.FreeText = sanitizeInput(u.FreeText)
 	u.NextSteps = sanitizeInput(u.NextSteps)
 	for i, item := range u.Items {

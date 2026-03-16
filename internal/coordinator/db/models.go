@@ -71,6 +71,7 @@ type Agent struct {
 	Worktree       string
 	PR             string
 	Phase          string
+	Mood           string
 	TestCount      sql.NullInt64
 	Items          string `gorm:"type:text"` // JSON array
 	Sections       string `gorm:"type:text"` // JSON array

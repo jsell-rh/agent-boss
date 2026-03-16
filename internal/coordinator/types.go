@@ -85,6 +85,7 @@ type AgentUpdate struct {
 	Worktree       string          `json:"worktree,omitempty"`
 	PR             string          `json:"pr,omitempty"`
 	Phase          string          `json:"phase,omitempty"`
+	Mood           string          `json:"mood,omitempty"`
 	TestCount      *int            `json:"test_count,omitempty"`
 	Items          []string        `json:"items,omitempty"`
 	Sections       []Section       `json:"sections,omitempty"`
