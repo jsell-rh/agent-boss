@@ -70,14 +70,16 @@ const tmuxStatus = ref<Record<string, SessionAgentStatus>>({})
 const hierarchyTree = ref<HierarchyTree | null>(null)
 const audioGuideOpen = ref(false)
 
-// Auto-show audio guide 3s after first-ever sound enable (per CTO/audio-sme spec)
+// Auto-show audio guide on first-ever sound enable OR on first page load if sounds are already on.
+// Covers users who enabled sound before the guide was shipped.
 const _AUDIO_GUIDE_SEEN_KEY = 'boss_audio_guide_seen'
-watch(soundEnabled, (enabled) => {
-  if (enabled && !localStorage.getItem(_AUDIO_GUIDE_SEEN_KEY)) {
-    setTimeout(() => { audioGuideOpen.value = true }, 3000)
+function maybeShowAudioGuide() {
+  if (soundEnabled.value && !localStorage.getItem(_AUDIO_GUIDE_SEEN_KEY)) {
     localStorage.setItem(_AUDIO_GUIDE_SEEN_KEY, '1')
+    setTimeout(() => { audioGuideOpen.value = true }, 3000)
   }
-})
+}
+watch(soundEnabled, maybeShowAudioGuide)
 
 const loading = ref(true)
 const spaceLoading = ref(false)
@@ -1079,6 +1081,7 @@ onMounted(async () => {
   document.addEventListener('keydown', handleKeydown)
   _applyAmbientHue()
   _chromaTimer = window.setInterval(_applyAmbientHue, 60_000)
+  maybeShowAudioGuide()
 
   if (selectedSpace.value) {
     // Route already has a space — load its data and connect SSE
