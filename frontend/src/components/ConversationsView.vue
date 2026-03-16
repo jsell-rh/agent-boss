@@ -11,7 +11,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown, ChevronUp, Crown } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -376,13 +376,15 @@ function checkScrollPosition() {
 }
 
 function scrollThreadToBottom() {
-  nextTick(() => {
+  // Double nextTick: first tick lets Vue update the v-if/v-for DOM,
+  // second tick lets Radix ScrollArea initialize its internal viewport.
+  nextTick(() => nextTick(() => {
     const el = getThreadScrollEl()
     if (el) {
       el.scrollTop = el.scrollHeight
       isAtBottom.value = true
     }
-  })
+  }))
 }
 
 // Wire up scroll listener for jump-to-bottom tracking
@@ -393,11 +395,24 @@ watchEffect((onCleanup) => {
   onCleanup(() => el.removeEventListener('scroll', checkScrollPosition))
 })
 
-watch(selectedKey, () => scrollThreadToBottom())
+// Scroll on conversation switch — also track whether we've scrolled for this key
+const _lastScrolledKey = ref<string | null>(null)
+watch(selectedKey, () => {
+  _lastScrolledKey.value = null  // reset so the messages-length watcher rescrolls when data arrives
+  scrollThreadToBottom()
+})
 watch(
   () => selectedConversation.value?.messages.length,
-  () => {
-    if (isAtBottom.value) scrollThreadToBottom()
+  (len) => {
+    if (len === undefined) return
+    // Always scroll when switching conversations (first load of messages for this key)
+    if (selectedKey.value && _lastScrolledKey.value !== selectedKey.value) {
+      _lastScrolledKey.value = selectedKey.value
+      scrollThreadToBottom()
+    } else if (isAtBottom.value) {
+      // Subsequent messages: only scroll if user is near bottom
+      scrollThreadToBottom()
+    }
     // ACK any new unread messages that arrived while this conversation is open
     const conv = selectedConversation.value
     if (conv) ackBossMessages(conv)
@@ -611,13 +626,14 @@ watch(composeRecipient, async (agent) => {
         <div v-else class="py-1" role="listbox" aria-label="Conversation list">
           <!-- With Boss group -->
           <div v-if="bossConversations.length > 0">
-            <div class="px-3 pt-2 pb-1">
+            <div class="px-3 pt-2 pb-1 flex items-center gap-1.5">
+              <Crown class="size-3 text-amber-500" aria-hidden="true" />
               <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">With Boss</span>
             </div>
             <div v-for="conv in bossConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
             <button
-              class="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-              :class="{ 'bg-muted': selectedKey === conv.key }"
+              class="w-full text-left px-3 py-2.5 hover:bg-amber-500/5 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset border-l-2"
+              :class="selectedKey === conv.key ? 'bg-amber-500/8 border-l-amber-500' : 'border-l-transparent hover:border-l-amber-500/40'"
               @click="selectedKey = conv.key"
             >
               <!-- Stacked avatars (clickable to open agent slideover) -->
@@ -660,14 +676,18 @@ watch(composeRecipient, async (agent) => {
                   </span>
                   <div class="flex items-center gap-1 shrink-0">
                     <!-- Priority badge — show highest priority in thread -->
-                    <span
-                      v-if="conv.messages.some(m => m.priority === 'urgent')"
-                      class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/30"
-                    >urgent</span>
-                    <span
-                      v-else-if="conv.messages.some(m => m.priority === 'directive')"
-                      class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400"
-                    >directive</span>
+                    <Tooltip v-if="conv.messages.some(m => m.priority === 'urgent')">
+                      <TooltipTrigger as-child>
+                        <span class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/30 cursor-default">urgent</span>
+                      </TooltipTrigger>
+                      <TooltipContent>This thread contains an urgent message requiring immediate attention</TooltipContent>
+                    </Tooltip>
+                    <Tooltip v-else-if="conv.messages.some(m => m.priority === 'directive')">
+                      <TooltipTrigger as-child>
+                        <span class="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 dark:text-yellow-400 cursor-default">directive</span>
+                      </TooltipTrigger>
+                      <TooltipContent>This thread contains a directive — an instruction from your manager</TooltipContent>
+                    </Tooltip>
                     <!-- Decision pending badge -->
                     <span
                       v-if="conv.messages.some(m => m.type === 'decision' && !m.resolved)"
@@ -865,9 +885,9 @@ watch(composeRecipient, async (agent) => {
                 <div class="flex-1 h-px bg-border" />
               </div>
 
-              <!-- Message row — ink-reveal entrance animation -->
+              <!-- Message row -->
               <div
-                class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors message-ink-reveal"
+                class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors"
                 :class="msg.recipient === 'boss' && !msg.read ? 'bg-primary/5 -mx-2 px-2' : ''"
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
@@ -1096,11 +1116,19 @@ watch(composeRecipient, async (agent) => {
               </TooltipTrigger>
               <TooltipContent>Add task for {{ composeRecipient }}</TooltipContent>
             </Tooltip>
-            <button
-              class="text-xs text-muted-foreground hover:text-foreground transition-colors ml-1"
-              :aria-label="showTaskPanel ? 'Collapse tasks' : 'Expand tasks'"
-              @click="showTaskPanel = !showTaskPanel"
-            >{{ showTaskPanel ? '−' : '▸' }}</button>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  class="text-xs text-muted-foreground hover:text-foreground transition-colors ml-1 flex items-center"
+                  :aria-label="showTaskPanel ? 'Collapse tasks' : 'Expand tasks'"
+                  @click="showTaskPanel = !showTaskPanel"
+                >
+                  <ChevronUp v-if="showTaskPanel" class="size-3.5" />
+                  <ChevronDown v-else class="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{{ showTaskPanel ? 'Collapse' : 'Expand' }} tasks</TooltipContent>
+            </Tooltip>
           </div>
         </div>
         <ScrollArea v-if="showTaskPanel" class="flex-1 min-h-0">
@@ -1262,20 +1290,6 @@ watch(composeRecipient, async (agent) => {
 </template>
 
 <style scoped>
-/* Ink-reveal: new messages write in left-to-right like a scanner light */
-.message-ink-reveal {
-  animation: ink-reveal 0.35s ease-out both;
-}
-
-@keyframes ink-reveal {
-  from { clip-path: inset(0 100% 0 0); opacity: 0.4; }
-  to   { clip-path: inset(0 0% 0 0);   opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .message-ink-reveal { animation: none; }
-}
-
 /* Jump-to-bottom fade */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

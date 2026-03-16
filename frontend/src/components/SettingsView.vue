@@ -230,10 +230,11 @@ async function toggleSkipPermissions(value: boolean) {
               </button>
               <button
                 type="button"
-                class="text-xs text-muted-foreground hover:text-foreground underline"
+                class="text-xs px-2 py-0.5 rounded border border-border hover:bg-muted transition-colors"
                 @click="$emit('open-audio-guide')"
+                title="Open the audio guide to learn what each sound means"
               >
-                Audio Guide
+                🎵 Audio Guide
               </button>
               <button
                 type="button"
