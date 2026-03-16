@@ -285,16 +285,16 @@ export function playSuccess(priority?: string): void {
       sweep(ctx, 800,  1200, t + offset + 0.18, 0.25, 0.08, 'sine')
     } else if (theme === 'nature') {
       // Noise-burst prefix marks "action complete" before identity-like triangle tones (audio-sme Phase 4)
-      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.04), 0.015)
-      tone(ctx, 523.25, t + offset + 0.02,        0.6,  0.05, 'triangle') // C5
-      tone(ctx, 659.25, t + offset + 0.02 + 0.12, 0.55, 0.05, 'triangle') // E5
-      tone(ctx, 783.99, t + offset + 0.02 + 0.24, 0.5,  0.05, 'triangle') // G5
+      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.12), 0.025)
+      tone(ctx, 523.25, t + offset + 0.03,        0.6,  0.05, 'triangle') // C5
+      tone(ctx, 659.25, t + offset + 0.03 + 0.12, 0.55, 0.05, 'triangle') // E5
+      tone(ctx, 783.99, t + offset + 0.03 + 0.24, 0.5,  0.05, 'triangle') // G5
     } else {
       // Classic: noise-burst prefix + C major triad (C5, E5, G5) — burst marks "done" action (audio-sme Phase 4)
-      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.04), 0.015)
-      tone(ctx, 523.25, t + offset + 0.02,        0.5)  // C5
-      tone(ctx, 659.25, t + offset + 0.02 + 0.08, 0.45) // E5
-      tone(ctx, 783.99, t + offset + 0.02 + 0.16, 0.4)  // G5
+      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.12), 0.025)
+      tone(ctx, 523.25, t + offset + 0.03,        0.5)  // C5
+      tone(ctx, 659.25, t + offset + 0.03 + 0.08, 0.45) // E5
+      tone(ctx, 783.99, t + offset + 0.03 + 0.16, 0.4)  // G5
     }
 
     setTimeout(() => { ctx.close(); _activeCueCount-- }, isCritical ? 2000 : 1500)
@@ -669,10 +669,12 @@ export function playAgentSpawn(agentName?: string): void {
         warpDur = 0.3
       }
     } else if (theme === 'nature') {
-      tone(ctx, 261.63, t,        0.4,  effectiveVolume(0.04), 'triangle') // C4
-      tone(ctx, 392.00, t + 0.15, 0.35, effectiveVolume(0.04), 'triangle') // G4
-      tone(ctx, 523.25, t + 0.30, 0.45, effectiveVolume(0.05), 'triangle') // C5
-      warpDur = 0.75
+      // Rising sweep prefix marks "spawn" action — static tones alone are structurally identical to identity voice (audio-sme 21:16)
+      sweep(ctx, 120, 600, t, 0.05, effectiveVolume(0.06), 'sine')
+      tone(ctx, 261.63, t + 0.06,        0.4,  effectiveVolume(0.04), 'triangle') // C4
+      tone(ctx, 392.00, t + 0.06 + 0.15, 0.35, effectiveVolume(0.04), 'triangle') // G4
+      tone(ctx, 523.25, t + 0.06 + 0.30, 0.45, effectiveVolume(0.05), 'triangle') // C5
+      warpDur = 0.81
     } else {
       if (!prefersReducedMotion) {
         sweep(ctx, 200, 1200, t, 0.25, effectiveVolume(0.08), 'sine')
@@ -717,8 +719,10 @@ export function playTaskTransition(toStatus: string): void {
           tone(ctx, 659.25, t, 0.2, effectiveVolume(0.06), 'sine')
         }
       } else if (theme === 'nature') {
-        tone(ctx, 392.00, t,       0.25, effectiveVolume(0.05), 'triangle') // G4
-        tone(ctx, 523.25, t + 0.12, 0.3, effectiveVolume(0.05), 'triangle') // C5
+        // Noise-burst prefix marks "task started" action — static tones alone blur with identity voices (audio-sme Phase 4)
+        _noiseBurst(ctx, t, 500, effectiveVolume(0.085), 0.015)
+        tone(ctx, 392.00, t + 0.02,        0.25, effectiveVolume(0.05), 'triangle') // G4
+        tone(ctx, 523.25, t + 0.02 + 0.12, 0.3,  effectiveVolume(0.05), 'triangle') // C5
       } else {
         // Classic: rising sine sweep
         if (!prefersReducedMotion) {
@@ -729,8 +733,8 @@ export function playTaskTransition(toStatus: string): void {
       }
     } else if (toStatus === 'review') {
       // Noise-burst attack before the held chord — distinguishes action cue from identity voice
-      _noiseBurst(ctx, t, 600, effectiveVolume(0.04), 0.02)
-      const chord = t + 0.025 // chord starts after noise burst
+      _noiseBurst(ctx, t, 600, effectiveVolume(0.09), 0.03)
+      const chord = t + 0.035 // chord starts after noise burst
       if (theme === 'retro') {
         tone(ctx, 523.25, chord,        0.4, effectiveVolume(0.055), 'square') // C5
         tone(ctx, 587.33, chord + 0.05, 0.4, effectiveVolume(0.045), 'square') // D5
@@ -768,7 +772,9 @@ export function playMentionPing(senderName?: string, recipientName?: string): vo
     // Nature uses a triangle-wave sweep — softer than sine but still directional (no static tones).
     // Classic sweep extended to 120ms minimum for perceptible directionality (audio-sme tuning).
     if (theme === 'retro') {
-      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square') // high blip — percussive
+      // Noise-burst prefix + high square tone — static tone alone violates distinguishability rule (audio-sme Phase 4)
+      _noiseBurst(ctx, t, 1200, effectiveVolume(0.06), 0.01)
+      tone(ctx, 1318.51, t + 0.01, 0.09, effectiveVolume(0.08), 'square') // high blip
       pingDur = 0.1
     } else if (theme === 'space') {
       sweep(ctx, 800, 1600, t, 0.12, effectiveVolume(0.08), 'sine')
@@ -782,8 +788,8 @@ export function playMentionPing(senderName?: string, recipientName?: string): vo
       pingDur = 0.12
     }
 
-    // Grammar: sender voice at t + pingDur + 0.07 (70ms urgent gap — retro blip was too tight, audio-sme Phase 4)
-    const voiceStart = t + pingDur + 0.07
+    // Grammar: sender voice at t + pingDur + 0.05 (50ms urgent gap per spec — action→identity tightly coupled)
+    const voiceStart = t + pingDur + 0.05
     if (senderName) _voiceInCtx(ctx, voiceStart, senderName, 1.0, false)
     // Recipient voice: 40ms after sender, 50% softer, opposite pan (@mentions only)
     if (recipientName) _voiceInCtx(ctx, voiceStart + 0.04, recipientName, 0.5, true)
@@ -925,12 +931,14 @@ export function playAgentMoodActive(agentName: string): void {
       }
     } else if (theme === 'nature') {
       // Micro-sweep prefix separates action cue from identity-voice tones (audio-sme Phase 4)
-      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.025), 'sine')
+      // Sweep vol raised to 0.048 so action cue arrives above tones, then resolves into them (audio-sme 21:16)
+      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.048), 'sine')
       tone(ctx, root,  t + 0.07,       0.22, effectiveVolume(0.036), 'triangle')
       tone(ctx, fifth, t + 0.07 + 0.1, 0.2,  effectiveVolume(0.036), 'triangle')
     } else {
       // Classic: micro-sweep prefix + ascending root→fifth — sweep marks status-change action (audio-sme Phase 4)
-      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.025), 'sine')
+      // Sweep vol raised to 0.048 — texture arrives first at higher amplitude, resolves into pentatonic tones
+      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.048), 'sine')
       tone(ctx, root,  t + 0.07,       0.18, effectiveVolume(0.038), 'sine')
       tone(ctx, fifth, t + 0.07 + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
     }
