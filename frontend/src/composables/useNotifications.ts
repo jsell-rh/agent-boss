@@ -271,14 +271,81 @@ function hashName(name: string): number {
 
 const _chimePlayed = new Set<string>()
 
-// 4-dimension agent voice system — 4×5×3×2 = 120 distinct voices, all pentatonically consonant.
-// Dimension 1: Waveform  (h % 4)       — sine, triangle, square, sawtooth
-// Dimension 2: Interval  ((h>>4) % 5)  — major 3rd, P4, P5, major 6th, octave
-// Dimension 3: Envelope  ((h>>8) % 3)  — pluck, sustained, staccato
-// Dimension 4: Register  ((h>>12) % 2) — upper register, lower register (−1 octave)
+// ── Idea C — Palette guarantee for first 16 agents ─────────────────────────
+// Hash can map two agents to identical (wave, interval) combos. For the first
+// 16 agents seen in a space we assign from this curated palette of 16 unique
+// (waveform × interval) pairs — guaranteeing no two visible agents share the
+// same timbre. Agents beyond slot 16 fall back to hash-derived dims.
+const VOICE_PALETTE: Array<{ wave: OscillatorType; interval: number }> = [
+  { wave: 'sine',     interval: 1.498 }, // P5  — open, stable
+  { wave: 'triangle', interval: 1.25  }, // M3  — warm, gentle
+  { wave: 'square',   interval: 2.0   }, // 8ve — bold, retro
+  { wave: 'sawtooth', interval: 1.333 }, // P4  — edgy, bright
+  { wave: 'sine',     interval: 1.25  }, // M3  — sweet
+  { wave: 'triangle', interval: 1.667 }, // M6  — expansive
+  { wave: 'square',   interval: 1.333 }, // P4  — punchy
+  { wave: 'sawtooth', interval: 1.498 }, // P5  — aggressive
+  { wave: 'sine',     interval: 1.667 }, // M6  — warm, full
+  { wave: 'triangle', interval: 2.0   }, // 8ve — airy
+  { wave: 'square',   interval: 1.25  }, // M3  — crisp
+  { wave: 'sawtooth', interval: 2.0   }, // 8ve — rich, buzzy
+  { wave: 'sine',     interval: 1.333 }, // P4  — round
+  { wave: 'triangle', interval: 1.498 }, // P5  — ethereal
+  { wave: 'square',   interval: 1.667 }, // M6  — clear
+  { wave: 'sawtooth', interval: 1.25  }, // M3  — raw
+]
+
+const _seenAgentsOrdered: string[] = []
+
+function _getPaletteEntry(agentName: string): { wave: OscillatorType; interval: number } | null {
+  if (!_seenAgentsOrdered.includes(agentName) && _seenAgentsOrdered.length < 16) {
+    _seenAgentsOrdered.push(agentName)
+  }
+  const slot = _seenAgentsOrdered.indexOf(agentName)
+  return slot >= 0 ? VOICE_PALETTE[slot]! : null
+}
+
+// 5-dimension agent voice system — 4×5×3×2×4 = 480 distinct voices.
+// Dimension 1: Waveform  (palette slot or h % 4)   — sine, triangle, square, sawtooth
+// Dimension 2: Interval  (palette slot or (h>>4)%5) — M3, P4, P5, M6, octave
+// Dimension 3: Envelope  ((h>>8) % 3)              — pluck, sustained, staccato
+// Dimension 4: Register  ((h>>12) % 2)             — upper or lower register
+// Dimension 5: Rhythm    ((h>>16) % 4)             — single, double-tap, triplet, call+response
 // Idea D — Stereo position as agent identity: each agent has a consistent pan position
 function _agentPan(h: number): number {
   return ((h >> 20) % 101 / 100) * 1.2 - 0.6 // -0.6 (left) to +0.6 (right)
+}
+
+// Play one envelope phrase (root + partner at a given start time).
+function _playPhrase(
+  ctx: AudioContext,
+  t: number,
+  root: number,
+  partner: number,
+  centsDrift: number,
+  wave: OscillatorType,
+  waveVol: number,
+  envelopeType: number,
+  hasGrace: boolean,
+  panner: AudioNode,
+): void {
+  const th = Math.random() * 0.018 // per-phrase timing humanization
+  if (envelopeType === 0) {
+    // Pluck: fast attack, medium decay (~350ms)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + th - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + th,        0.35, waveVol,        wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + th, 0.30, waveVol * 0.82, wave, panner)
+  } else if (envelopeType === 1) {
+    // Sustained: slower attack, longer ring (~550ms)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + th - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + th,        0.55, waveVol * 0.82, wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.08 + th, 0.50, waveVol * 0.68, wave, panner)
+  } else {
+    // Staccato: very short punchy notes + echo
+    tone(ctx, root    * centsDrift, t + th,        0.10, waveVol * 1.1,  wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + th, 0.10, waveVol * 0.95, wave, panner)
+    tone(ctx, root    * centsDrift, t + 0.18 + th, 0.08, waveVol * 0.4,  wave, panner)
+  }
 }
 
 function _playAgentVoice(agentName: string): void {
@@ -286,56 +353,53 @@ function _playAgentVoice(agentName: string): void {
   const t = ctx.currentTime
   const h = hashName(agentName)
 
-  // Dim 1 — Waveform
+  // Idea C — Palette guarantee: first 16 agents get unique (wave, interval) combos.
+  const palette = _getPaletteEntry(agentName)
   const waveforms: OscillatorType[] = ['sine', 'triangle', 'square', 'sawtooth']
-  const wave = waveforms[h % 4] as OscillatorType
-  // Square/sawtooth are brighter — lower their volume so perceived loudness stays consistent
+  const wave: OscillatorType = palette ? palette.wave : (waveforms[h % 4] as OscillatorType)
   const waveVol = (wave === 'square' || wave === 'sawtooth') ? 0.038 : 0.055
 
-  // Dim 2 — Interval (ratio above root)
   const intervals = [1.25, 1.333, 1.498, 1.667, 2.0] // M3, P4, P5, M6, octave
-  const interval = intervals[(h >> 4) % 5]!
+  const interval: number = palette ? palette.interval : intervals[(h >> 4) % 5]!
 
   // Dim 3 — Envelope type
   const envelopeType = (h >> 8) % 3 // 0=pluck, 1=sustained, 2=staccato
 
   // Dim 4 — Register
-  const registerShift = (h >> 12) % 2 // 0=upper, 1=lower (half freq)
-  const baseIdx = h % PENTATONIC_HZ.length
-  const root = PENTATONIC_HZ[baseIdx]! * (registerShift === 0 ? 1.0 : 0.5)
+  const registerShift = (h >> 12) % 2
+  const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]! * (registerShift === 0 ? 1.0 : 0.5)
   const partner = root * interval
 
-  // Micro-variation: ±8 cents pitch drift + up to 18ms timing humanization
+  // Micro-variation: ±8 cents pitch drift
   const centsDrift = Math.pow(2, (Math.random() * 16 - 8) / 1200)
-  const timeHuman = Math.random() * 0.018
-
-  // Optional 8% grace note (a semitone above root, very brief)
   const hasGrace = Math.random() < 0.08
 
-  // Idea D — Stereo position: each agent has a consistent pan (-0.6…+0.6)
+  // Idea D — Stereo position: consistent pan per agent
   const panner = ctx.createStereoPanner()
   panner.pan.value = _agentPan(h)
   panner.connect(ctx.destination)
 
-  if (envelopeType === 0) {
-    // Pluck: fast attack, medium decay (~350ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.35, waveVol,        wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.30, waveVol * 0.82, wave, panner)
-  } else if (envelopeType === 1) {
-    // Sustained: slower attack, longer ring (~550ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.55, waveVol * 0.82, wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.08 + timeHuman, 0.50, waveVol * 0.68, wave, panner)
+  // Idea A — Rhythmic DNA (Dim 5): 4 rhythm patterns that make agents unmistakable
+  const rhythmType = (h >> 16) % 4
+  if (rhythmType === 0) {
+    // Single phrase — clean, one statement
+    _playPhrase(ctx, t, root, partner, centsDrift, wave, waveVol, envelopeType, hasGrace, panner)
+  } else if (rhythmType === 1) {
+    // Double-tap — phrase plays twice (second slightly softer + detuned)
+    _playPhrase(ctx, t,        root, partner, centsDrift,         wave, waveVol,        envelopeType, hasGrace, panner)
+    _playPhrase(ctx, t + 0.13, root, partner, centsDrift * 1.002, wave, waveVol * 0.72, envelopeType, false,    panner)
+  } else if (rhythmType === 2) {
+    // Triplet — root → partner → root at 80ms steps (three-knock signature)
+    tone(ctx, root    * centsDrift, t,        0.14, waveVol,        wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.08, 0.14, waveVol * 0.88, wave, panner)
+    tone(ctx, root    * centsDrift, t + 0.16, 0.12, waveVol * 0.68, wave, panner)
   } else {
-    // Staccato: very short punchy notes + brief echo
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.10, waveVol * 1.1,  wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.10, waveVol * 0.95, wave, panner)
-    // Echo at half volume, offset by ~160ms
-    tone(ctx, root    * centsDrift, t + 0.18 + timeHuman, 0.08, waveVol * 0.4,  wave, panner)
+    // Call-and-response — root asks (louder), partner answers (softer, delayed)
+    tone(ctx, root    * centsDrift, t,        0.22, waveVol * 1.1, wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.30, 0.20, waveVol * 0.7, wave, panner)
   }
 
-  setTimeout(() => ctx.close(), 900)
+  setTimeout(() => ctx.close(), 1100)
 }
 
 export function playAgentSignatureChime(agentName: string): void {
@@ -351,9 +415,12 @@ export function previewAgentVoice(agentName: string): void {
   try { _playAgentVoice(agentName) } catch { /* AudioContext not available */ }
 }
 
-// Reset chimes on space navigation so agents get their chime each new session
+// Reset chimes on space navigation so agents get their chime each new session.
+// Also resets the palette registry so the first 16 agents in the new space
+// get fresh, collision-free timbre assignments.
 export function resetAgentChimes(): void {
   _chimePlayed.clear()
+  _seenAgentsOrdered.length = 0
 }
 
 // ── Activity tick ──────────────────────────────────────────────────────────
