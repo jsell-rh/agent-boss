@@ -542,38 +542,3 @@ func (s *Server) handleSpaceArchive(w http.ResponseWriter, r *http.Request, spac
 	})
 }
 
-// handleSpaceMessageList serves GET /spaces/{space}/messages.
-// Returns all messages for every agent in the space, indexed by agent name.
-// ConversationsView uses this to reconstruct pairwise conversation threads
-// without needing message histories embedded in the space JSON response.
-func (s *Server) handleSpaceMessageList(w http.ResponseWriter, r *http.Request, spaceName string) {
-	if r.Method != http.MethodGet {
-		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	ks, ok := s.getSpace(spaceName)
-	if !ok {
-		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
-		return
-	}
-
-	s.mu.RLock()
-	type agentMsgs struct {
-		Messages []AgentMessage `json:"messages"`
-	}
-	result := make(map[string]agentMsgs, len(ks.Agents))
-	for name, ag := range ks.Agents {
-		if ag.Status == nil {
-			result[name] = agentMsgs{Messages: []AgentMessage{}}
-			continue
-		}
-		msgs := make([]AgentMessage, len(ag.Status.Messages))
-		copy(msgs, ag.Status.Messages)
-		result[name] = agentMsgs{Messages: msgs}
-	}
-	s.mu.RUnlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
