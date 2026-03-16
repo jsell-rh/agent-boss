@@ -708,9 +708,9 @@ watch(composeRecipient, async (agent) => {
                 <div class="flex-1 h-px bg-border" />
               </div>
 
-              <!-- Message row -->
+              <!-- Message row — ink-reveal entrance animation -->
               <div
-                class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors"
+                class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors message-ink-reveal"
                 :class="msg.recipient === 'boss' && !msg.read ? 'bg-primary/5 -mx-2 px-2' : ''"
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
@@ -1090,3 +1090,19 @@ watch(composeRecipient, async (agent) => {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+/* Ink-reveal: new messages write in left-to-right like a scanner light */
+.message-ink-reveal {
+  animation: ink-reveal 0.35s ease-out both;
+}
+
+@keyframes ink-reveal {
+  from { clip-path: inset(0 100% 0 0); opacity: 0.4; }
+  to   { clip-path: inset(0 0% 0 0);   opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-ink-reveal { animation: none; }
+}
+</style>

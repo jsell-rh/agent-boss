@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SpaceSummary, KnowledgeSpace, AgentStatus } from '@/types'
 import { STATUS_DISPLAY } from '@/types'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { relativeTime } from '@/composables/useTime'
 import { prLink } from '@/lib/utils'
@@ -253,6 +253,18 @@ const bossUnreadCount = computed(() => {
   // — intentionally excluded here: we want notifications for messages TO boss, not FROM boss
   return count
 })
+
+// ── Typing indicator ───────────────────────────────────────────────────────
+// Show 3-dot bounce when an agent posted an update within the last 10 seconds.
+const now = ref(Date.now())
+let _nowTimer = 0
+onMounted(() => { _nowTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => clearInterval(_nowTimer))
+
+function isRecentlyActive(agent: { updated_at?: string; status?: string }): boolean {
+  if (!agent.updated_at || agent.status === 'done' || agent.status === 'idle') return false
+  return now.value - new Date(agent.updated_at).getTime() < 10_000
+}
 
 // New space dialog
 const newSpaceDialogOpen = ref(false)
@@ -542,7 +554,12 @@ defineExpose({ openNewSpaceDialog })
                       />
                     </div>
                     <div class="flex flex-col gap-0.5 min-w-0 flex-1">
-                      <span class="truncate">{{ name }}</span>
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="truncate">{{ name }}</span>
+                        <span v-if="isRecentlyActive(agent)" class="typing-dots shrink-0" aria-label="recently updated" aria-hidden="true">
+                          <span /><span /><span />
+                        </span>
+                      </div>
                       <div v-if="agent.branch || agent.pr" class="flex items-center gap-1.5">
                         <Tooltip v-if="agent.branch">
                           <TooltipTrigger as-child>
@@ -835,8 +852,32 @@ defineExpose({ openNewSpaceDialog })
   100% { transform: scale(1); box-shadow: none; }
 }
 
+/* Typing indicator — 3 dots bouncing when agent recently posted */
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 10px;
+}
+.typing-dots span {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground));
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30%            { transform: translateY(-4px); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mention-pulse { animation: none; }
   .agent-spawn { animation: none; }
+  .typing-dots span { animation: none; opacity: 0.6; }
 }
 </style>
