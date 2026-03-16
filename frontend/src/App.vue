@@ -69,6 +69,8 @@ const hierarchyTree = ref<HierarchyTree | null>(null)
 
 const loading = ref(true)
 const spaceLoading = ref(false)
+// Portal iris reveal — increments on each space switch to retrigger the animation
+const spaceRevealKey = ref(0)
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const statusAnnouncement = ref('')
@@ -314,6 +316,8 @@ async function loadSpace(name: string, showLoader = false) {
   if (showLoader) spaceLoading.value = true
   try {
     currentSpace.value = await api.fetchSpace(name)
+    // Portal iris reveal — retrigger the curtain animation on each space switch
+    if (showLoader) spaceRevealKey.value++
   } catch (err) {
     console.error(`Failed to load space ${name}:`, err)
     currentSpace.value = null
@@ -1296,7 +1300,9 @@ onUnmounted(() => {
         </Transition>
 
         <!-- Main content -->
-        <main class="flex-1 min-h-0 overflow-hidden flex flex-col" aria-label="Dashboard content">
+        <main class="relative flex-1 min-h-0 overflow-hidden flex flex-col" aria-label="Dashboard content">
+          <!-- Portal iris curtain — lightweight div that remounts on space switch to replay animation -->
+          <div v-if="spaceRevealKey > 0" :key="spaceRevealKey" class="portal-iris-curtain" aria-hidden="true" />
           <!-- Initial load state -->
           <div v-if="loading" class="flex flex-col items-center justify-center h-full text-muted-foreground font-text gap-3">
             <div class="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-primary" role="status">
@@ -1538,5 +1544,31 @@ body::before {
     transparent 70%
   );
   transition: background 2s ease;
+}
+
+/* Portal iris reveal — space-switch transition */
+/* The curtain starts opaque full-screen (matching page bg), iris-closes to a point, */
+/* then vanishes — revealing the newly loaded space content underneath. */
+.portal-iris-curtain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  background: hsl(var(--background));
+  animation: portal-iris-close 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes portal-iris-close {
+  0%   { clip-path: circle(120% at 50% 0px); opacity: 1; }
+  80%  { clip-path: circle(0%   at 50% 0px); opacity: 1; }
+  100% { clip-path: circle(0%   at 50% 0px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-iris-curtain { animation: portal-iris-fade 0.2s ease forwards; }
+  @keyframes portal-iris-fade {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
 }
 </style>
