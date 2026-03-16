@@ -57,10 +57,6 @@ function isTaskOverdue(task: Task): boolean {
   return new Date(task.due_at) < now.value
 }
 
-function dueSortKey(task: Task): number {
-  if (!task.due_at) return Infinity
-  return new Date(task.due_at).getTime()
-}
 
 const filteredTasks = computed(() => {
   const search = filterSearch.value.trim().toLowerCase()
