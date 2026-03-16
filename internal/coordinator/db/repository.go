@@ -448,3 +448,59 @@ func (r *Repository) ResolveInterrupt(spaceName, id, resolvedBy, answer string) 
 func (r *Repository) DeleteInterrupts(spaceName string) error {
 	return r.db.Where("space_name = ?", spaceName).Delete(&InterruptRecord{}).Error
 }
+
+// ---- Persona operations ----
+
+// ListPersonas returns all personas ordered by name.
+func (r *Repository) ListPersonas() ([]*PersonaRow, error) {
+	var personas []*PersonaRow
+	return personas, r.db.Order("name ASC").Find(&personas).Error
+}
+
+// GetPersona returns a persona by ID, or (nil, nil) if not found.
+func (r *Repository) GetPersona(id string) (*PersonaRow, error) {
+	var p PersonaRow
+	err := r.db.Where("id = ?", id).First(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &p, err
+}
+
+// CreatePersona inserts a new persona; returns an error if the ID already exists.
+func (r *Repository) CreatePersona(p *PersonaRow) error {
+	return r.db.Create(p).Error
+}
+
+// SavePersona updates an existing persona record.
+func (r *Repository) SavePersona(p *PersonaRow) error {
+	return r.db.Save(p).Error
+}
+
+// DeletePersona removes a persona and all its version history.
+func (r *Repository) DeletePersona(id string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("persona_id = ?", id).Delete(&PersonaVersionRow{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&PersonaRow{}).Error
+	})
+}
+
+// GetPersonaVersions returns historical versions for a persona, oldest first.
+func (r *Repository) GetPersonaVersions(personaID string) ([]*PersonaVersionRow, error) {
+	var versions []*PersonaVersionRow
+	return versions, r.db.Where("persona_id = ?", personaID).Order("version ASC").Find(&versions).Error
+}
+
+// SavePersonaVersion persists a persona version snapshot.
+func (r *Repository) SavePersonaVersion(v *PersonaVersionRow) error {
+	return r.db.Create(v).Error
+}
+
+// PersonaExists returns true if a persona with the given ID exists.
+func (r *Repository) PersonaExists(id string) (bool, error) {
+	var count int64
+	err := r.db.Model(&PersonaRow{}).Where("id = ?", id).Count(&count).Error
+	return count > 0, err
+}

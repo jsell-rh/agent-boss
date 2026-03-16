@@ -214,6 +214,31 @@ type SpaceEventLog struct {
 
 func (SpaceEventLog) TableName() string { return "space_event_log" }
 
+// PersonaRow is a global, reusable prompt fragment that can be assigned to agents.
+// Replaces the legacy DATA_DIR/personas.json file.
+type PersonaRow struct {
+	ID          string    `gorm:"primarykey;not null"`
+	Name        string    `gorm:"not null"`
+	Description string    `gorm:"type:text"`
+	Prompt      string    `gorm:"type:text"`
+	Version     int       `gorm:"default:1"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (PersonaRow) TableName() string { return "personas" }
+
+// PersonaVersionRow records a historical snapshot of a persona's prompt.
+type PersonaVersionRow struct {
+	ID        uint      `gorm:"primarykey;autoIncrement"`
+	PersonaID string    `gorm:"index;not null"`
+	Version   int       `gorm:"not null"`
+	Prompt    string    `gorm:"type:text"`
+	UpdatedAt time.Time
+}
+
+func (PersonaVersionRow) TableName() string { return "persona_versions" }
+
 // InterruptRecord stores an agent interrupt (approval request, decision, etc.)
 // Replaces the legacy {space}.interrupts.jsonl files.
 type InterruptRecord struct {

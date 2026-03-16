@@ -280,6 +280,76 @@ func (r *Repository) importAgent(spaceName, agentName string, ja *jsonAgent) err
 	return nil
 }
 
+// ImportPersonasFromJSON reads DATA_DIR/personas.json (if present) and imports any
+// personas that do not yet exist in the database. Safe to call on every startup.
+func (r *Repository) ImportPersonasFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "personas.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // nothing to migrate
+		}
+		return fmt.Errorf("read personas.json: %w", err)
+	}
+
+	type jsonPersonaVersion struct {
+		Version   int       `json:"version"`
+		Prompt    string    `json:"prompt"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}
+	type jsonPersona struct {
+		ID          string               `json:"id"`
+		Name        string               `json:"name"`
+		Description string               `json:"description"`
+		Prompt      string               `json:"prompt"`
+		Version     int                  `json:"version"`
+		History     []jsonPersonaVersion `json:"history"`
+		CreatedAt   time.Time            `json:"created_at"`
+		UpdatedAt   time.Time            `json:"updated_at"`
+	}
+
+	var personas []jsonPersona
+	if err := json.Unmarshal(data, &personas); err != nil {
+		return fmt.Errorf("parse personas.json: %w", err)
+	}
+
+	for _, jp := range personas {
+		exists, err := r.PersonaExists(jp.ID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue // already imported
+		}
+		row := &PersonaRow{
+			ID:          jp.ID,
+			Name:        jp.Name,
+			Description: jp.Description,
+			Prompt:      jp.Prompt,
+			Version:     jp.Version,
+			CreatedAt:   jp.CreatedAt,
+			UpdatedAt:   jp.UpdatedAt,
+		}
+		if row.Version == 0 {
+			row.Version = 1
+		}
+		if err := r.CreatePersona(row); err != nil {
+			return fmt.Errorf("import persona %q: %w", jp.ID, err)
+		}
+		for _, h := range jp.History {
+			if err := r.SavePersonaVersion(&PersonaVersionRow{
+				PersonaID: jp.ID,
+				Version:   h.Version,
+				Prompt:    h.Prompt,
+				UpdatedAt: h.UpdatedAt,
+			}); err != nil {
+				return fmt.Errorf("import persona %q version %d: %w", jp.ID, h.Version, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (r *Repository) importTask(spaceName string, jt *jsonTask) error {
 	var dueAt sql.NullTime
 	if jt.DueAt != nil {

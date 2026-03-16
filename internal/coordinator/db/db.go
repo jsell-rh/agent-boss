@@ -89,6 +89,8 @@ func migrate(db *gorm.DB) error {
 		&Setting{},
 		&SpaceEventLog{},
 		&InterruptRecord{},
+		&PersonaRow{},
+		&PersonaVersionRow{},
 	); err != nil {
 		return err
 	}

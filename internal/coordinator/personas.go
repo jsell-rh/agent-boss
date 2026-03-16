@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
+
+	bossdb "github.com/ambient/platform/components/boss/internal/coordinator/db"
 )
 
 // slugRe matches any character that is not a letter, digit, or hyphen.
@@ -23,148 +22,113 @@ func slugify(name string) string {
 	return strings.Trim(s, "-")
 }
 
-// personasFile is the filename for global persona storage in DATA_DIR.
-const personasFile = "personas.json"
-
-// PersonaStore manages global personas persisted to DATA_DIR/personas.json.
+// PersonaStore manages global personas persisted to SQLite.
 type PersonaStore struct {
-	mu      sync.RWMutex
-	dataDir string
-	data    map[string]*Persona // keyed by persona ID
+	repo *bossdb.Repository
 }
 
-func newPersonaStore(dataDir string) *PersonaStore {
-	ps := &PersonaStore{
-		dataDir: dataDir,
-		data:    make(map[string]*Persona),
-	}
-	_ = ps.load()
-	return ps
-}
-
-func (ps *PersonaStore) path() string {
-	return filepath.Join(ps.dataDir, personasFile)
-}
-
-func (ps *PersonaStore) load() error {
-	data, err := os.ReadFile(ps.path())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // first run, no file yet
-		}
-		return err
-	}
-	var personas []*Persona
-	if err := json.Unmarshal(data, &personas); err != nil {
-		return err
-	}
-	ps.data = make(map[string]*Persona, len(personas))
-	for _, p := range personas {
-		ps.data[p.ID] = p
-	}
-	return nil
-}
-
-func (ps *PersonaStore) save() error {
-	personas := make([]*Persona, 0, len(ps.data))
-	for _, p := range ps.data {
-		personas = append(personas, p)
-	}
-	data, err := json.MarshalIndent(personas, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(ps.path(), data, 0644)
+func newPersonaStore(repo *bossdb.Repository) *PersonaStore {
+	return &PersonaStore{repo: repo}
 }
 
 func (ps *PersonaStore) list() []*Persona {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-	out := make([]*Persona, 0, len(ps.data))
-	for _, p := range ps.data {
-		copy := *p
-		out = append(out, &copy)
+	rows, err := ps.repo.ListPersonas()
+	if err != nil {
+		return nil
+	}
+	out := make([]*Persona, len(rows))
+	for i, r := range rows {
+		out[i] = personaFromRow(r)
 	}
 	return out
 }
 
 func (ps *PersonaStore) get(id string) *Persona {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-	p := ps.data[id]
-	if p == nil {
+	row, err := ps.repo.GetPersona(id)
+	if err != nil || row == nil {
 		return nil
 	}
-	copy := *p
-	return &copy
+	return personaFromRow(row)
 }
 
 func (ps *PersonaStore) create(p *Persona) error {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	if _, exists := ps.data[p.ID]; exists {
+	exists, err := ps.repo.PersonaExists(p.ID)
+	if err != nil {
+		return err
+	}
+	if exists {
 		return fmt.Errorf("persona %q already exists", p.ID)
 	}
-	ps.data[p.ID] = p
-	return ps.save()
+	return ps.repo.CreatePersona(personaToRow(p))
 }
 
 func (ps *PersonaStore) update(id string, fn func(*Persona)) (*Persona, error) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	p := ps.data[id]
-	if p == nil {
-		return nil, fmt.Errorf("persona %q not found", id)
-	}
-	// Save current state to history before applying changes.
-	p.History = append(p.History, PersonaVersion{
-		Version:   p.Version,
-		Prompt:    p.Prompt,
-		UpdatedAt: p.UpdatedAt,
-	})
-	fn(p)
-	p.Version++
-	p.UpdatedAt = time.Now().UTC()
-	if err := ps.save(); err != nil {
+	row, err := ps.repo.GetPersona(id)
+	if err != nil {
 		return nil, err
 	}
-	copy := *p
-	return &copy, nil
-}
-
-// history returns the version history for a persona.
-func (ps *PersonaStore) history(id string) ([]PersonaVersion, error) {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-	p := ps.data[id]
-	if p == nil {
+	if row == nil {
 		return nil, fmt.Errorf("persona %q not found", id)
 	}
-	// Return history + current version.
-	all := make([]PersonaVersion, len(p.History), len(p.History)+1)
-	copy(all, p.History)
-	all = append(all, PersonaVersion{
-		Version:   p.Version,
-		Prompt:    p.Prompt,
-		UpdatedAt: p.UpdatedAt,
-	})
+	// Save current state as a version snapshot before applying changes.
+	if err := ps.repo.SavePersonaVersion(&bossdb.PersonaVersionRow{
+		PersonaID: id,
+		Version:   row.Version,
+		Prompt:    row.Prompt,
+		UpdatedAt: row.UpdatedAt,
+	}); err != nil {
+		return nil, err
+	}
+	p := personaFromRow(row)
+	fn(p)
+	p.Version = row.Version + 1
+	p.UpdatedAt = time.Now().UTC()
+	if err := ps.repo.SavePersona(personaToRow(p)); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// history returns the version history for a persona (past versions + current).
+func (ps *PersonaStore) history(id string) ([]PersonaVersion, error) {
+	row, err := ps.repo.GetPersona(id)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, fmt.Errorf("persona %q not found", id)
+	}
+	vrows, err := ps.repo.GetPersonaVersions(id)
+	if err != nil {
+		return nil, err
+	}
+	all := make([]PersonaVersion, 0, len(vrows)+1)
+	for _, v := range vrows {
+		all = append(all, PersonaVersion{Version: v.Version, Prompt: v.Prompt, UpdatedAt: v.UpdatedAt})
+	}
+	// Append current version.
+	all = append(all, PersonaVersion{Version: row.Version, Prompt: row.Prompt, UpdatedAt: row.UpdatedAt})
 	return all, nil
 }
 
 // revert restores a persona to a previous version's prompt, creating a new version.
 func (ps *PersonaStore) revert(id string, targetVersion int) (*Persona, error) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	p := ps.data[id]
-	if p == nil {
+	row, err := ps.repo.GetPersona(id)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
 		return nil, fmt.Errorf("persona %q not found", id)
 	}
-	// Find the target version in history.
+	vrows, err := ps.repo.GetPersonaVersions(id)
+	if err != nil {
+		return nil, err
+	}
 	var targetPrompt string
 	found := false
-	for _, h := range p.History {
-		if h.Version == targetVersion {
-			targetPrompt = h.Prompt
+	for _, v := range vrows {
+		if v.Version == targetVersion {
+			targetPrompt = v.Prompt
 			found = true
 			break
 		}
@@ -172,40 +136,68 @@ func (ps *PersonaStore) revert(id string, targetVersion int) (*Persona, error) {
 	if !found {
 		return nil, fmt.Errorf("version %d not found in history", targetVersion)
 	}
-	// Save current to history, then apply the old prompt.
-	p.History = append(p.History, PersonaVersion{
-		Version:   p.Version,
-		Prompt:    p.Prompt,
-		UpdatedAt: p.UpdatedAt,
-	})
-	p.Prompt = targetPrompt
-	p.Version++
-	p.UpdatedAt = time.Now().UTC()
-	if err := ps.save(); err != nil {
+	// Snapshot current before reverting.
+	if err := ps.repo.SavePersonaVersion(&bossdb.PersonaVersionRow{
+		PersonaID: id,
+		Version:   row.Version,
+		Prompt:    row.Prompt,
+		UpdatedAt: row.UpdatedAt,
+	}); err != nil {
 		return nil, err
 	}
-	cp := *p
-	return &cp, nil
+	row.Prompt = targetPrompt
+	row.Version++
+	row.UpdatedAt = time.Now().UTC()
+	if err := ps.repo.SavePersona(row); err != nil {
+		return nil, err
+	}
+	return personaFromRow(row), nil
 }
 
 func (ps *PersonaStore) delete(id string) error {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	if _, exists := ps.data[id]; !exists {
+	exists, err := ps.repo.PersonaExists(id)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		return fmt.Errorf("persona %q not found", id)
 	}
-	delete(ps.data, id)
-	return ps.save()
+	return ps.repo.DeletePersona(id)
 }
 
 // currentVersion returns the current version of persona id, or 0 if not found.
 func (ps *PersonaStore) currentVersion(id string) int {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-	if p := ps.data[id]; p != nil {
-		return p.Version
+	row, err := ps.repo.GetPersona(id)
+	if err != nil || row == nil {
+		return 0
 	}
-	return 0
+	return row.Version
+}
+
+// personaFromRow converts a DB row to a coordinator Persona.
+func personaFromRow(r *bossdb.PersonaRow) *Persona {
+	return &Persona{
+		ID:          r.ID,
+		Name:        r.Name,
+		Description: r.Description,
+		Prompt:      r.Prompt,
+		Version:     r.Version,
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
+	}
+}
+
+// personaToRow converts a coordinator Persona to a DB row.
+func personaToRow(p *Persona) *bossdb.PersonaRow {
+	return &bossdb.PersonaRow{
+		ID:          p.ID,
+		Name:        p.Name,
+		Description: p.Description,
+		Prompt:      p.Prompt,
+		Version:     p.Version,
+		CreatedAt:   p.CreatedAt,
+		UpdatedAt:   p.UpdatedAt,
+	}
 }
 
 // assemblePersonaPrompt builds the combined persona prompt text for a set of PersonaRefs.
