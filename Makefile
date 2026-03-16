@@ -4,8 +4,11 @@ REGISTRY      := default-route-openshift-image-registry.apps.okd1.timslab
 IMAGE_TAG     := latest
 IMAGE         := $(REGISTRY)/$(NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)
 
-.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status dev-spawn e2e e2e-ui e2e-report e2e-dev e2e-screenshots
+.PHONY: build install build-image push-image deploy rollout dev-build dev-start dev-stop dev-restart dev-status dev-spawn e2e e2e-ui e2e-report e2e-dev e2e-screenshots typecheck
 
+
+typecheck:
+	cd frontend && npx vue-tsc -b
 
 build:
 	cd frontend && npm install && npm run build
