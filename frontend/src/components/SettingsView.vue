@@ -15,6 +15,8 @@ import {
   playChime,
 } from '@/composables/useNotifications'
 
+defineEmits<{ 'open-audio-guide': [] }>()
+
 const allowSkipPermissions = ref(false)
 const loading = ref(true)
 const saving = ref(false)
@@ -223,6 +225,13 @@ async function toggleSkipPermissions(value: boolean) {
                 @click="playChime"
               >
                 Preview
+              </button>
+              <button
+                type="button"
+                class="text-xs text-muted-foreground hover:text-foreground underline"
+                @click="$emit('open-audio-guide')"
+              >
+                Audio Guide
               </button>
               <button
                 type="button"

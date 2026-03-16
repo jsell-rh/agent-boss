@@ -33,11 +33,13 @@ import ConversationsView from '@/components/ConversationsView.vue'
 import KanbanView from '@/components/KanbanView.vue'
 import PersonasView from '@/components/PersonasView.vue'
 import SettingsView from '@/components/SettingsView.vue'
+import AudioGuidePanel from '@/components/AudioGuidePanel.vue'
 import ApprovalTray from '@/components/ApprovalTray.vue'
 import DecisionBell from '@/components/DecisionBell.vue'
 import { Keyboard, Plus } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import {
+  soundEnabled,
   notifyBossMessage,
   playSprintComplete,
   playAgentSignatureChime,
@@ -45,7 +47,7 @@ import {
   playAgentSpawn,
   playMentionPing,
   playPRShipped,
-  playCollaborationChord,
+  playAgentMessage,
   playAgentMoodActive,
   playAgentMoodIdle,
   playAgentTick,
@@ -66,6 +68,16 @@ const spaces = ref<SpaceSummary[]>([])
 const currentSpace = ref<KnowledgeSpace | null>(null)
 const tmuxStatus = ref<Record<string, SessionAgentStatus>>({})
 const hierarchyTree = ref<HierarchyTree | null>(null)
+const audioGuideOpen = ref(false)
+
+// Auto-show audio guide 3s after first-ever sound enable (per CTO/audio-sme spec)
+const _AUDIO_GUIDE_SEEN_KEY = 'boss_audio_guide_seen'
+watch(soundEnabled, (enabled) => {
+  if (enabled && !localStorage.getItem(_AUDIO_GUIDE_SEEN_KEY)) {
+    setTimeout(() => { audioGuideOpen.value = true }, 3000)
+    localStorage.setItem(_AUDIO_GUIDE_SEEN_KEY, '1')
+  }
+})
 
 const loading = ref(true)
 const spaceLoading = ref(false)
@@ -799,7 +811,7 @@ function setupSSE() {
     // Schedule a full reload to pick up the real agent record from the backend
     scheduleSpaceReload(data.space, 2000)
     scheduleSpacesReload(500)
-    playAgentSpawn()
+    playAgentSpawn(data.agent)
     statusAnnouncement.value = `Agent ${data.agent} spawned`
     pushLog('agent_spawned', `[${data.agent}] agent spawned`)
   })
@@ -852,19 +864,24 @@ function setupSSE() {
     if (data.message && typeof data.message === 'string' && currentSpace.value) {
       const mentions = [...data.message.matchAll(/@([\w-]+)/g)]
       let mentionFound = false
+      let firstMentionedAgent: string | undefined
       for (const m of mentions) {
         const name = m[1]
         if (name && currentSpace.value.agents[name]) {
           pulseAgentMention(name)
+          if (!firstMentionedAgent) firstMentionedAgent = name
           mentionFound = true
         }
       }
-      if (mentionFound) playMentionPing()
-    }
-    // Collaboration chord — when two known agents talk to each other
-    if (data.sender && data.agent && data.sender !== 'boss' && data.agent !== 'boss'
-        && currentSpace.value?.agents[data.sender] && currentSpace.value?.agents[data.agent]) {
-      playCollaborationChord(data.sender, data.agent)
+      if (mentionFound) {
+        // Grammar: ping + sender identity (50ms gap) + recipient identity (40ms, 50% softer)
+        playMentionPing(data.sender, firstMentionedAgent)
+      } else if (data.sender && data.agent !== 'boss' && currentSpace.value.agents[data.sender]) {
+        // Regular agent→agent message: noise-burst + sender identity voice
+        playAgentMessage(data.sender)
+      }
+    } else if (data.sender && data.agent !== 'boss' && currentSpace.value?.agents[data.sender]) {
+      playAgentMessage(data.sender)
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
   })
@@ -1499,10 +1516,17 @@ onUnmounted(() => {
           <SheetTitle>Settings</SheetTitle>
         </SheetHeader>
         <div class="flex-1 min-h-0 overflow-y-auto">
-          <SettingsView />
+          <SettingsView @open-audio-guide="settingsDrawerOpen = false; audioGuideOpen = true" />
         </div>
       </SheetContent>
     </Sheet>
+
+    <!-- Audio Guide Panel — education overlay (TASK-062) -->
+    <AudioGuidePanel
+      :open="audioGuideOpen"
+      :agents="Object.keys(currentSpace?.agents ?? {})"
+      @close="audioGuideOpen = false"
+    />
 
     <!-- Auth token dialog (TASK-011) -->
     <Dialog :open="authRequired" @update:open="val => { if (!val) authRequired = false }">
