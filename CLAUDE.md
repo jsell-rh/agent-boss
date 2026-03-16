@@ -179,6 +179,24 @@ Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.
 The `garden` agent keeps the knowledge base current after every sprint. See **[docs/exec-plans/doc-gardening-agent.md](docs/exec-plans/doc-gardening-agent.md)** for the standing instructions — what to check, how to update grades, and how to open the PR.
 ## Linting
 
+### TypeScript typechecking
+
+Run the TypeScript typecheck locally before pushing:
+
+```bash
+make typecheck
+```
+
+To enforce this automatically on every commit, install the pre-commit hook:
+
+```bash
+make install-hooks
+```
+
+The hook runs `vue-tsc -b` in `frontend/` only when `.ts` or `.vue` files are staged. The same check runs as a standalone CI job (`typecheck`) on every PR in parallel with Go tests.
+
+### Go architecture + taste-invariant linters
+
 Run the architectural boundary and taste-invariant linters with:
 
 ```bash

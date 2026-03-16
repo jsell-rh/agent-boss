@@ -58,22 +58,22 @@ func parseArgs(req *mcp.CallToolRequest) (map[string]any, error) {
 func (s *Server) addToolPostStatus(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "post_status",
-		Description: "Post your current status to the coordinator. Call this regularly to report progress.",
+		Description: "Report your current status to the coordinator.",
 		InputSchema: jsonSchema([]string{"space", "agent", "status", "summary"}, map[string]map[string]any{
-			"space":      prop("string", "The workspace name"),
+			"space":      prop("string", "Workspace name"),
 			"agent":      prop("string", "Your agent name"),
-			"status":     prop("string", "Your current status: active, done, blocked, idle, review, or error"),
-			"summary":    prop("string", "One-line summary in format 'AgentName: what you are doing'"),
-			"branch":     prop("string", "Current git branch (sticky — send once)"),
-			"pr":         prop("string", "Pull request reference e.g. #123 (sticky)"),
-			"repo_url":   prop("string", "Repository URL (sticky — send once)"),
-			"phase":      prop("string", "Current work phase e.g. implementation, testing, review"),
-			"test_count": prop("number", "Number of tests passing"),
-			"items":      {"type": "array", "description": "List of completed or in-progress items", "items": map[string]any{"type": "string"}},
-			"next_steps": prop("string", "What you plan to do next"),
-			"mood":       prop("string", "Optional vibe/mood emoji+text e.g. '🚀 in the zone' or '😤 fighting a flaky test'"),
-			"session_id": prop("string", "Your tmux session ID (sticky — send once)"),
-			"questions":  {"type": "array", "description": "Questions needing human decision — each creates a decision request visible to the operator", "items": map[string]any{"type": "string"}},
+			"status":     prop("string", "Status: active|done|blocked|idle|review|error"),
+			"summary":    prop("string", "One-liner: 'AgentName: doing X'"),
+			"branch":     prop("string", "Git branch (sticky, send once)"),
+			"pr":         prop("string", "PR reference e.g. #123 (sticky)"),
+			"repo_url":   prop("string", "Repository URL (sticky, send once)"),
+			"phase":      prop("string", "Work phase e.g. implementation, testing, review"),
+			"test_count": prop("number", "Number of passing tests"),
+			"items":      {"type": "array", "description": "Completed or in-progress items", "items": map[string]any{"type": "string"}},
+			"next_steps": prop("string", "Planned next actions"),
+			"mood":       prop("string", "Mood emoji+text e.g. '🚀 in the zone'"),
+			"session_id": prop("string", "Tmux session ID (sticky, send once)"),
+			"questions":  {"type": "array", "description": "Questions needing human input (each becomes a decision request)", "items": map[string]any{"type": "string"}},
 		}),
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := parseArgs(req)
@@ -226,7 +226,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "check_messages",
-		Description: "Check for new messages. Call this at the start of every work cycle.",
+		Description: "Check for new messages addressed to this agent.",
 		InputSchema: jsonSchema([]string{"space", "agent"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"agent": prop("string", "Your agent name"),
@@ -300,7 +300,7 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 func (s *Server) addToolSendMessage(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "send_message",
-		Description: "Send a message to another agent. Use this for coordination, delegation, and escalation.",
+		Description: "Send a message to another agent for coordination or escalation.",
 		InputSchema: jsonSchema([]string{"space", "from", "to", "message"}, map[string]map[string]any{
 			"space":    prop("string", "The workspace name"),
 			"from":     prop("string", "Your agent name (the sender)"),
@@ -429,7 +429,7 @@ func (s *Server) addToolSendMessage(srv *mcp.Server) {
 func (s *Server) addToolAckMessage(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "ack_message",
-		Description: "Acknowledge a message you have acted on. This marks it as read.",
+		Description: "Mark a message as read after acting on it.",
 		InputSchema: jsonSchema([]string{"space", "agent", "message_id"}, map[string]map[string]any{
 			"space":      prop("string", "The workspace name"),
 			"agent":      prop("string", "Your agent name"),
@@ -491,7 +491,7 @@ func (s *Server) addToolAckMessage(srv *mcp.Server) {
 func (s *Server) addToolRequestDecision(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "request_decision",
-		Description: "Request a decision from the human operator. Use this when you need human input to proceed. The operator will see your question in the conversations view and can reply.",
+		Description: "Request human operator input when blocked on a decision.",
 		InputSchema: jsonSchema([]string{"space", "agent", "question"}, map[string]map[string]any{
 			"space":    prop("string", "The workspace name"),
 			"agent":    prop("string", "Your agent name"),
@@ -527,7 +527,7 @@ func (s *Server) addToolRequestDecision(srv *mcp.Server) {
 func (s *Server) addToolCreateTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "create_task",
-		Description: "Create a new task. Always create a task BEFORE starting work on it.",
+		Description: "Create a tracked task before starting work.",
 		InputSchema: jsonSchema([]string{"space", "agent", "title"}, map[string]map[string]any{
 			"space":       prop("string", "The workspace name"),
 			"agent":       prop("string", "Your agent name (the creator)"),
@@ -601,10 +601,11 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 		}
 		ks.UpdatedAt = now
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskCreated, "", taskCopy)
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -616,7 +617,7 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 			s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 		}
 
-		return toolJSON(taskCopy), nil
+		return toolJSON(toTaskSummary(&taskCopy)), nil
 	})
 }
 
@@ -625,7 +626,7 @@ func (s *Server) addToolCreateTask(srv *mcp.Server) {
 func (s *Server) addToolListTasks(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "list_tasks",
-		Description: "List tasks in a space, optionally filtered by status, assignee, priority, or label.",
+		Description: "List tasks in a space with optional filters.",
 		InputSchema: jsonSchema([]string{"space"}, map[string]map[string]any{
 			"space":       prop("string", "The workspace name"),
 			"status":      prop("string", "Filter by status: backlog, in_progress, review, done, blocked"),
@@ -691,7 +692,11 @@ func (s *Server) addToolListTasks(srv *mcp.Server) {
 
 		sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
 
-		return toolJSON(map[string]any{"tasks": tasks, "total": len(tasks)}), nil
+		summaries := make([]taskSummary, len(tasks))
+		for i, t := range tasks {
+			summaries[i] = toTaskSummary(t)
+		}
+		return toolJSON(map[string]any{"tasks": summaries, "total": len(summaries)}), nil
 	})
 }
 
@@ -700,7 +705,7 @@ func (s *Server) addToolListTasks(srv *mcp.Server) {
 func (s *Server) addToolMoveTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "move_task",
-		Description: "Change a task's status. Use this to move tasks through the workflow: backlog -> in_progress -> review -> done.",
+		Description: "Change a task's status (backlog→in_progress→review→done).",
 		InputSchema: jsonSchema([]string{"space", "agent", "task_id", "status"}, map[string]map[string]any{
 			"space":   prop("string", "The workspace name"),
 			"agent":   prop("string", "Your agent name"),
@@ -744,12 +749,13 @@ func (s *Server) addToolMoveTask(srv *mcp.Server) {
 		}
 		appendTaskEvent(task, "moved", caller, moveDetail, now)
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskMoved, "", map[string]string{
 			"id": taskID, "from_status": string(fromStatus), "status": string(newStatus), "by": caller,
 		})
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskID, "space": spaceName, "status": taskCopy.Status, "assigned_to": taskCopy.AssignedTo,
@@ -766,7 +772,7 @@ func (s *Server) addToolMoveTask(srv *mcp.Server) {
 func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "update_task",
-		Description: "Update task fields like title, description, assignee, priority, or linked PR.",
+		Description: "Update task fields: title, description, assignee, priority, or linked PR.",
 		InputSchema: jsonSchema([]string{"space", "agent", "task_id"}, map[string]map[string]any{
 			"space":         prop("string", "The workspace name"),
 			"agent":         prop("string", "Your agent name"),
@@ -825,10 +831,11 @@ func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 
 		task.UpdatedAt = now
 		taskCopy := *task
+		snap := ks.snapshot()
 		s.mu.Unlock()
 
 		s.journal.Append(spaceName, EventTaskUpdated, "", taskCopy)
-		s.saveSpaceByName(spaceName)
+		s.saveSpace(snap)
 
 		if sseData, err := json.Marshal(map[string]any{
 			"id": taskCopy.ID, "space": spaceName, "status": taskCopy.Status,
@@ -840,11 +847,49 @@ func (s *Server) addToolUpdateTask(srv *mcp.Server) {
 			s.notifyTaskAssigned(spaceName, taskCopy.ID, taskCopy.Title, taskCopy.AssignedTo, caller)
 		}
 
-		return toolJSON(taskCopy), nil
+		return toolJSON(toTaskSummary(&taskCopy)), nil
 	})
 }
 
 // --- helpers ---
+
+// taskSummary returns the fields agents need for decision-making, omitting the
+// audit-trail fields (Events, Comments) that grow unboundedly and inflate tokens.
+type taskSummary struct {
+	ID           string       `json:"id"`
+	Space        string       `json:"space"`
+	Title        string       `json:"title"`
+	Description  string       `json:"description,omitempty"`
+	Status       TaskStatus   `json:"status"`
+	Priority     TaskPriority `json:"priority,omitempty"`
+	AssignedTo   string       `json:"assigned_to,omitempty"`
+	CreatedBy    string       `json:"created_by"`
+	Labels       []string     `json:"labels,omitempty"`
+	ParentTask   string       `json:"parent_task,omitempty"`
+	Subtasks     []string     `json:"subtasks,omitempty"`
+	LinkedBranch string       `json:"linked_branch,omitempty"`
+	LinkedPR     string       `json:"linked_pr,omitempty"`
+	IsStale      bool         `json:"is_stale,omitempty"`
+}
+
+func toTaskSummary(t *Task) taskSummary {
+	return taskSummary{
+		ID:           t.ID,
+		Space:        t.Space,
+		Title:        t.Title,
+		Description:  t.Description,
+		Status:       t.Status,
+		Priority:     t.Priority,
+		AssignedTo:   t.AssignedTo,
+		CreatedBy:    t.CreatedBy,
+		Labels:       t.Labels,
+		ParentTask:   t.ParentTask,
+		Subtasks:     t.Subtasks,
+		LinkedBranch: t.LinkedBranch,
+		LinkedPR:     t.LinkedPR,
+		IsStale:      t.IsStale,
+	}
+}
 
 func strArg(args map[string]any, key string) string {
 	if v, ok := args[key]; ok {
@@ -873,7 +918,7 @@ func toolError(msg string) *mcp.CallToolResult {
 }
 
 func toolJSON(v any) *mcp.CallToolResult {
-	data, _ := json.MarshalIndent(v, "", "  ")
+	data, _ := json.Marshal(v)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(data)},
@@ -969,7 +1014,7 @@ func pruneReadMessages(ag *AgentUpdate) {
 func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "spawn_agent",
-		Description: "Spawn a new agent session in a space. Creates a tmux session, sends the ignition prompt, and returns the session ID.",
+		Description: "Spawn a new agent in a space.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space":           prop("string", "The workspace name"),
 			"name":            prop("string", "The agent name to spawn"),
@@ -1038,7 +1083,7 @@ func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "restart_agent",
-		Description: "Restart an existing agent: kills the current session and spawns a new one with the same config.",
+		Description: "Restart an agent using the same config.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to restart"),
@@ -1073,7 +1118,7 @@ func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 func (s *Server) addToolStopAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "stop_agent",
-		Description: "Stop an agent by killing its session and marking it as done.",
+		Description: "Stop an agent and mark it as done.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to stop"),

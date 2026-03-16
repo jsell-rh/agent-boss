@@ -184,6 +184,33 @@ const agentConversations = computed(() =>
   filteredConversations.value.filter(c => !c.participants.includes('boss')),
 )
 
+// Flat ordered list for keyboard navigation: boss conversations first, then agent ones
+const orderedConversations = computed(() => [
+  ...bossConversations.value,
+  ...agentConversations.value,
+])
+
+function handleListboxKeydown(e: KeyboardEvent) {
+  const list = orderedConversations.value
+  if (list.length === 0) return
+  const currentIdx = list.findIndex(c => c.key === selectedKey.value)
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    const next = currentIdx < list.length - 1 ? currentIdx + 1 : 0
+    selectedKey.value = list[next]!.key
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    const prev = currentIdx > 0 ? currentIdx - 1 : list.length - 1
+    selectedKey.value = list[prev]!.key
+  } else if (e.key === 'Home') {
+    e.preventDefault()
+    selectedKey.value = list[0]!.key
+  } else if (e.key === 'End') {
+    e.preventDefault()
+    selectedKey.value = list[list.length - 1]!.key
+  }
+}
+
 // selectedConversation — includes virtual entry for preselectAgent with no history
 const selectedConversation = computed((): Conversation | null => {
   const found = conversations.value.find(c => c.key === selectedKey.value)
@@ -660,7 +687,7 @@ watch(composeRecipient, async (agent) => {
           </button>
         </div>
 
-        <div v-else class="py-1" role="listbox" aria-label="Conversation list">
+        <div v-else class="py-1" role="listbox" aria-label="Conversation list" tabindex="0" @keydown="handleListboxKeydown">
           <!-- With Boss group -->
           <div v-if="bossConversations.length > 0">
             <div class="px-3 pt-2 pb-1 flex items-center gap-1.5">

@@ -55,9 +55,9 @@ async function main() {
 
   if (firstSpace) {
     const encoded = encodeURIComponent(firstSpace)
-    await take('02-space', `${BASE_URL}/spaces/${encoded}`, page)
-    await take('03-kanban', `${BASE_URL}/spaces/${encoded}/tasks`, page)
-    await take('04-conversations', `${BASE_URL}/spaces/${encoded}/conversations`, page)
+    await take('02-space', `${BASE_URL}/${encoded}`, page)
+    await take('03-kanban', `${BASE_URL}/${encoded}/kanban`, page)
+    await take('04-conversations', `${BASE_URL}/${encoded}/conversations`, page)
 
     // Agent detail — find first agent in the space
     try {
@@ -66,7 +66,7 @@ async function main() {
         const agents = (await res.json()) as Array<{ name: string }>
         if (agents.length > 0) {
           const agentName = encodeURIComponent(agents[0].name)
-          await take('05-agent-detail', `${BASE_URL}/spaces/${encoded}/agents/${agentName}`, page)
+          await take('05-agent-detail', `${BASE_URL}/${encoded}/${agentName}`, page)
         }
       }
     } catch {

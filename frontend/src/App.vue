@@ -1464,6 +1464,9 @@ onUnmounted(() => {
             <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">i</kbd>
             <span>Switch to inbox tab (space overview)</span>
 
+            <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">d</kbd>
+            <span>Go to Conversations view</span>
+
             <kbd class="px-2 py-0.5 rounded border bg-muted text-muted-foreground font-mono text-xs">[ ]</kbd>
             <span>Switch between spaces</span>
           </div>
