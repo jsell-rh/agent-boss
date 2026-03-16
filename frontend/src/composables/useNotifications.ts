@@ -86,11 +86,12 @@ function tone(
   duration: number,
   volume = 0.08,
   type: OscillatorType = 'sine',
+  dest?: AudioNode,
 ): void {
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
   osc.connect(gain)
-  gain.connect(ctx.destination)
+  gain.connect(dest ?? ctx.destination)
   osc.type = type
   osc.frequency.setValueAtTime(freq, startAt)
   gain.gain.setValueAtTime(volume * soundVolume.value, startAt)
@@ -107,11 +108,12 @@ function sweep(
   duration: number,
   volume = 0.07,
   type: OscillatorType = 'sine',
+  dest?: AudioNode,
 ): void {
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
   osc.connect(gain)
-  gain.connect(ctx.destination)
+  gain.connect(dest ?? ctx.destination)
   osc.type = type
   osc.frequency.setValueAtTime(freqStart, startAt)
   osc.frequency.exponentialRampToValueAtTime(freqEnd, startAt + duration)
@@ -274,6 +276,11 @@ const _chimePlayed = new Set<string>()
 // Dimension 2: Interval  ((h>>4) % 5)  — major 3rd, P4, P5, major 6th, octave
 // Dimension 3: Envelope  ((h>>8) % 3)  — pluck, sustained, staccato
 // Dimension 4: Register  ((h>>12) % 2) — upper register, lower register (−1 octave)
+// Idea D — Stereo position as agent identity: each agent has a consistent pan position
+function _agentPan(h: number): number {
+  return ((h >> 20) % 101 / 100) * 1.2 - 0.6 // -0.6 (left) to +0.6 (right)
+}
+
 function _playAgentVoice(agentName: string): void {
   const ctx = new AudioContext()
   const t = ctx.currentTime
@@ -305,22 +312,27 @@ function _playAgentVoice(agentName: string): void {
   // Optional 8% grace note (a semitone above root, very brief)
   const hasGrace = Math.random() < 0.08
 
+  // Idea D — Stereo position: each agent has a consistent pan (-0.6…+0.6)
+  const panner = ctx.createStereoPanner()
+  panner.pan.value = _agentPan(h)
+  panner.connect(ctx.destination)
+
   if (envelopeType === 0) {
     // Pluck: fast attack, medium decay (~350ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.35, waveVol,        wave)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.30, waveVol * 0.82, wave)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.35, waveVol,        wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.30, waveVol * 0.82, wave, panner)
   } else if (envelopeType === 1) {
     // Sustained: slower attack, longer ring (~550ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.55, waveVol * 0.82, wave)
-    tone(ctx, partner * centsDrift, t + 0.08 + timeHuman, 0.50, waveVol * 0.68, wave)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.55, waveVol * 0.82, wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.08 + timeHuman, 0.50, waveVol * 0.68, wave, panner)
   } else {
     // Staccato: very short punchy notes + brief echo
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.10, waveVol * 1.1,  wave)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.10, waveVol * 0.95, wave)
+    tone(ctx, root    * centsDrift, t + timeHuman,        0.10, waveVol * 1.1,  wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.10, waveVol * 0.95, wave, panner)
     // Echo at half volume, offset by ~160ms
-    tone(ctx, root    * centsDrift, t + 0.18 + timeHuman, 0.08, waveVol * 0.4,  wave)
+    tone(ctx, root    * centsDrift, t + 0.18 + timeHuman, 0.08, waveVol * 0.4,  wave, panner)
   }
 
   setTimeout(() => ctx.close(), 900)
@@ -405,24 +417,38 @@ export function playBlockedAlert(): void {
     const t = ctx.currentTime
     const theme = soundTheme.value
     const vol = effectiveVolume(0.12)
+
+    // Idea I — 7Hz tremolo LFO: makes the alert feel urgent and alive
+    const tremolo = ctx.createGain()
+    tremolo.gain.value = 0.82
+    const lfo = ctx.createOscillator()
+    const lfoGain = ctx.createGain()
+    lfo.frequency.value = 7
+    lfoGain.gain.value = 0.18
+    lfo.connect(lfoGain)
+    lfoGain.connect(tremolo.gain)
+    tremolo.connect(ctx.destination)
+    lfo.start(t)
+    lfo.stop(t + 0.55)
+
     if (theme === 'retro') {
       // Chiptune minor second: E4 + F4 square
-      tone(ctx, 329.63, t,        vol,         0.08, 'square')
-      tone(ctx, 349.23, t + 0.01, vol * 1.1,  0.07, 'square')
+      tone(ctx, 329.63, t,        vol,         0.08, 'square', tremolo)
+      tone(ctx, 349.23, t + 0.01, vol * 1.1,  0.07, 'square', tremolo)
     } else if (theme === 'space') {
       // Descending alarm sweep + dissonant overlay
-      sweep(ctx, 600, 200, t, 0.3, effectiveVolume(0.09), 'sine')
-      tone(ctx, 220, t + 0.05, 0.2, effectiveVolume(0.06), 'sine')
+      sweep(ctx, 600, 200, t, 0.3, effectiveVolume(0.09), 'sine', tremolo)
+      tone(ctx, 220, t + 0.05, 0.2, effectiveVolume(0.06), 'sine', tremolo)
     } else if (theme === 'nature') {
       // Softer dissonance: B4 + C5 triangle (gentler but still tense)
-      tone(ctx, 493.88, t,        vol * 0.8, 0.1, 'triangle')
-      tone(ctx, 523.25, t + 0.01, vol * 0.9, 0.1, 'triangle')
+      tone(ctx, 493.88, t,        vol * 0.8, 0.1, 'triangle', tremolo)
+      tone(ctx, 523.25, t + 0.01, vol * 0.9, 0.1, 'triangle', tremolo)
     } else {
       // Classic: A4 triangle + A#4 sine — minor second
-      tone(ctx, 440,    t,        vol,         0.07, 'triangle')
-      tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine')
+      tone(ctx, 440,    t,        vol,         0.07, 'triangle', tremolo)
+      tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine',     tremolo)
     }
-    setTimeout(() => ctx.close(), 500)
+    setTimeout(() => ctx.close(), 600)
   } catch { /* AudioContext not available */ }
 }
 

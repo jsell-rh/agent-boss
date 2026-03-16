@@ -31,6 +31,9 @@ const triggerEl = ref<HTMLElement | null>(null)
 const cardStyle = ref({ top: '0px', left: '0px' })
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+// Idea E — Hover-to-Greet: play agent voice once per hover after 1.2s
+let greetTimer: ReturnType<typeof setTimeout> | null = null
+let _greetedOnCurrentHover = false
 
 const CARD_WIDTH = 280
 
@@ -67,10 +70,19 @@ function onMouseEnter(e: MouseEvent) {
     computePosition()
     visible.value = true
   }, 350)
+  // Idea E — Hover-to-Greet: play voice after 1.2s hover (once per hover, not boss)
+  if (soundEnabled.value && props.agentName !== 'boss' && !_greetedOnCurrentHover) {
+    greetTimer = setTimeout(() => {
+      _greetedOnCurrentHover = true
+      previewAgentVoice(props.agentName)
+    }, 1200)
+  }
 }
 
 function onMouseLeave() {
   if (showTimer) { clearTimeout(showTimer); showTimer = null }
+  if (greetTimer) { clearTimeout(greetTimer); greetTimer = null }
+  _greetedOnCurrentHover = false
   hideTimer = setTimeout(() => { visible.value = false }, 200)
 }
 
@@ -136,7 +148,10 @@ function _cancelSummon() {
   summonFired.value = false
 }
 
-onUnmounted(_cancelSummon)
+onUnmounted(() => {
+  _cancelSummon()
+  if (greetTimer) clearTimeout(greetTimer)
+})
 
 </script>
 
