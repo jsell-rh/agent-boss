@@ -77,6 +77,22 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === 'granted'
 }
 
+// ── Ambient preemption + agent debounce ───────────────────────────────────
+// Ambient ticks are silenced while any event/social/urgent cue is playing.
+// Per-agent debounce drops duplicate cues within 200ms (prevents stack-up in busy fleets).
+
+let _activeCueCount = 0
+const _agentLastCueTs = new Map<string, number>()
+const DEBOUNCE_MS = 200
+
+function _agentDebounceOk(agentName: string): boolean {
+  const now = Date.now()
+  const last = _agentLastCueTs.get(agentName) ?? 0
+  if (now - last < DEBOUNCE_MS) return false
+  _agentLastCueTs.set(agentName, now)
+  return true
+}
+
 // ── Low-level synth helpers ────────────────────────────────────────────────
 
 function tone(
@@ -123,6 +139,35 @@ function sweep(
   osc.stop(startAt + duration + 0.05)
 }
 
+// Bandpass-filtered noise burst — the structural marker for "communication event".
+// Perceptually distinct from any melodic/pentatonic identity voice (arch requirement).
+function _noiseBurst(
+  ctx: AudioContext,
+  t: number,
+  cutoffHz = 800,
+  vol = 0.06,
+  durationS = 0.025,
+  dest?: AudioNode,
+): void {
+  const bufSize = Math.ceil(ctx.sampleRate * durationS)
+  const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1
+  const src = ctx.createBufferSource()
+  src.buffer = buffer
+  const filt = ctx.createBiquadFilter()
+  filt.type = 'bandpass'
+  filt.frequency.value = cutoffHz
+  filt.Q.value = 1.2 // wider band = clearly textural, less tonally colored (audio-sme tuning)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(vol * soundVolume.value, t)
+  gain.gain.exponentialRampToValueAtTime(0.001, t + durationS)
+  src.connect(filt)
+  filt.connect(gain)
+  gain.connect(dest ?? ctx.destination)
+  src.start(t)
+}
+
 // ── Theme-aware sound functions ────────────────────────────────────────────
 
 // Message arrival chime — also used as preview (ignores soundEnabled)
@@ -167,6 +212,7 @@ export function playSuccess(priority?: string): void {
   if (!isCategoryEnabled('celebrations')) return
   const isCritical = priority === 'critical'
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -207,16 +253,15 @@ export function playSuccess(priority?: string): void {
       tone(ctx, 783.99, t + offset + 0.16, 0.4)  // G5
     }
 
-    setTimeout(() => ctx.close(), isCritical ? 2000 : 1500)
-  } catch {
-    // AudioContext not available
-  }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, isCritical ? 2000 : 1500)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // All-agents-idle "sprint complete" fanfare
 export function playSprintComplete(): void {
   if (!isCategoryEnabled('celebrations')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -247,10 +292,8 @@ export function playSprintComplete(): void {
       tone(ctx, 880,    t + 0.36, 0.55, 0.09) // A5 held
     }
 
-    setTimeout(() => ctx.close(), 2000)
-  } catch {
-    // AudioContext not available
-  }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 2000)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── Agent signature chimes ─────────────────────────────────────────────────
@@ -271,71 +314,131 @@ function hashName(name: string): number {
 
 const _chimePlayed = new Set<string>()
 
-// 4-dimension agent voice system — 4×5×3×2 = 120 distinct voices, all pentatonically consonant.
-// Dimension 1: Waveform  (h % 4)       — sine, triangle, square, sawtooth
-// Dimension 2: Interval  ((h>>4) % 5)  — major 3rd, P4, P5, major 6th, octave
-// Dimension 3: Envelope  ((h>>8) % 3)  — pluck, sustained, staccato
-// Dimension 4: Register  ((h>>12) % 2) — upper register, lower register (−1 octave)
+// ── Idea C — Palette guarantee for first 16 agents ─────────────────────────
+// Hash can map two agents to identical (wave, interval) combos. For the first
+// 16 agents seen in a space we assign from this curated palette of 16 unique
+// (waveform × interval) pairs — guaranteeing no two visible agents share the
+// same timbre. Agents beyond slot 16 fall back to hash-derived dims.
+const VOICE_PALETTE: Array<{ wave: OscillatorType; interval: number }> = [
+  { wave: 'sine',     interval: 1.498 }, // P5  — open, stable
+  { wave: 'triangle', interval: 1.25  }, // M3  — warm, gentle
+  { wave: 'square',   interval: 2.0   }, // 8ve — bold, retro
+  { wave: 'sawtooth', interval: 1.333 }, // P4  — edgy, bright
+  { wave: 'sine',     interval: 1.25  }, // M3  — sweet
+  { wave: 'triangle', interval: 1.667 }, // M6  — expansive
+  { wave: 'square',   interval: 1.333 }, // P4  — punchy
+  { wave: 'sawtooth', interval: 1.498 }, // P5  — aggressive
+  { wave: 'sine',     interval: 1.667 }, // M6  — warm, full
+  { wave: 'triangle', interval: 2.0   }, // 8ve — airy
+  { wave: 'square',   interval: 1.25  }, // M3  — crisp
+  { wave: 'sawtooth', interval: 2.0   }, // 8ve — rich, buzzy
+  { wave: 'sine',     interval: 1.333 }, // P4  — round
+  { wave: 'triangle', interval: 1.498 }, // P5  — ethereal
+  { wave: 'square',   interval: 1.667 }, // M6  — clear
+  { wave: 'sawtooth', interval: 1.25  }, // M3  — raw
+]
+
+const _seenAgentsOrdered: string[] = []
+
+function _getPaletteEntry(agentName: string): { wave: OscillatorType; interval: number } | null {
+  if (!_seenAgentsOrdered.includes(agentName) && _seenAgentsOrdered.length < 16) {
+    _seenAgentsOrdered.push(agentName)
+  }
+  const slot = _seenAgentsOrdered.indexOf(agentName)
+  return slot >= 0 ? VOICE_PALETTE[slot]! : null
+}
+
+// 5-dimension agent voice system — 4×5×3×2×4 = 480 distinct voices.
+// Dimension 1: Waveform  (palette slot or h % 4)   — sine, triangle, square, sawtooth
+// Dimension 2: Interval  (palette slot or (h>>4)%5) — M3, P4, P5, M6, octave
+// Dimension 3: Envelope  ((h>>8) % 3)              — pluck, sustained, staccato
+// Dimension 4: Register  ((h>>12) % 2)             — upper or lower register
+// Dimension 5: Rhythm    ((h>>16) % 4)             — single, double-tap, triplet, call+response
 // Idea D — Stereo position as agent identity: each agent has a consistent pan position
 function _agentPan(h: number): number {
   return ((h >> 20) % 101 / 100) * 1.2 - 0.6 // -0.6 (left) to +0.6 (right)
 }
 
-function _playAgentVoice(agentName: string): void {
-  const ctx = new AudioContext()
-  const t = ctx.currentTime
-  const h = hashName(agentName)
-
-  // Dim 1 — Waveform
-  const waveforms: OscillatorType[] = ['sine', 'triangle', 'square', 'sawtooth']
-  const wave = waveforms[h % 4] as OscillatorType
-  // Square/sawtooth are brighter — lower their volume so perceived loudness stays consistent
-  const waveVol = (wave === 'square' || wave === 'sawtooth') ? 0.038 : 0.055
-
-  // Dim 2 — Interval (ratio above root)
-  const intervals = [1.25, 1.333, 1.498, 1.667, 2.0] // M3, P4, P5, M6, octave
-  const interval = intervals[(h >> 4) % 5]!
-
-  // Dim 3 — Envelope type
-  const envelopeType = (h >> 8) % 3 // 0=pluck, 1=sustained, 2=staccato
-
-  // Dim 4 — Register
-  const registerShift = (h >> 12) % 2 // 0=upper, 1=lower (half freq)
-  const baseIdx = h % PENTATONIC_HZ.length
-  const root = PENTATONIC_HZ[baseIdx]! * (registerShift === 0 ? 1.0 : 0.5)
-  const partner = root * interval
-
-  // Micro-variation: ±8 cents pitch drift + up to 18ms timing humanization
-  const centsDrift = Math.pow(2, (Math.random() * 16 - 8) / 1200)
-  const timeHuman = Math.random() * 0.018
-
-  // Optional 8% grace note (a semitone above root, very brief)
-  const hasGrace = Math.random() < 0.08
-
-  // Idea D — Stereo position: each agent has a consistent pan (-0.6…+0.6)
-  const panner = ctx.createStereoPanner()
-  panner.pan.value = _agentPan(h)
-  panner.connect(ctx.destination)
-
+// Play one envelope phrase (root + partner at a given start time).
+function _playPhrase(
+  ctx: AudioContext,
+  t: number,
+  root: number,
+  partner: number,
+  centsDrift: number,
+  wave: OscillatorType,
+  waveVol: number,
+  envelopeType: number,
+  hasGrace: boolean,
+  panner: AudioNode,
+): void {
+  const th = Math.random() * 0.018 // per-phrase timing humanization
   if (envelopeType === 0) {
     // Pluck: fast attack, medium decay (~350ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.35, waveVol,        wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.30, waveVol * 0.82, wave, panner)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + th - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + th,        0.35, waveVol,        wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + th, 0.30, waveVol * 0.82, wave, panner)
   } else if (envelopeType === 1) {
     // Sustained: slower attack, longer ring (~550ms)
-    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + timeHuman - 0.03, 0.04, waveVol * 0.5, wave, panner)
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.55, waveVol * 0.82, wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.08 + timeHuman, 0.50, waveVol * 0.68, wave, panner)
+    if (hasGrace) tone(ctx, root * centsDrift * 1.059, t + th - 0.03, 0.04, waveVol * 0.5, wave, panner)
+    tone(ctx, root    * centsDrift, t + th,        0.55, waveVol * 0.82, wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.08 + th, 0.50, waveVol * 0.68, wave, panner)
   } else {
-    // Staccato: very short punchy notes + brief echo
-    tone(ctx, root    * centsDrift, t + timeHuman,        0.10, waveVol * 1.1,  wave, panner)
-    tone(ctx, partner * centsDrift, t + 0.06 + timeHuman, 0.10, waveVol * 0.95, wave, panner)
-    // Echo at half volume, offset by ~160ms
-    tone(ctx, root    * centsDrift, t + 0.18 + timeHuman, 0.08, waveVol * 0.4,  wave, panner)
+    // Staccato: very short punchy notes + echo
+    tone(ctx, root    * centsDrift, t + th,        0.10, waveVol * 1.1,  wave, panner)
+    tone(ctx, partner * centsDrift, t + 0.06 + th, 0.10, waveVol * 0.95, wave, panner)
+    tone(ctx, root    * centsDrift, t + 0.18 + th, 0.08, waveVol * 0.4,  wave, panner)
   }
+}
 
-  setTimeout(() => ctx.close(), 900)
+// Play an agent's 5D voice inside an existing AudioContext at a specified start time.
+// Accepts volumeMult for scaling (e.g. recipient = 0.5) and invertPan for recipient side.
+// Used by both standalone playback and grammar-wired sequences.
+function _voiceInCtx(
+  ctx: AudioContext,
+  startAt: number,
+  agentName: string,
+  volumeMult = 1.0,
+  invertPan = false,
+): void {
+  const h = hashName(agentName)
+  const palette = _getPaletteEntry(agentName)
+  const waveforms: OscillatorType[] = ['sine', 'triangle', 'square', 'sawtooth']
+  const wave: OscillatorType = palette ? palette.wave : (waveforms[h % 4] as OscillatorType)
+  const waveVol = ((wave === 'square' || wave === 'sawtooth') ? 0.038 : 0.055) * volumeMult
+  const intervals = [1.25, 1.333, 1.498, 1.667, 2.0]
+  const interval: number = palette ? palette.interval : intervals[(h >> 4) % 5]!
+  const envelopeType = (h >> 8) % 3
+  const registerShift = (h >> 12) % 2
+  const root = PENTATONIC_HZ[h % PENTATONIC_HZ.length]! * (registerShift === 0 ? 1.0 : 0.5)
+  const partner = root * interval
+  const centsDrift = Math.pow(2, (Math.random() * 16 - 8) / 1200)
+  const hasGrace = Math.random() < 0.08
+
+  const panner = ctx.createStereoPanner()
+  panner.pan.value = invertPan ? -_agentPan(h) : _agentPan(h)
+  panner.connect(ctx.destination)
+
+  const rhythmType = (h >> 16) % 4
+  if (rhythmType === 0) {
+    _playPhrase(ctx, startAt,        root, partner, centsDrift,         wave, waveVol,        envelopeType, hasGrace, panner)
+  } else if (rhythmType === 1) {
+    _playPhrase(ctx, startAt,        root, partner, centsDrift,         wave, waveVol,        envelopeType, hasGrace, panner)
+    _playPhrase(ctx, startAt + 0.13, root, partner, centsDrift * 1.002, wave, waveVol * 0.72, envelopeType, false,    panner)
+  } else if (rhythmType === 2) {
+    tone(ctx, root    * centsDrift, startAt,        0.14, waveVol,        wave, panner)
+    tone(ctx, partner * centsDrift, startAt + 0.08, 0.14, waveVol * 0.88, wave, panner)
+    tone(ctx, root    * centsDrift, startAt + 0.16, 0.12, waveVol * 0.68, wave, panner)
+  } else {
+    tone(ctx, root    * centsDrift, startAt,        0.22, waveVol * 1.1, wave, panner)
+    tone(ctx, partner * centsDrift, startAt + 0.30, 0.20, waveVol * 0.7, wave, panner)
+  }
+}
+
+function _playAgentVoice(agentName: string): void {
+  const ctx = new AudioContext()
+  _voiceInCtx(ctx, ctx.currentTime, agentName)
+  setTimeout(() => ctx.close(), 1100)
 }
 
 export function playAgentSignatureChime(agentName: string): void {
@@ -351,9 +454,12 @@ export function previewAgentVoice(agentName: string): void {
   try { _playAgentVoice(agentName) } catch { /* AudioContext not available */ }
 }
 
-// Reset chimes on space navigation so agents get their chime each new session
+// Reset chimes on space navigation so agents get their chime each new session.
+// Also resets the palette registry so the first 16 agents in the new space
+// get fresh, collision-free timbre assignments.
 export function resetAgentChimes(): void {
   _chimePlayed.clear()
+  _seenAgentsOrdered.length = 0
 }
 
 // ── Activity tick ──────────────────────────────────────────────────────────
@@ -368,6 +474,7 @@ watch(activityTickEnabled, (v) => localStorage.setItem(LS_TICK, String(v)))
 
 export function playActivityTick(): void {
   if (!activityTickEnabled.value) return
+  if (_activeCueCount > 0) return // ambient preempted while event/social/urgent cues are active
   try {
     const ctx = new AudioContext()
     const bufSize = ctx.sampleRate * 0.004 // 4ms
@@ -392,6 +499,7 @@ export function playActivityTick(): void {
 // of uniform white noise. Active fleets sound like a chord of working agents.
 export function playAgentTick(agentName: string): void {
   if (!activityTickEnabled.value) return
+  if (_activeCueCount > 0) return // ambient preempted
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -447,6 +555,7 @@ export function stopBlockedPulse(agentKey: string): void {
 export function playBlockedAlert(): void {
   if (!isCategoryEnabled('urgent')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -482,46 +591,58 @@ export function playBlockedAlert(): void {
       tone(ctx, 440,    t,        vol,         0.07, 'triangle', tremolo)
       tone(ctx, 466.16, t + 0.01, vol * 1.1,  0.06, 'sine',     tremolo)
     }
-    setTimeout(() => ctx.close(), 600)
-  } catch { /* AudioContext not available */ }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 650)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── #6 Warp Arrival — agent spawned ───────────────────────────────────────
-export function playAgentSpawn(): void {
+// agentName: when provided, appends the agent's identity voice after the warp cue (grammar).
+export function playAgentSpawn(agentName?: string): void {
   if (!isCategoryEnabled('events')) return
+  if (agentName && !_agentDebounceOk(agentName)) return // guard against rapid spawn+status-update stacks
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
+    let warpDur = 0.3 // duration of warp action cue
+
     if (theme === 'retro') {
-      // Chiptune ascending arpeggio — "new player entered"
       tone(ctx, 261.63, t,        0.08, effectiveVolume(0.07), 'square') // C4
       tone(ctx, 392.00, t + 0.09, 0.08, effectiveVolume(0.07), 'square') // G4
       tone(ctx, 523.25, t + 0.18, 0.18, effectiveVolume(0.08), 'square') // C5
+      warpDur = 0.36
     } else if (theme === 'space') {
-      // Massive sci-fi warp jump
       if (!prefersReducedMotion) {
         sweep(ctx, 80, 2000, t, 0.3, effectiveVolume(0.09), 'sine')
-        tone(ctx, 1400, t + 0.33, 0.35, effectiveVolume(0.05), 'triangle')
+        tone(ctx, 1400, t + 0.33, 0.18, effectiveVolume(0.05), 'triangle') // trimmed 0.35→0.18 (audio-sme)
+        warpDur = 0.51
       } else {
         tone(ctx, 880, t, 0.3, effectiveVolume(0.06), 'sine')
+        warpDur = 0.3
       }
     } else if (theme === 'nature') {
-      // Gentle ascending C4→G4→C5 triangle tones — no sweep
       tone(ctx, 261.63, t,        0.4,  effectiveVolume(0.04), 'triangle') // C4
       tone(ctx, 392.00, t + 0.15, 0.35, effectiveVolume(0.04), 'triangle') // G4
       tone(ctx, 523.25, t + 0.30, 0.45, effectiveVolume(0.05), 'triangle') // C5
+      warpDur = 0.75
     } else {
-      // Classic: upward sine sweep + triangle landing
       if (!prefersReducedMotion) {
         sweep(ctx, 200, 1200, t, 0.25, effectiveVolume(0.08), 'sine')
         tone(ctx, 1200, t + 0.28, 0.35, effectiveVolume(0.05), 'triangle')
+        warpDur = 0.63
       } else {
         tone(ctx, 1200, t, 0.35, effectiveVolume(0.05), 'triangle')
+        warpDur = 0.35
       }
     }
-    setTimeout(() => ctx.close(), 800)
-  } catch { /* AudioContext not available */ }
+
+    // Grammar: append agent's identity voice after 100ms gap
+    if (agentName) _voiceInCtx(ctx, t + warpDur + 0.1, agentName)
+
+    const totalDur = agentName ? warpDur + 0.1 + 1.1 : warpDur
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, (totalDur + 0.3) * 1000)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── #3 The Arc — task column transitions ──────────────────────────────────
@@ -531,6 +652,7 @@ export function playAgentSpawn(): void {
 export function playTaskTransition(toStatus: string): void {
   if (!isCategoryEnabled('events')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -557,49 +679,85 @@ export function playTaskTransition(toStatus: string): void {
         }
       }
     } else if (toStatus === 'review') {
+      // Noise-burst attack before the held chord — distinguishes action cue from identity voice
+      _noiseBurst(ctx, t, 600, effectiveVolume(0.04), 0.02)
+      const chord = t + 0.025 // chord starts after noise burst
       if (theme === 'retro') {
-        tone(ctx, 523.25, t,        0.4, effectiveVolume(0.055), 'square') // C5
-        tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045), 'square') // D5
+        tone(ctx, 523.25, chord,        0.4, effectiveVolume(0.055), 'square') // C5
+        tone(ctx, 587.33, chord + 0.05, 0.4, effectiveVolume(0.045), 'square') // D5
       } else if (theme === 'space') {
-        // Minor third — more ambiguous "awaiting signal" feel
-        tone(ctx, 523.25, t,        0.5, effectiveVolume(0.055), 'sine') // C5
-        tone(ctx, 622.25, t + 0.05, 0.5, effectiveVolume(0.045), 'sine') // D#5
+        tone(ctx, 523.25, chord,        0.5, effectiveVolume(0.055), 'sine') // C5
+        tone(ctx, 622.25, chord + 0.05, 0.5, effectiveVolume(0.045), 'sine') // D#5
       } else if (theme === 'nature') {
-        tone(ctx, 523.25, t,        0.5, effectiveVolume(0.05), 'triangle') // C5
-        tone(ctx, 587.33, t + 0.05, 0.5, effectiveVolume(0.04), 'triangle') // D5
+        tone(ctx, 523.25, chord,        0.5, effectiveVolume(0.05), 'triangle') // C5
+        tone(ctx, 587.33, chord + 0.05, 0.5, effectiveVolume(0.04), 'triangle') // D5
       } else {
         // Classic: C5 + D5 suspended second
-        tone(ctx, 523.25, t,        0.4, effectiveVolume(0.055)) // C5
-        tone(ctx, 587.33, t + 0.05, 0.4, effectiveVolume(0.045)) // D5
+        tone(ctx, 523.25, chord,        0.4, effectiveVolume(0.055)) // C5
+        tone(ctx, 587.33, chord + 0.05, 0.4, effectiveVolume(0.045)) // D5
       }
     }
-    setTimeout(() => ctx.close(), 800)
-  } catch { /* AudioContext not available */ }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 800)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
-// ── #9 @mention ping ───────────────────────────────────────────────────────
-// Distinct short ping — higher pitch than message chime, percussive attack.
-export function playMentionPing(): void {
+// ── #9 @mention ping — grammar-wired ──────────────────────────────────────
+// Action ping (percussive/sweep) + sender identity voice + optional recipient voice.
+// Urgent gap = 50ms (not 100ms) so the identity lands sooner, reinforcing urgency.
+// senderName: who sent the @mention. recipientName: who was mentioned (50% softer, inverted pan).
+export function playMentionPing(senderName?: string, recipientName?: string): void {
   if (!isCategoryEnabled('social')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
+    let pingDur = 0.12 // action cue duration
+
+    // Action cue: must use sweep or percussive texture (structural distinguishability rule).
+    // Nature uses a triangle-wave sweep — softer than sine but still directional (no static tones).
+    // Classic sweep extended to 120ms minimum for perceptible directionality (audio-sme tuning).
     if (theme === 'retro') {
-      // High blip: E6 square — very chiptune
-      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square')
+      tone(ctx, 1318.51, t, 0.1, effectiveVolume(0.08), 'square') // high blip — percussive
+      pingDur = 0.1
     } else if (theme === 'space') {
-      // Rising blip: fast ascending sweep
       sweep(ctx, 800, 1600, t, 0.12, effectiveVolume(0.08), 'sine')
+      pingDur = 0.12
     } else if (theme === 'nature') {
-      // Softer, slightly lower: G5 triangle — still distinct
-      tone(ctx, 783.99, t, 0.2, effectiveVolume(0.07), 'triangle')
+      sweep(ctx, 440, 880, t, 0.18, effectiveVolume(0.07), 'triangle') // gentle ascending sweep
+      pingDur = 0.18
     } else {
-      // Classic: C6 sine — bright, short
-      tone(ctx, 1046.5, t, 0.15, effectiveVolume(0.09), 'sine')
+      sweep(ctx, 600, 1200, t, 0.12, effectiveVolume(0.09), 'sine') // 120ms for perceptible directionality
+      pingDur = 0.12
     }
-    setTimeout(() => ctx.close(), 400)
-  } catch { /* AudioContext not available */ }
+
+    // Grammar: sender voice at t + pingDur + 0.05 (50ms urgent gap)
+    const voiceStart = t + pingDur + 0.05
+    if (senderName) _voiceInCtx(ctx, voiceStart, senderName, 1.0, false)
+    // Recipient voice: 40ms after sender, 50% softer, opposite pan (@mentions only)
+    if (recipientName) _voiceInCtx(ctx, voiceStart + 0.04, recipientName, 0.5, true)
+
+    const totalDur = (senderName || recipientName) ? pingDur + 0.05 + 1.1 + 0.04 : pingDur
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, (totalDur + 0.3) * 1000)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
+}
+
+// ── Agent message — action cue + sender identity voice (grammar) ───────────
+// Replaces playCollaborationChord for agent→agent messages.
+// Uses bandpass noise-burst as action cue (communication = percussive texture, not tones).
+export function playAgentMessage(senderName: string): void {
+  if (!isCategoryEnabled('social')) return
+  if (!_agentDebounceOk(senderName)) return
+  try {
+    _activeCueCount++
+    const ctx = new AudioContext()
+    const t = ctx.currentTime
+    // Action cue: noise-burst at 1.5x identity voice volume so action is never masked (audio-sme tuning)
+    _noiseBurst(ctx, t, 900, effectiveVolume(0.080), 0.025)
+    // Grammar: sender's identity voice after 100ms gap
+    _voiceInCtx(ctx, t + 0.025 + 0.1, senderName, 1.0, false)
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 1500)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 export function notifyBossMessage(from: string, spaceName: string): void {
@@ -621,6 +779,7 @@ export function notifyBossMessage(from: string, spaceName: string): void {
 export function playPRShipped(): void {
   if (!isCategoryEnabled('events')) return
   try {
+    _activeCueCount++
     const ctx = new AudioContext()
     const t = ctx.currentTime
     const theme = soundTheme.value
@@ -651,8 +810,8 @@ export function playPRShipped(): void {
         tone(ctx, 392, t, 0.3, effectiveVolume(0.05), 'triangle')
       }
     }
-    setTimeout(() => ctx.close(), 700)
-  } catch { /* AudioContext not available */ }
+    setTimeout(() => { ctx.close(); _activeCueCount-- }, 700)
+  } catch { _activeCueCount-- /* AudioContext not available */ }
 }
 
 // ── #8 Collaboration Harmony — two agents conversing ──────────────────────
@@ -720,32 +879,15 @@ export function playAgentMoodActive(agentName: string): void {
   } catch { /* AudioContext not available */ }
 }
 
+// Idle cue — single soft fade with no directional sweep (audio-sme requirement).
+// Descending patterns were confused with identity voices; this is ambient-tier volume only.
 export function playAgentMoodIdle(agentName: string): void {
   if (!isCategoryEnabled('events')) return
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
-    const theme = soundTheme.value
     const root = PENTATONIC_HZ[hashName(agentName) % PENTATONIC_HZ.length]!
-    const fifth = root * 1.498
-    if (theme === 'retro') {
-      tone(ctx, fifth, t,        0.12, effectiveVolume(0.03), 'square')
-      tone(ctx, root,  t + 0.13, 0.14, effectiveVolume(0.025), 'square')
-    } else if (theme === 'space') {
-      // Descending fade — "going offline"
-      if (!prefersReducedMotion) {
-        sweep(ctx, fifth, root * 0.7, t + 0.05, 0.25, effectiveVolume(0.025), 'sine')
-      } else {
-        tone(ctx, root, t, 0.28, effectiveVolume(0.022), 'sine')
-      }
-    } else if (theme === 'nature') {
-      tone(ctx, fifth, t,        0.28, effectiveVolume(0.026), 'triangle')
-      tone(ctx, root,  t + 0.13, 0.32, effectiveVolume(0.02),  'triangle')
-    } else {
-      // Classic: descending fifth→root, triangle then sine — "settling down"
-      tone(ctx, fifth, t,        0.22, effectiveVolume(0.028), 'triangle')
-      tone(ctx, root,  t + 0.13, 0.28, effectiveVolume(0.022), 'sine')
-    }
-    setTimeout(() => ctx.close(), 600)
+    tone(ctx, root, t, 0.09, effectiveVolume(0.025), 'sine') // ambient-tier but audible on laptop speakers
+    setTimeout(() => ctx.close(), 300)
   } catch { /* AudioContext not available */ }
 }

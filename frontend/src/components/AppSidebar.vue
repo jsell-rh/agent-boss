@@ -717,7 +717,7 @@ defineExpose({ openNewSpaceDialog })
             :disabled="broadcasting"
             @click="emit('broadcast')"
           >
-            <Radio class="size-4" /> Check in all agents
+            <Radio class="size-4" /> Nudge All
           </Button>
         </TooltipTrigger>
         <TooltipContent>

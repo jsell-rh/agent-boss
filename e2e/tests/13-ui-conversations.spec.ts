@@ -203,7 +203,7 @@ test.describe('UI: Conversations View', () => {
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
 
-    const agentLink = page.getByText('ThreadAgent').first()
+    const agentLink = page.getByRole('listbox').getByText('ThreadAgent').first()
     if (await agentLink.isVisible()) {
       await agentLink.click()
       await page.waitForTimeout(500)
