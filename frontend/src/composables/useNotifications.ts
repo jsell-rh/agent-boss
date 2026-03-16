@@ -121,6 +121,18 @@ function _agentDebounceOk(agentName: string): boolean {
   return true
 }
 
+// Separate debounce for mood cues — 400ms because mood events cluster on fleet restarts
+const _agentMoodLastCueTs = new Map<string, number>()
+const MOOD_DEBOUNCE_MS = 400
+
+function _agentMoodDebounceOk(agentName: string): boolean {
+  const now = Date.now()
+  const last = _agentMoodLastCueTs.get(agentName) ?? 0
+  if (now - last < MOOD_DEBOUNCE_MS) return false
+  _agentMoodLastCueTs.set(agentName, now)
+  return true
+}
+
 // ── Low-level synth helpers ────────────────────────────────────────────────
 
 function tone(
@@ -272,14 +284,17 @@ export function playSuccess(priority?: string): void {
       sweep(ctx, 400,  800,  t + offset,        0.15, 0.07, 'sine')
       sweep(ctx, 800,  1200, t + offset + 0.18, 0.25, 0.08, 'sine')
     } else if (theme === 'nature') {
-      tone(ctx, 523.25, t + offset,        0.6,  0.05, 'triangle') // C5
-      tone(ctx, 659.25, t + offset + 0.12, 0.55, 0.05, 'triangle') // E5
-      tone(ctx, 783.99, t + offset + 0.24, 0.5,  0.05, 'triangle') // G5
+      // Noise-burst prefix marks "action complete" before identity-like triangle tones (audio-sme Phase 4)
+      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.04), 0.015)
+      tone(ctx, 523.25, t + offset + 0.02,        0.6,  0.05, 'triangle') // C5
+      tone(ctx, 659.25, t + offset + 0.02 + 0.12, 0.55, 0.05, 'triangle') // E5
+      tone(ctx, 783.99, t + offset + 0.02 + 0.24, 0.5,  0.05, 'triangle') // G5
     } else {
-      // Classic: C major triad (C5, E5, G5)
-      tone(ctx, 523.25, t + offset,        0.5)  // C5
-      tone(ctx, 659.25, t + offset + 0.08, 0.45) // E5
-      tone(ctx, 783.99, t + offset + 0.16, 0.4)  // G5
+      // Classic: noise-burst prefix + C major triad (C5, E5, G5) — burst marks "done" action (audio-sme Phase 4)
+      _noiseBurst(ctx, t + offset, 600, effectiveVolume(0.04), 0.015)
+      tone(ctx, 523.25, t + offset + 0.02,        0.5)  // C5
+      tone(ctx, 659.25, t + offset + 0.02 + 0.08, 0.45) // E5
+      tone(ctx, 783.99, t + offset + 0.02 + 0.16, 0.4)  // G5
     }
 
     setTimeout(() => { ctx.close(); _activeCueCount-- }, isCritical ? 2000 : 1500)
@@ -647,8 +662,8 @@ export function playAgentSpawn(agentName?: string): void {
     } else if (theme === 'space') {
       if (!prefersReducedMotion) {
         sweep(ctx, 80, 2000, t, 0.3, effectiveVolume(0.09), 'sine')
-        tone(ctx, 1400, t + 0.33, 0.18, effectiveVolume(0.05), 'triangle') // trimmed 0.35→0.18 (audio-sme)
-        warpDur = 0.51
+        tone(ctx, 1400, t + 0.33, 0.12, effectiveVolume(0.05), 'triangle') // trimmed tail (audio-sme Phase 4)
+        warpDur = 0.45
       } else {
         tone(ctx, 880, t, 0.3, effectiveVolume(0.06), 'sine')
         warpDur = 0.3
@@ -759,15 +774,16 @@ export function playMentionPing(senderName?: string, recipientName?: string): vo
       sweep(ctx, 800, 1600, t, 0.12, effectiveVolume(0.08), 'sine')
       pingDur = 0.12
     } else if (theme === 'nature') {
-      sweep(ctx, 440, 880, t, 0.18, effectiveVolume(0.07), 'triangle') // gentle ascending sweep
-      pingDur = 0.18
+      // Noise-burst replaces triangle sweep — static tones blurred with identity voices (audio-sme Phase 4)
+      _noiseBurst(ctx, t, 550, effectiveVolume(0.065), 0.04)
+      pingDur = 0.04
     } else {
       sweep(ctx, 600, 1200, t, 0.12, effectiveVolume(0.09), 'sine') // 120ms for perceptible directionality
       pingDur = 0.12
     }
 
-    // Grammar: sender voice at t + pingDur + 0.05 (50ms urgent gap)
-    const voiceStart = t + pingDur + 0.05
+    // Grammar: sender voice at t + pingDur + 0.07 (70ms urgent gap — retro blip was too tight, audio-sme Phase 4)
+    const voiceStart = t + pingDur + 0.07
     if (senderName) _voiceInCtx(ctx, voiceStart, senderName, 1.0, false)
     // Recipient voice: 40ms after sender, 50% softer, opposite pan (@mentions only)
     if (recipientName) _voiceInCtx(ctx, voiceStart + 0.04, recipientName, 0.5, true)
@@ -789,7 +805,7 @@ export function playAgentMessage(senderName: string): void {
     const ctx = new AudioContext()
     const t = ctx.currentTime
     // Action cue: noise-burst at 1.5x identity voice volume so action is never masked (audio-sme tuning)
-    _noiseBurst(ctx, t, 900, effectiveVolume(0.080), 0.025)
+    _noiseBurst(ctx, t, 900, effectiveVolume(0.086), 0.025)
     // Grammar: sender's identity voice after 100ms gap
     _voiceInCtx(ctx, t + 0.025 + 0.1, senderName, 1.0, false)
     setTimeout(() => { ctx.close(); _activeCueCount-- }, 1500)
@@ -853,6 +869,8 @@ export function playPRShipped(): void {
 
 // ── #8 Collaboration Harmony — two agents conversing ──────────────────────
 // Both agents' pentatonic voices play as a chord with a slight timing offset.
+// @deprecated — superseded by playAgentMessage() which uses proper grammar (action cue + identity voice).
+// Not currently called from any component; kept for potential future use.
 export function playCollaborationChord(senderName: string, receiverName: string): void {
   if (!isCategoryEnabled('social')) return
   try {
@@ -887,6 +905,7 @@ export function playCollaborationChord(senderName: string, receiverName: string)
 
 export function playAgentMoodActive(agentName: string): void {
   if (!isCategoryEnabled('events')) return
+  if (!_agentMoodDebounceOk(agentName)) return // guard mood-cue stacking on fleet restarts
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
@@ -905,12 +924,15 @@ export function playAgentMoodActive(agentName: string): void {
         tone(ctx, fifth, t, 0.18, effectiveVolume(0.038), 'sine')
       }
     } else if (theme === 'nature') {
-      tone(ctx, root,  t,       0.22, effectiveVolume(0.036), 'triangle')
-      tone(ctx, fifth, t + 0.1, 0.2,  effectiveVolume(0.036), 'triangle')
+      // Micro-sweep prefix separates action cue from identity-voice tones (audio-sme Phase 4)
+      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.025), 'sine')
+      tone(ctx, root,  t + 0.07,       0.22, effectiveVolume(0.036), 'triangle')
+      tone(ctx, fifth, t + 0.07 + 0.1, 0.2,  effectiveVolume(0.036), 'triangle')
     } else {
-      // Classic: ascending root→fifth, sine then triangle
-      tone(ctx, root,  t,       0.18, effectiveVolume(0.038), 'sine')
-      tone(ctx, fifth, t + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
+      // Classic: micro-sweep prefix + ascending root→fifth — sweep marks status-change action (audio-sme Phase 4)
+      sweep(ctx, root * 0.7, root, t, 0.06, effectiveVolume(0.025), 'sine')
+      tone(ctx, root,  t + 0.07,       0.18, effectiveVolume(0.038), 'sine')
+      tone(ctx, fifth, t + 0.07 + 0.1, 0.16, effectiveVolume(0.038), 'triangle')
     }
     setTimeout(() => ctx.close(), 500)
   } catch { /* AudioContext not available */ }
@@ -920,6 +942,7 @@ export function playAgentMoodActive(agentName: string): void {
 // Descending patterns were confused with identity voices; this is ambient-tier volume only.
 export function playAgentMoodIdle(agentName: string): void {
   if (!isCategoryEnabled('events')) return
+  if (!_agentMoodDebounceOk(agentName)) return // guard mood-cue stacking on fleet restarts
   try {
     const ctx = new AudioContext()
     const t = ctx.currentTime
