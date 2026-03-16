@@ -20,6 +20,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -85,6 +95,7 @@ watch(soundEnabled, maybeShowAudioGuide)
 
 const loading = ref(true)
 const spaceLoading = ref(false)
+const nudgeAllConfirmOpen = ref(false)
 // Portal iris reveal — increments on each space switch to retrigger the animation
 const spaceRevealKey = ref(0)
 const errorMessage = ref<string | null>(null)
@@ -462,8 +473,14 @@ watch(currentSpace, (space) => {
 })
 
 // ── Action handlers ────────────────────────────────────────────────
-async function handleBroadcastSpace() {
+function handleBroadcastSpace() {
   if (!selectedSpace.value || broadcasting.value) return
+  nudgeAllConfirmOpen.value = true
+}
+
+async function confirmBroadcastSpace() {
+  if (!selectedSpace.value || broadcasting.value) return
+  nudgeAllConfirmOpen.value = false
   broadcasting.value = true
   try {
     await api.broadcastSpace(selectedSpace.value)
@@ -1571,6 +1588,22 @@ onUnmounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- Nudge-all confirmation dialog -->
+    <AlertDialog v-model:open="nudgeAllConfirmOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Nudge all agents?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will send a check-in request to every agent in <strong>{{ selectedSpace }}</strong>. Each agent will receive a broadcast nudge.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction @click="confirmBroadcastSpace">Nudge all</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </TooltipProvider>
 </template>
 

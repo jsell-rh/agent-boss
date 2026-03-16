@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown, Archive, User, Settings } from 'lucide-vue-next'
+import { Radio, AlertCircle, ChevronRight, MoreHorizontal, Trash2, Plus, LayoutDashboard, MessageSquare, Crown, Archive, ArchiveRestore, User, Settings } from 'lucide-vue-next'
 import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
@@ -77,7 +77,8 @@ const router = useRouter()
 const route = useRoute()
 
 function handleSelectSpace(name: string) {
-  router.push('/' + name)
+  // Only emit — App.vue's handleSelectSpace handles the router.push (with smart kanban/overview routing).
+  // Previously both emitted AND pushed, causing a route flash (double push).
   emit('select-space', name)
 }
 
@@ -341,7 +342,7 @@ defineExpose({ openNewSpaceDialog })
               </Tooltip>
               <Tooltip v-if="spaceAttentionCount(space) > 0">
                 <TooltipTrigger as-child>
-                  <SidebarMenuBadge class="flex items-center gap-1 text-amber-500 font-semibold group-hover/space-item:opacity-0 transition-opacity">
+                  <SidebarMenuBadge class="flex items-center gap-1 text-amber-500 font-semibold">
                     <AlertCircle class="size-3" aria-hidden="true" />
                     {{ spaceAttentionCount(space) }}
                   </SidebarMenuBadge>
@@ -350,7 +351,7 @@ defineExpose({ openNewSpaceDialog })
                   {{ spaceAttentionCount(space) }} item{{ spaceAttentionCount(space) !== 1 ? 's' : '' }} need{{ spaceAttentionCount(space) === 1 ? 's' : '' }} attention
                 </TooltipContent>
               </Tooltip>
-              <SidebarMenuBadge v-else :title="`${space.agent_count} agent${space.agent_count !== 1 ? 's' : ''} in this space`" class="group-hover/space-item:opacity-0 transition-opacity">
+              <SidebarMenuBadge v-else :title="`${space.agent_count} agent${space.agent_count !== 1 ? 's' : ''} in this space`">
                 {{ space.agent_count }}
               </SidebarMenuBadge>
               <!-- Space context menu -->
@@ -441,7 +442,7 @@ defineExpose({ openNewSpaceDialog })
                         class="cursor-pointer"
                         @click="emit('archive-space', space.name)"
                       >
-                        <Archive class="size-4 mr-2" aria-hidden="true" />
+                        <ArchiveRestore class="size-4 mr-2" aria-hidden="true" />
                         Unarchive space
                       </DropdownMenuItem>
                       <DropdownMenuItem
