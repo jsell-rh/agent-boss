@@ -50,6 +50,8 @@ import {
   playAgentMoodIdle,
   playAgentTick,
   resetAgentChimes,
+  startBlockedPulse,
+  stopBlockedPulse,
 } from '@/composables/useNotifications'
 import { useConfetti } from '@/composables/useConfetti'
 
@@ -745,9 +747,15 @@ function setupSSE() {
     // Agent signature chime — plays once per agent per page load on first update
     playAgentSignatureChime(data.agent)
     // Dissonance alert — fires when transitioning INTO blocked/error (not already there)
-    if ((data.status === 'blocked' || data.status === 'error')
-        && prevStatus !== 'blocked' && prevStatus !== 'error') {
+    const agentKey = `${data.space}:${data.agent}`
+    const isNowBlocked = data.status === 'blocked' || data.status === 'error'
+    const wasBlocked = prevStatus === 'blocked' || prevStatus === 'error'
+    if (isNowBlocked && !wasBlocked) {
       playBlockedAlert()
+      // Idea J — start 30s repeating pulse while agent stays blocked
+      startBlockedPulse(agentKey)
+    } else if (!isNowBlocked && wasBlocked) {
+      stopBlockedPulse(agentKey)
     }
     // Agent moods (#5): ascending voice on going active, descending on going idle
     if (prevStatus && prevStatus !== data.status) {

@@ -404,8 +404,42 @@ export function playAgentTick(agentName: string): void {
 // ── Reduced-motion awareness ────────────────────────────────────────────────
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+// Idea K — Whisper Hour: automatically quieter between 10pm and 7am
+function _whisperMultiplier(): number {
+  const h = new Date().getHours()
+  return (h >= 22 || h < 7) ? 0.3 : 1.0
+}
+
 function effectiveVolume(base: number): number {
-  return prefersReducedMotion ? base * 0.4 : base
+  return base * (prefersReducedMotion ? 0.4 : 1.0) * _whisperMultiplier()
+}
+
+// ── Idea J — Repeating blocked pulse ──────────────────────────────────────
+// Plays a soft single-note reminder every 30s while an agent stays blocked.
+const _blockedPulseMap = new Map<string, ReturnType<typeof setInterval>>()
+const BLOCKED_PULSE_MS = 30_000
+
+export function startBlockedPulse(agentKey: string): void {
+  if (_blockedPulseMap.has(agentKey)) return
+  const id = setInterval(() => {
+    if (!isCategoryEnabled('urgent')) return
+    try {
+      const ctx = new AudioContext()
+      const t = ctx.currentTime
+      // Single dissonant tone — softer than the initial alert (reminder, not alarm)
+      tone(ctx, 466.16, t, 0.06, effectiveVolume(0.05), 'sine')
+      setTimeout(() => ctx.close(), 200)
+    } catch { /* AudioContext not available */ }
+  }, BLOCKED_PULSE_MS)
+  _blockedPulseMap.set(agentKey, id)
+}
+
+export function stopBlockedPulse(agentKey: string): void {
+  const id = _blockedPulseMap.get(agentKey)
+  if (id !== undefined) {
+    clearInterval(id)
+    _blockedPulseMap.delete(agentKey)
+  }
 }
 
 // ── #2 Dissonance Flag — blocked/error alert ───────────────────────────────
