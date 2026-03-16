@@ -420,7 +420,7 @@ class ApiClient {
 
   // --------------- Tasks ---------------
 
-  fetchTasks(space: string, filters?: { status?: TaskStatus; assigned_to?: string; label?: string; search?: string }): Promise<Task[]> {
+  fetchTasks(space: string, filters?: { status?: TaskStatus; assigned_to?: string; label?: string; search?: string }, signal?: AbortSignal): Promise<Task[]> {
     const params = new URLSearchParams()
     if (filters?.status) params.set('status', filters.status)
     if (filters?.assigned_to) params.set('assigned_to', filters.assigned_to)
@@ -429,6 +429,7 @@ class ApiClient {
     const qs = params.toString()
     return this.request<{ tasks: Task[]; total: number }>(
       `/spaces/${encodeURIComponent(space)}/tasks${qs ? '?' + qs : ''}`,
+      signal ? { signal } : undefined,
     ).then(r => r.tasks ?? [])
   }
 

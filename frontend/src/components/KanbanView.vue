@@ -95,19 +95,26 @@ const tasksByStatus = computed(() => {
 })
 
 // ── Data loading ───────────────────────────────────────────────────
+const LOAD_TIMEOUT_MS = 15_000
+
 async function loadTasks() {
   loading.value = true
   error.value = null
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), LOAD_TIMEOUT_MS)
   try {
-    tasks.value = await api.fetchTasks(props.space.name)
+    tasks.value = await api.fetchTasks(props.space.name, undefined, controller.signal)
   } catch (e) {
-    // Backend may not have tasks yet — treat as empty
-    if (e instanceof Error && e.message.includes('404')) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      error.value = 'Request timed out — server may be overloaded. Click refresh to retry.'
+    } else if (e instanceof Error && e.message.includes('404')) {
+      // Backend may not have tasks yet — treat as empty
       tasks.value = []
     } else {
       error.value = e instanceof Error ? e.message : String(e)
     }
   } finally {
+    clearTimeout(timeoutId)
     loading.value = false
   }
 }
