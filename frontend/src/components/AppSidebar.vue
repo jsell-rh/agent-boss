@@ -222,11 +222,11 @@ function agentAttentionCount(agent: { questions?: string[]; blockers?: string[] 
 
 function statusDotClass(status: string): string {
   switch (status) {
-    case 'active': return 'bg-green-500'
-    case 'blocked': return 'bg-amber-500'
-    case 'done': return 'bg-teal-500'
-    case 'idle': return 'bg-muted-foreground'
-    case 'error': return 'bg-destructive'
+    case 'active':  return 'bg-green-500 dot-pulse-active'
+    case 'blocked': return 'bg-amber-500 dot-jitter-blocked'
+    case 'done':    return 'bg-teal-500'
+    case 'idle':    return 'bg-muted-foreground dot-breathe-idle'
+    case 'error':   return 'bg-destructive dot-jitter-blocked'
     default: return 'bg-muted-foreground'
   }
 }
@@ -852,6 +852,34 @@ defineExpose({ openNewSpaceDialog })
   100% { transform: scale(1); box-shadow: none; }
 }
 
+/* Status dot animations — pulse, breathe, jitter */
+.dot-pulse-active {
+  animation: dot-sonar-ping 2s ease-out infinite;
+}
+@keyframes dot-sonar-ping {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  60%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.dot-breathe-idle {
+  animation: dot-breathe 3.5s ease-in-out infinite;
+}
+@keyframes dot-breathe {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 1; }
+}
+
+.dot-jitter-blocked {
+  animation: dot-jitter 0.6s ease-in-out infinite alternate;
+}
+@keyframes dot-jitter {
+  0%   { transform: translateX(0); }
+  33%  { transform: translateX(-1.5px); }
+  66%  { transform: translateX(1.5px); }
+  100% { transform: translateX(0); }
+}
+
 /* Typing indicator — 3 dots bouncing when agent recently posted */
 .typing-dots {
   display: inline-flex;
@@ -879,5 +907,6 @@ defineExpose({ openNewSpaceDialog })
   .mention-pulse { animation: none; }
   .agent-spawn { animation: none; }
   .typing-dots span { animation: none; opacity: 0.6; }
+  .dot-pulse-active, .dot-breathe-idle, .dot-jitter-blocked { animation: none; }
 }
 </style>
