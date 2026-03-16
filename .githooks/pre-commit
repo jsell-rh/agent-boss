@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run TypeScript typecheck if any frontend files are staged.
+# Install via: make install-hooks  (or git config core.hooksPath .githooks)
+
+set -euo pipefail
+
+# Check if any frontend TypeScript/Vue files are staged
+if git diff --cached --name-only | grep -qE '^frontend/'; then
+  echo "pre-commit: frontend files changed — running TypeScript typecheck..."
+  (cd "$(git rev-parse --show-toplevel)/frontend" && npx vue-tsc -b)
+  echo "pre-commit: TypeScript typecheck passed."
+fi
