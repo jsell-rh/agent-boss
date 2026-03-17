@@ -50,6 +50,8 @@ import {
   X,
   Save,
   Loader2,
+  Download,
+  Upload,
 } from 'lucide-vue-next'
 import StatusBadge from './StatusBadge.vue'
 import AgentAvatar from './AgentAvatar.vue'
@@ -57,6 +59,7 @@ import AgentProfileCard from './AgentProfileCard.vue'
 import GanttTimeline from './GanttTimeline.vue'
 import HierarchyView from './HierarchyView.vue'
 import AgentCreateDialog from './AgentCreateDialog.vue'
+import ImportFleetModal from './ImportFleetModal.vue'
 import { prLink } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
 import api from '@/api/client'
@@ -200,6 +203,26 @@ const deleteDialogOpen = ref(false)
 const deleteDialogAgent = ref<string | null>(null)
 const deleteSpaceDialogOpen = ref(false)
 const clearDoneDialogOpen = ref(false)
+const importFleetOpen = ref(false)
+const exportingFleet = ref(false)
+
+async function exportFleet() {
+  exportingFleet.value = true
+  try {
+    const yamlStr = await api.exportFleet(props.space.name)
+    const blob = new Blob([yamlStr], { type: 'application/yaml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.space.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-fleet.yaml`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('Fleet export failed:', e)
+  } finally {
+    exportingFleet.value = false
+  }
+}
 const messageDialogOpen = ref(false)
 const messageDialogAgent = ref<string | null>(null)
 const messageText = ref('')
@@ -550,6 +573,34 @@ const activeSections = computed(() => [
             <TooltipContent>
               Remove all {{ doneIdleAgents.length }} done or idle agent{{ doneIdleAgents.length !== 1 ? 's' : '' }} from this space
             </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="exportingFleet"
+                @click="exportFleet"
+              >
+                <Download v-if="!exportingFleet" class="size-4" />
+                <Loader2 v-else class="size-4 animate-spin" />
+                Export fleet
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Save current team structure as a reusable fleet.yaml file</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                @click="importFleetOpen = true"
+              >
+                <Upload class="size-4" />
+                Import fleet
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Load an agent-compose.yaml to configure this space</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger as-child>
@@ -1332,6 +1383,12 @@ const activeSections = computed(() => [
         :space="space.name"
         @created="() => {}"
         @open-personas="agentCreateDialogOpen = false; emit('open-personas')"
+      />
+
+      <ImportFleetModal
+        v-model:open="importFleetOpen"
+        :space="space"
+        @imported="() => {}"
       />
     </div>
   </ScrollArea>

@@ -257,3 +257,156 @@ func (c *Client) ListSpaces() ([]SpaceSummary, error) {
 	}
 	return summaries, nil
 }
+
+// ─── Fleet / agent-compose client methods ────────────────────────────────────
+
+// ExportFleet fetches the agent-compose YAML for the space.
+func (c *Client) ExportFleet() ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, c.spacePrefix()+"/export", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("export fleet: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("export fleet: status %d: %s", resp.StatusCode, string(body))
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// SpaceExists returns true if the space is registered on the server.
+func (c *Client) SpaceExists() (bool, error) {
+	req, err := http.NewRequest(http.MethodGet, c.spacePrefix(), nil)
+	if err != nil {
+		return false, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("check space: %w", err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK, nil
+}
+
+// FetchPersona returns the persona with the given ID, or (nil, nil) if not found.
+func (c *Client) FetchPersona(id string) (*Persona, error) {
+	resp, err := c.httpClient.Get(c.baseURL + "/personas/" + id)
+	if err != nil {
+		return nil, fmt.Errorf("fetch persona %q: %w", id, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("fetch persona %q: status %d: %s", id, resp.StatusCode, string(body))
+	}
+	var p Persona
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		return nil, fmt.Errorf("decode persona %q: %w", id, err)
+	}
+	return &p, nil
+}
+
+// CreatePersona creates a new global persona. A 409 Conflict from the server
+// (ID already taken) is treated as a non-fatal condition; the returned persona
+// body is decoded and returned.
+func (c *Client) CreatePersona(p *Persona) (*Persona, error) {
+	data, _ := json.Marshal(p)
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/personas", strings.NewReader(string(data)))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("create persona: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+		return nil, fmt.Errorf("create persona: status %d: %s", resp.StatusCode, string(body))
+	}
+	var out Persona
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("decode persona response: %w", err)
+	}
+	return &out, nil
+}
+
+// UpdatePersona replaces the mutable fields of an existing persona.
+func (c *Client) UpdatePersona(id, name, description, prompt string) error {
+	payload := struct {
+		Name        string `json:"name,omitempty"`
+		Description string `json:"description,omitempty"`
+		Prompt      string `json:"prompt,omitempty"`
+	}{name, description, prompt}
+	data, _ := json.Marshal(payload)
+	req, err := http.NewRequest(http.MethodPatch, c.baseURL+"/personas/"+id, strings.NewReader(string(data)))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("update persona: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update persona %q: status %d: %s", id, resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// FetchAgentConfig returns the agent's durable config, or an empty AgentConfig
+// if the agent has none. Returns (nil, nil) if the space is not found (404).
+func (c *Client) FetchAgentConfig(agentName string) (*AgentConfig, error) {
+	resp, err := c.httpClient.Get(c.spacePrefix() + "/agent/" + agentName + "/config")
+	if err != nil {
+		return nil, fmt.Errorf("fetch config: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("fetch config: status %d: %s", resp.StatusCode, string(body))
+	}
+	var cfg AgentConfig
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	return &cfg, nil
+}
+
+// PatchAgentConfig performs a partial update of the agent's durable config.
+// Sends X-Agent-Name header required by the server's channel enforcement.
+func (c *Client) PatchAgentConfig(agentName string, cfg *AgentConfig) error {
+	data, _ := json.Marshal(cfg)
+	req, err := http.NewRequest(http.MethodPatch,
+		c.spacePrefix()+"/agent/"+agentName+"/config",
+		strings.NewReader(string(data)))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", agentName)
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("patch config: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("patch config: status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
