@@ -265,6 +265,7 @@ async function applyImport() {
     }
 
     step.value = 'done'
+    localStorage.setItem(`fleet-import-${spaceName}`, new Date().toISOString())
     emit('imported')
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

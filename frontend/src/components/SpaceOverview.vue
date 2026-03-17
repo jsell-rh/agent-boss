@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { KnowledgeSpace, SessionAgentStatus, HierarchyTree } from '@/types'
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTime } from '@/composables/useTime'
 import { Card, CardContent } from '@/components/ui/card'
@@ -205,6 +205,31 @@ const deleteSpaceDialogOpen = ref(false)
 const clearDoneDialogOpen = ref(false)
 const importFleetOpen = ref(false)
 const exportingFleet = ref(false)
+
+// Fleet import audit chip — persists across refreshes via localStorage
+const fleetImportKey = computed(() => `fleet-import-${props.space.name}`)
+const fleetImportTs = ref<string | null>(localStorage.getItem(fleetImportKey.value))
+const fleetImportRelative = ref<string | null>(null)
+
+function updateFleetImportRelative() {
+  if (!fleetImportTs.value) { fleetImportRelative.value = null; return }
+  const { relativeTime } = useTime()
+  fleetImportRelative.value = relativeTime(fleetImportTs.value)
+}
+
+function onFleetImported() {
+  fleetImportTs.value = localStorage.getItem(fleetImportKey.value)
+  updateFleetImportRelative()
+}
+
+let fleetImportTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  updateFleetImportRelative()
+  fleetImportTimer = setInterval(updateFleetImportRelative, 60_000)
+})
+onUnmounted(() => {
+  if (fleetImportTimer) clearInterval(fleetImportTimer)
+})
 
 async function exportFleet() {
   exportingFleet.value = true
@@ -601,6 +626,16 @@ const activeSections = computed(() => [
               </Button>
             </TooltipTrigger>
             <TooltipContent>Load an agent-compose.yaml to configure this space</TooltipContent>
+          </Tooltip>
+          <!-- Fleet import audit chip -->
+          <Tooltip v-if="fleetImportRelative">
+            <TooltipTrigger as-child>
+              <span class="text-xs text-muted-foreground flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-border/50 select-none">
+                <Clock class="size-3 shrink-0" />
+                Fleet: last imported {{ fleetImportRelative }}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{{ fleetImportTs ? new Date(fleetImportTs).toLocaleString() : '' }}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger as-child>
@@ -1388,7 +1423,7 @@ const activeSections = computed(() => [
       <ImportFleetModal
         v-model:open="importFleetOpen"
         :space="space"
-        @imported="() => {}"
+        @imported="onFleetImported"
       />
     </div>
   </ScrollArea>

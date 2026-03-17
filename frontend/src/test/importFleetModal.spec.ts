@@ -282,6 +282,49 @@ describe('ImportFleetModal', () => {
     expect(vm.dormantAgents.length).toBeGreaterThan(0)
   })
 
+  // --- localStorage audit chip ---
+
+  it('writes fleet-import-{space} to localStorage on successful import', async () => {
+    const lsSpy = vi.spyOn(Storage.prototype, 'setItem')
+    const wrapper = makeWrapper()
+    const vm = wrapper.vm as unknown as {
+      processFile: (f: File) => void
+      applyImport: () => Promise<void>
+      step: string
+    }
+
+    const file = new File([validFleetYaml], 'fleet.yaml', { type: 'application/yaml' })
+    vm.processFile(file)
+    await flushPromises()
+    await vm.applyImport()
+    await flushPromises()
+
+    expect(vm.step).toBe('done')
+    expect(lsSpy).toHaveBeenCalledWith('fleet-import-Test Space', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/))
+    lsSpy.mockRestore()
+  })
+
+  it('does NOT write localStorage when apply fails', async () => {
+    vi.mocked(api.createAgent).mockRejectedValueOnce(new Error('Server error'))
+    const lsSpy = vi.spyOn(Storage.prototype, 'setItem')
+    const wrapper = makeWrapper()
+    const vm = wrapper.vm as unknown as {
+      processFile: (f: File) => void
+      applyImport: () => Promise<void>
+      step: string
+    }
+
+    const file = new File([validFleetYaml], 'fleet.yaml', { type: 'application/yaml' })
+    vm.processFile(file)
+    await flushPromises()
+    await vm.applyImport()
+    await flushPromises()
+
+    expect(vm.step).toBe('diff')
+    expect(lsSpy).not.toHaveBeenCalledWith('fleet-import-Test Space', expect.anything())
+    lsSpy.mockRestore()
+  })
+
   // --- Error handling ---
 
   it('shows error state and stays on diff step when apply fails', async () => {
