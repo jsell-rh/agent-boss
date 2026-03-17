@@ -57,6 +57,7 @@ export interface AgentUpdate {
   jira?: string
   repo_url?: string
   messages?: AgentMessage[]
+  unread_count?: number
   updated_at: string
   stale?: boolean
   inferred_status?: string
@@ -274,11 +275,27 @@ export const TASK_PRIORITY_COLOR: Record<TaskPriority, string> = {
 }
 
 // SSE event data shapes
+// Extended by TASK-090 (PR #223) to carry the full agentStatusPublic struct.
+// All fields beyond status+summary are optional for backward compatibility.
 export interface SSEAgentUpdated {
   space: string
   agent: string
   status: string
   summary: string
+  branch?: string
+  worktree?: string
+  pr?: string
+  phase?: string
+  mood?: string
+  test_count?: number
+  items?: string[]
+  questions?: string[]
+  blockers?: string[]
+  next_steps?: string
+  session_id?: string
+  updated_at?: string
+  parent?: string
+  role?: string
 }
 
 export interface SSEAgentRemoved {

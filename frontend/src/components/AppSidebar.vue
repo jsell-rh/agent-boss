@@ -242,17 +242,13 @@ function statusLabel(status: string): string {
 // plus any messages in the 'boss' agent's own inbox that are unread.
 const bossUnreadCount = computed(() => {
   if (!props.currentSpace) return 0
-  let count = 0
-  // Messages in the 'boss' pseudo-agent inbox (agents sending TO boss)
+  // Post-PR #195 the space response strips message bodies but includes unread_count.
+  // Fall back to iterating messages for older server payloads that still embed them.
   const bossAgent = props.currentSpace.agents['boss']
-  if (bossAgent?.messages) {
-    for (const msg of bossAgent.messages) {
-      if (!msg.read) count++
-    }
-  }
-  // Also count messages in agent inboxes from boss that are unread (boss sent these, agent hasn't read)
-  // — intentionally excluded here: we want notifications for messages TO boss, not FROM boss
-  return count
+  if (!bossAgent) return 0
+  if (typeof bossAgent.unread_count === 'number') return bossAgent.unread_count
+  // Legacy fallback: count unread messages from the embedded messages array
+  return (bossAgent.messages ?? []).filter(m => !m.read).length
 })
 
 // ── Typing indicator ───────────────────────────────────────────────────────

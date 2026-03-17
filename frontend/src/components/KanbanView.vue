@@ -277,7 +277,7 @@ onUnmounted(() => {
     <!-- Toolbar -->
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-border shrink-0">
       <h2 class="text-sm font-semibold">Kanban Board</h2>
-      <span class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
+      <span v-if="!loading" class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
 
       <!-- Search input -->
       <div class="relative flex items-center">

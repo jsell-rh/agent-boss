@@ -327,6 +327,8 @@ function showStatus(msg: string) {
 }
 
 // ── Data fetching ──────────────────────────────────────────────────
+let _loadSpaceCtrl: AbortController | null = null
+
 async function loadSpaces() {
   try {
     const fetched = await api.fetchSpaces()
@@ -340,12 +342,16 @@ async function loadSpaces() {
 }
 
 async function loadSpace(name: string, showLoader = false) {
+  _loadSpaceCtrl?.abort()
+  _loadSpaceCtrl = new AbortController()
+  const { signal } = _loadSpaceCtrl
   if (showLoader) spaceLoading.value = true
   try {
-    currentSpace.value = await api.fetchSpace(name)
+    currentSpace.value = await api.fetchSpace(name, signal)
     // Portal iris reveal — retrigger the curtain animation on each space switch
     if (showLoader) spaceRevealKey.value++
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return  // superseded by newer request
     console.error(`Failed to load space ${name}:`, err)
     // Only null out currentSpace on initial load (showLoader=true) when there's
     // genuinely nothing to show. For background refreshes (SSE-triggered), keep
@@ -697,7 +703,7 @@ async function handleSendMessageToAgent(agentName: string, text: string) {
   }
 }
 
-async function handleReplyToQuestion(agentName: string, questionIndex: number, questionText: string, replyText: string) {
+async function handleReplyToQuestion(agentName: string, questionIndex: number, questionText: string, replyText: string, done: () => void) {
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
@@ -713,10 +719,12 @@ async function handleReplyToQuestion(agentName: string, questionIndex: number, q
   } catch (err) {
     console.error('Reply to question failed:', err)
     showError('Failed to reply to question. Please try again.')
+  } finally {
+    done()
   }
 }
 
-async function handleReplyToBlocker(agentName: string, blockerIndex: number, blockerText: string, replyText: string) {
+async function handleReplyToBlocker(agentName: string, blockerIndex: number, blockerText: string, replyText: string, done: () => void) {
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
@@ -732,6 +740,8 @@ async function handleReplyToBlocker(agentName: string, blockerIndex: number, blo
   } catch (err) {
     console.error('Reply to blocker failed:', err)
     showError('Failed to reply to blocker. Please try again.')
+  } finally {
+    done()
   }
 }
 
@@ -785,11 +795,20 @@ function setupSSE() {
     if (currentSpace.value && currentSpace.value.name === data.space) {
       const agent = currentSpace.value.agents[data.agent]
       if (agent) {
+        // Patch all fields present in the extended SSE payload (TASK-090/PR #223).
+        // With the full agentStatusPublic struct in the event, no HTTP reload is needed.
         agent.status = data.status as AgentUpdate['status']
         agent.summary = data.summary
-        agent.updated_at = new Date().toISOString()
-        // Debounced full reload to pick up items, questions, blockers, etc.
-        scheduleSpaceReload(data.space)
+        agent.updated_at = data.updated_at ?? new Date().toISOString()
+        if (data.branch !== undefined)     agent.branch = data.branch
+        if (data.pr !== undefined)         agent.pr = data.pr
+        if (data.phase !== undefined)      agent.phase = data.phase
+        if (data.items !== undefined)      agent.items = data.items
+        if (data.questions !== undefined)  agent.questions = data.questions
+        if (data.blockers !== undefined)   agent.blockers = data.blockers
+        if (data.next_steps !== undefined) agent.next_steps = data.next_steps
+        if (data.session_id !== undefined) agent.session_id = data.session_id
+        if (data.parent !== undefined)     agent.parent = data.parent
       } else {
         // New agent in this space — fetch immediately so it appears without delay
         loadSpace(data.space)
@@ -904,6 +923,9 @@ function setupSSE() {
     // Notify boss when a message is directed to them
     if (data.agent === 'boss') {
       notifyBossMessage(data.sender, data.space)
+      // In-app notification — show even when tab is focused (sidebar badge relies on
+      // debounced space reload; this gives an immediate visual signal).
+      showStatus(`📩 New message from ${data.sender}`)
     }
     // Parse @mentions in message body and pulse the mentioned agent's card
     if (data.message && typeof data.message === 'string' && currentSpace.value) {
