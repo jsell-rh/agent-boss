@@ -63,6 +63,7 @@ import ImportFleetModal from './ImportFleetModal.vue'
 import { prLink } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
 import api from '@/api/client'
+import * as yaml from 'js-yaml'
 
 const props = defineProps<{
   space: KnowledgeSpace
