@@ -107,6 +107,8 @@ data/
 | `AMBIENT_WORKFLOW_PATH` | _(unset)_ | Path to workflow definition file for the ambient backend |
 | `AMBIENT_SKIP_TLS_VERIFY` | `false` | Skip TLS verification for ambient API calls |
 | `COORDINATOR_EXTERNAL_URL` | _(unset)_ | External URL injected into ambient sessions as `BOSS_URL` |
+| `BOSS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Comma-separated allowlist of valid launch commands for `boss import`. Prevents arbitrary command injection via fleet YAML. |
+| `BOSS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values in fleet YAML must start with this prefix. Restricts agent working directories to a safe subtree. |
 
 ## MCP Tool Stack Composition
 

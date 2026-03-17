@@ -1,6 +1,6 @@
 # Tech Debt Tracker
 
-Known technical debt in Agent Boss as of 2026-03-12 (updated after PRs #144–#148). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
+Known technical debt in Agent Boss as of 2026-03-17 (updated after PRs #213–#231). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
 
 Items are ordered by priority: **high** → **medium** → **low**.
 
@@ -8,9 +8,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 
 ## High Priority
 
-### TD-001: `handlers_agent.go` is a 1680-LOC monolith
+### TD-001: `handlers_agent.go` is a 1803-LOC monolith (growing)
 - **File:** `internal/coordinator/handlers_agent.go`
-- **Issue:** All agent HTTP handlers are in one file: status POST, spawn, kill, restart, messages, register, interrupt, approval. After the TASK-014 server.go split, this became the new concentration point.
+- **Issue:** All agent HTTP handlers are in one file: status POST, spawn, kill, restart, messages, register, interrupt, approval. After the TASK-014 server.go split, this became the new concentration point. Grew from 1682 → 1803 LOC across PRs #219–#231.
 - **Impact:** Hard to review, hard to unit-test spawn logic in isolation.
 - **Fix:** Split into `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go` (~400–600 LOC each).
 
@@ -20,10 +20,10 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Impact:** Confusion in the data model; grows payload size.
 - **Fix:** Audit which agents/clients still use `tmux_session`. Remove field once confirmed unused. Add a migration that reads the field on startup if needed.
 
-### TD-003: Frontend components >1000 LOC
-- **Files:** `frontend/src/components/SpaceOverview.vue` (1248 LOC), `frontend/src/components/AgentDetail.vue` (1243 LOC), `frontend/src/components/ConversationsView.vue` (1079 LOC)
-- **Issue:** Components are too large to maintain. Each handles data fetching, rendering, and event coordination. PR #147 grew `ConversationsView.vue` from 997 → 1079 LOC, pushing it over the 1000-LOC threshold.
-- **Impact:** Hard to test, slow to review, fragile under changes.
+### TD-003: Frontend components >1000 LOC (trend worsening)
+- **Files:** `frontend/src/components/SpaceOverview.vue` (1391 LOC, was 1248), `frontend/src/components/ConversationsView.vue` (1410 LOC, was 1079), `frontend/src/components/AgentDetail.vue` (1300 LOC, was 1243)
+- **Issue:** Components are too large to maintain. Each handles data fetching, rendering, and event coordination. UX and perf sprints (PRs #213–#231) added substantial functionality without decomposition. `ConversationsView.vue` grew +331 LOC in this sprint alone.
+- **Impact:** Hard to test, slow to review, fragile under changes. Frontend grade lowered from B- to C+.
 - **Fix:** Extract sub-components. SpaceOverview → `AgentGrid`, `TaskBoard`, `SpaceHeader`. AgentDetail → `AgentStatusCard`, `AgentHistoryPanel`, `AgentMessageList`.
 
 ### TD-004: No frontend unit tests
@@ -81,8 +81,8 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Fix:** Add Postgres CI job (GitHub Actions service container).
 
 ### TD-012: `mcp_tools.go` approaching monolith territory
-- **File:** `internal/coordinator/mcp_tools.go` (1104 LOC)
-- **Issue:** All MCP tool implementations in one file. Currently manageable but growing with each new tool.
+- **File:** `internal/coordinator/mcp_tools.go` (1158 LOC, was 1104)
+- **Issue:** All MCP tool implementations in one file. Grew by 54 LOC in this sprint. At current growth rate will hit 1500-LOC split threshold within 2–3 sprints.
 - **Impact:** Will become a problem as MCP surface expands.
 - **Fix:** Split by domain when >1500 LOC: `mcp_agent_tools.go`, `mcp_task_tools.go`, `mcp_space_tools.go`.
 

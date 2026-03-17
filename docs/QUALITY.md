@@ -1,6 +1,6 @@
 # Agent Boss — Quality Grades
 
-Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
+Snapshot as of 2026-03-17 (updated after PRs #213–#231). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
 
 ---
 
@@ -19,7 +19,7 @@ Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [te
 
 ### `internal/coordinator/server.go` — **B+**
 
-- **350 LOC.** Properly decomposed after the TASK-014 refactor.
+- **374 LOC.** Properly decomposed after the TASK-014 refactor. Minor growth from fleet routing additions (PR #231).
 - Handles Server struct definition, routing, and Start/Stop lifecycle only.
 - Positive: routing is clear, SSE clients and liveness loop are well-separated.
 - Concern: Server struct has ~20 fields spanning multiple concerns (nudge state, SSE state, registration, liveness, backends). A config struct would clarify initialization.
@@ -27,7 +27,7 @@ Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [te
 
 ### `internal/coordinator/types.go` — **B**
 
-- **802 LOC.** Comprehensive domain model: all entity types, hierarchy logic, markdown rendering.
+- **804 LOC.** Comprehensive domain model: all entity types, hierarchy logic, markdown rendering.
 - Positive: clean JSON serialization, backward-compat `UnmarshalJSON`, cycle detection.
 - Concern: mixing domain types with rendering logic (`RenderMarkdown`, `renderAgentSection`, `renderTable`) inflates the file. Rendering belongs in a separate package.
 - Contains a live `## TODO — REMOVE ME` comment on `DeprecatedTmuxSession` field (tech debt signal).
@@ -35,20 +35,26 @@ Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [te
 
 ### `internal/coordinator/handlers_agent.go` — **C+**
 
-- **1682 LOC.** The new monolith after the server.go split.
+- **1803 LOC.** Grew by 121 LOC since last snapshot (PRs #219–#231 added auth fixes and spawn improvements).
 - Handles agent status POST, spawn, kill, restart, messages, register, interrupt, approval — all in one file.
 - Positive: each handler function is focused; no global state mutation outside server methods.
-- Concern: file is too large to review comfortably. Should be split by concern: `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go`.
+- Concern: file continues to grow and is increasingly hard to review. Split is overdue: `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go`.
 - Complex spawn path (backend selection, config resolution, ignition prompt) is hard to unit-test.
 
-### `frontend/` Vue SPA — **B-**
+### `internal/coordinator/fleet.go` — **A-** _(new, PR #231)_
 
-- **~11,400 LOC** across 20+ components.
-- Positive: Vue 3 + TypeScript with strong typing (`frontend/src/types/index.ts`). SSE composable is clean. `api/client.ts` is well-organized.
-- PR #146 (UX overhaul) and PR #147 (messaging UX) improved visual consistency and added the `useNotifications.ts` composable, but did not reduce component sizes.
-- Concern: `SpaceOverview.vue` (1248 LOC) and `AgentDetail.vue` (1243 LOC) are far too large. Each should be decomposed into smaller sub-components.
-- Concern: `ConversationsView.vue` grew from 997 → 1079 LOC after PR #147, now also over the 1000-LOC threshold.
+- **404 LOC.** Implements `boss export` and `boss import` — the agent-compose.yaml fleet blueprint feature.
+- Positive: well-isolated module with its own `fleet_test.go` (449 LOC). Security validators (`ValidateFleetCommand`, `ValidateWorkDir`) are cleanly separated and tested.
+- Positive: CLI-as-orchestrator design keeps server endpoints thin; import logic lives in the CLI, not the server.
+- Minor: `BOSS_COMMAND_ALLOWLIST` and `BOSS_WORK_DIR_PREFIX` env vars are now live but were undocumented before this gardening run.
+
+### `frontend/` Vue SPA — **C+**
+
+- **~12,000+ LOC** across 22+ components (grew significantly from UX and perf sprints PRs #213–#231).
+- Positive: Vue 3 + TypeScript with strong typing. SSE composable is clean. Pre-commit TS typecheck hook added (PR #213).
+- Concern: Three components have grown well beyond 1000 LOC: `SpaceOverview.vue` (1391 LOC, was 1248), `ConversationsView.vue` (1410 LOC, was 1079), `AgentDetail.vue` (1300 LOC, was 1243). Trend is worsening.
 - Concern: no frontend unit tests. Only tested via manual QA and `server_test.go` integration tests on the API layer.
+- Grade lowered from B- to C+: all three large components grew substantially with no decomposition.
 
 ### Task System (`handlers_task.go` + task fields in `types.go`) — **A-**
 
@@ -67,14 +73,15 @@ Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [te
 
 ### Test Coverage — **A**
 
-- **244 tests** pass with `-race` in `internal/coordinator/`. Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline` (1 test, currently a baseline check acknowledging Phase 2 adapters don't yet exist). Multiple dedicated test files by subsystem:
-  - `server_test.go` (4169 LOC) — HTTP integration tests, the primary coverage driver
+- **329 tests** pass with `-race` in `internal/coordinator/` (up from 244 — fleet.go added 449 LOC of tests via `fleet_test.go`). Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline`. Multiple dedicated test files by subsystem:
+  - `server_test.go` — HTTP integration tests, the primary coverage driver
+  - `fleet_test.go` — fleet import/export + security validator tests (PR #231)
   - `hierarchy_test.go`, `lifecycle_test.go`, `journal_test.go` — focused unit tests
   - `protocol_test.go`, `sqlite_test.go`, `integration_test.go`
   - `session_backend_ambient_test.go` — ambient backend coverage
-  - `internal/domain/architecture_test.go` — hexagonal architecture isolation test (PR #145)
-- Race detector enabled by default in CI.
-- Gap: no frontend tests. No chaos/load tests.
+  - `internal/domain/architecture_test.go` — hexagonal architecture isolation test
+- Race detector enabled by default in CI. TypeScript typecheck runs as a separate CI job (PR #213).
+- Gap: no frontend unit tests. No chaos/load tests.
 
 ### `internal/domain/` Hexagonal Foundation — **B** _(new, PR #145)_
 
@@ -91,8 +98,9 @@ Snapshot as of 2026-03-12 (updated after PRs #144–#148). Grades A–D. See [te
 |-----------|-------|-------------|
 | `server.go` | B+ | Server struct sprawl |
 | `types.go` | B | Rendering mixed with types; deprecated field |
-| `handlers_agent.go` | C+ | 1682-LOC monolith handler |
-| Frontend Vue | B- | Three components >1000 LOC; no unit tests |
+| `handlers_agent.go` | C+ | 1803-LOC monolith, growing; split overdue |
+| `fleet.go` | A- | New — undocumented env vars (now fixed) |
+| Frontend Vue | C+ | Three components >1300 LOC, trend worsening; no unit tests |
 | Task system | A- | Minor: stale logic undocumented |
 | SSE / Events | B | Mutex lock-order discipline |
 | Test coverage | A | No frontend tests |
