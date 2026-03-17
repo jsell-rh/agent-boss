@@ -134,10 +134,15 @@ func NewServer(port, dataDir string) *Server {
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {
 		skipTLS := os.Getenv("AMBIENT_SKIP_TLS_VERIFY") == "true"
+		var ambientTimeout int
+		if v := os.Getenv("AMBIENT_TIMEOUT"); v != "" {
+			fmt.Sscanf(v, "%d", &ambientTimeout)
+		}
 		s.backends["ambient"] = NewAmbientSessionBackend(AmbientBackendConfig{
 			APIURL:                 apiURL,
 			Token:                  os.Getenv("AMBIENT_TOKEN"),
 			Project:                os.Getenv("AMBIENT_PROJECT"),
+			Timeout:                ambientTimeout,
 			SkipTLSVerify:          skipTLS,
 			WorkflowURL:            os.Getenv("AMBIENT_WORKFLOW_URL"),
 			WorkflowBranch:         os.Getenv("AMBIENT_WORKFLOW_BRANCH"),

@@ -1503,6 +1503,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: req.Name,
 				Repos:       req.Repos,
+				SpaceName:   spaceName,
 				EnvVars: func() map[string]string {
 					if s.apiToken == "" {
 						return nil
