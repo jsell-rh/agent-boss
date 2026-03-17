@@ -133,9 +133,15 @@ func (r *Repository) SaveMessage(m *AgentMessage) error {
 	}).Create(m).Error
 }
 
+// messageQueryLimit caps the number of messages returned per GetMessages call
+// to prevent unbounded full-table scans on busy spaces.
+const messageQueryLimit = 500
+
 // GetMessages returns messages for an agent, optionally since a timestamp.
+// Results are capped at messageQueryLimit rows to bound query cost.
 func (r *Repository) GetMessages(spaceName, agentName string, since *time.Time) ([]*AgentMessage, error) {
-	q := r.db.Where("space_name = ? AND agent_name = ?", spaceName, agentName).Order("timestamp ASC")
+	q := r.db.Where("space_name = ? AND agent_name = ?", spaceName, agentName).
+		Order("timestamp ASC").Limit(messageQueryLimit)
 	if since != nil {
 		q = q.Where("timestamp > ?", *since)
 	}
@@ -342,11 +348,37 @@ func (r *Repository) GetSnapshots(spaceName string, agentName string, since *tim
 	return snaps, q.Find(&snaps).Error
 }
 
-// PruneOldSnapshots deletes status_snapshots older than the given cutoff.
-// Keeps at most keepPerAgent recent rows per (space_name, agent_name) pair beyond the cutoff.
+// snapshotPerAgentCap is the maximum number of status_snapshots rows retained
+// per (space_name, agent_name) pair. Rows beyond this cap are deleted oldest-first,
+// regardless of age. At ~34k rows/day across all agents this keeps the table small.
+const snapshotPerAgentCap = 500
+
+// PruneOldSnapshots deletes status_snapshots older than the given cutoff AND
+// enforces a per-agent row cap (snapshotPerAgentCap) on the remaining rows.
+// The two steps run sequentially; errors in either step are returned.
 // Called from a background goroutine; errors are logged by the caller.
 func (r *Repository) PruneOldSnapshots(cutoff time.Time) error {
-	return r.db.Where("timestamp < ?", cutoff).Delete(&StatusSnapshot{}).Error
+	// Step 1: age-based deletion — remove rows older than the retention window.
+	if err := r.db.Where("timestamp < ?", cutoff).Delete(&StatusSnapshot{}).Error; err != nil {
+		return fmt.Errorf("prune by age: %w", err)
+	}
+
+	// Step 2: per-agent row cap — for each (space_name, agent_name) pair, keep only
+	// the most recent snapshotPerAgentCap rows and delete the rest.
+	// SQLite window functions are available since SQLite 3.25 (2018).
+	return r.db.Exec(`
+		DELETE FROM status_snapshots
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id,
+				       ROW_NUMBER() OVER (
+				           PARTITION BY space_name, agent_name
+				           ORDER BY timestamp DESC
+				       ) AS rn
+				FROM status_snapshots
+			) ranked
+			WHERE rn > ?
+		)`, snapshotPerAgentCap).Error
 }
 
 // ---- SpaceEventLog operations ----
