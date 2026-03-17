@@ -312,8 +312,14 @@ func ValidateWorkDir(workDir string) error {
 	}
 	cleaned := filepath.Clean(workDir)
 	if prefix := os.Getenv("BOSS_WORK_DIR_PREFIX"); prefix != "" {
-		if !strings.HasPrefix(cleaned, prefix) {
-			return fmt.Errorf("work_dir %q is outside the allowed prefix %q", cleaned, prefix)
+		// Resolve symlinks before checking the prefix so that a symlink pointing
+		// outside the allowed tree doesn't bypass the guard.
+		resolved := cleaned
+		if r, err := filepath.EvalSymlinks(cleaned); err == nil {
+			resolved = r
+		}
+		if !strings.HasPrefix(resolved, prefix) {
+			return fmt.Errorf("work_dir %q is outside the allowed prefix %q", resolved, prefix)
 		}
 	}
 	return nil

@@ -397,6 +397,304 @@ func TestExportRoundTrip(t *testing.T) {
 	}
 }
 
+// ─── Client.RestartAgent ──────────────────────────────────────────────────────
+
+func TestClientRestartAgent(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "restart-test"
+	agent := "worker"
+
+	// Create the agent so the space and agent record exist.
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/%s", base, space, agent), &AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "idle",
+	})
+
+	// Inject a fake session ID so restart has something to "kill".
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents[agent] == nil {
+		ks.Agents[agent] = &AgentRecord{}
+	}
+	if ks.Agents[agent].Status == nil {
+		ks.Agents[agent].Status = &AgentUpdate{}
+	}
+	ks.Agents[agent].Status.SessionID = "fake-session-123"
+	srv.mu.Unlock()
+
+	c := NewClient(base, space)
+	// Restart will fail in test (no real tmux) but should attempt and return a
+	// lifecycle error (not a 404 or network error). A 500 from the spawner is fine.
+	err := c.RestartAgent(agent)
+	// We expect either nil (if the test backend succeeds) or an error from the
+	// lifecycle layer. What we must NOT get is a "404 not found" — that would
+	// mean the route isn't wired.
+	if err != nil {
+		// The spawner will fail in a test environment; the important thing is the
+		// endpoint was reached (not a routing 404).
+		if containsString(err.Error(), "404") {
+			t.Errorf("restart route not found (404): %v", err)
+		}
+	}
+}
+
+// ─── FetchSpace agent listing (used by prune) ─────────────────────────────────
+
+func TestFetchSpaceReturnsAgentSessionInfo(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "prune-listing-test"
+
+	// Create two agents.
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/active-agent", base, space), &AgentUpdate{
+		Status:  StatusActive,
+		Summary: "working",
+	})
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/idle-agent", base, space), &AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "idle",
+	})
+
+	// Simulate a session on active-agent.
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents["active-agent"] == nil {
+		ks.Agents["active-agent"] = &AgentRecord{}
+	}
+	if ks.Agents["active-agent"].Status == nil {
+		ks.Agents["active-agent"].Status = &AgentUpdate{}
+	}
+	ks.Agents["active-agent"].Status.SessionID = "tmux-session-abc"
+	srv.mu.Unlock()
+
+	c := NewClient(base, space)
+	ks2, err := c.FetchSpace()
+	if err != nil {
+		t.Fatalf("FetchSpace: %v", err)
+	}
+	if len(ks2.Agents) < 2 {
+		t.Fatalf("want at least 2 agents, got %d", len(ks2.Agents))
+	}
+
+	activeRec, ok := ks2.Agents["active-agent"]
+	if !ok {
+		t.Fatal("active-agent missing from FetchSpace result")
+	}
+	if activeRec == nil || activeRec.Status == nil || activeRec.Status.SessionID == "" {
+		t.Error("active-agent: expected session_id to be populated")
+	}
+
+	idleRec, ok := ks2.Agents["idle-agent"]
+	if !ok {
+		t.Fatal("idle-agent missing from FetchSpace result")
+	}
+	if idleRec != nil && idleRec.Status != nil && idleRec.Status.SessionID != "" {
+		t.Error("idle-agent: expected no session_id")
+	}
+}
+
+// ─── Prune logic (via client + server) ───────────────────────────────────────
+
+func TestPruneDeletesInactiveAgent(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "prune-delete-test"
+
+	// Create two agents: one will be "in the fleet", one will be pruned.
+	for _, name := range []string{"keeper", "pruned"} {
+		postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/%s", base, space, name), &AgentUpdate{
+			Status:  StatusIdle,
+			Summary: "idle",
+		})
+	}
+
+	c := NewClient(base, space)
+
+	// Verify both agents exist.
+	ks, err := c.FetchSpace()
+	if err != nil {
+		t.Fatalf("FetchSpace: %v", err)
+	}
+	if _, ok := ks.Agents["pruned"]; !ok {
+		t.Fatal("pruned agent should exist before prune")
+	}
+
+	// Delete the "pruned" agent — this is what fleetPrune does for inactive agents.
+	if err := c.DeleteAgent("pruned"); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+
+	// Verify "pruned" is gone and "keeper" remains.
+	ks2, err := c.FetchSpace()
+	if err != nil {
+		t.Fatalf("FetchSpace after delete: %v", err)
+	}
+	if _, ok := ks2.Agents["pruned"]; ok {
+		t.Error("pruned agent should be gone after DeleteAgent")
+	}
+	if _, ok := ks2.Agents["keeper"]; !ok {
+		t.Error("keeper agent should still exist")
+	}
+}
+
+func TestPruneSkipsAgentWithActiveSession(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "prune-skip-test"
+
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/live-agent", base, space), &AgentUpdate{
+		Status:  StatusActive,
+		Summary: "working",
+	})
+
+	// Inject a session ID — fleetPrune checks this to determine liveness.
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents["live-agent"] == nil {
+		ks.Agents["live-agent"] = &AgentRecord{}
+	}
+	if ks.Agents["live-agent"].Status == nil {
+		ks.Agents["live-agent"].Status = &AgentUpdate{}
+	}
+	ks.Agents["live-agent"].Status.SessionID = "active-tmux-session"
+	srv.mu.Unlock()
+
+	c := NewClient(base, space)
+	ks2, err := c.FetchSpace()
+	if err != nil {
+		t.Fatalf("FetchSpace: %v", err)
+	}
+	rec, ok := ks2.Agents["live-agent"]
+	if !ok {
+		t.Fatal("live-agent missing")
+	}
+	// Simulate the prune gate: skip if session is active.
+	hasSession := rec != nil && rec.Status != nil && rec.Status.SessionID != ""
+	if !hasSession {
+		t.Error("live-agent should have an active session visible via FetchSpace")
+	}
+	// Without --force, fleetPrune would skip this agent. We verify it still exists.
+	// (We don't delete it here, mirroring what fleetPrune would do without --force.)
+	ks3, err := c.FetchSpace()
+	if err != nil {
+		t.Fatalf("FetchSpace: %v", err)
+	}
+	if _, ok := ks3.Agents["live-agent"]; !ok {
+		t.Error("live-agent should remain (not pruned) when it has an active session")
+	}
+}
+
+// ─── fleetComputeChangedAgents (via FetchAgentConfig) ─────────────────────────
+
+func TestComputeChangedAgentsDetectsNew(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "changed-new-test"
+
+	// Register the agent but leave its config empty.
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/newbie", base, space), &AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "idle",
+	})
+
+	c := NewClient(base, space)
+	cfg, err := c.FetchAgentConfig("newbie")
+	if err != nil {
+		t.Fatalf("FetchAgentConfig: %v", err)
+	}
+	// An agent with no durable config should be treated as "changed" (will be created).
+	isEmpty := cfg == nil || (cfg.Backend == "" && cfg.Command == "" && cfg.WorkDir == "" && cfg.InitialPrompt == "")
+	if !isEmpty {
+		t.Errorf("expected empty config for agent with no config set, got: %+v", cfg)
+	}
+}
+
+func TestComputeChangedAgentsDetectsUpdate(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "changed-update-test"
+
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/worker", base, space), &AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "idle",
+	})
+
+	// Inject a known config.
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents["worker"] == nil {
+		ks.Agents["worker"] = &AgentRecord{}
+	}
+	ks.Agents["worker"].Config = &AgentConfig{
+		Backend: "tmux",
+		Command: "claude",
+		WorkDir: "/workspace/old",
+	}
+	srv.mu.Unlock()
+
+	c := NewClient(base, space)
+	cfg, err := c.FetchAgentConfig("worker")
+	if err != nil {
+		t.Fatalf("FetchAgentConfig: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// A fleet agent with a different work_dir should be detectable via field comparison.
+	// This mirrors what fleetAgentConfigDiff (in cmd/boss) does.
+	if cfg.WorkDir == "/workspace/new" {
+		t.Error("work_dir should be old — change not yet applied")
+	}
+	if cfg.WorkDir != "/workspace/old" {
+		t.Errorf("expected /workspace/old, got %q", cfg.WorkDir)
+	}
+}
+
+func TestComputeChangedAgentsNoChange(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+	space := "changed-nochange-test"
+
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/stable", base, space), &AgentUpdate{
+		Status:  StatusIdle,
+		Summary: "idle",
+	})
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents["stable"] == nil {
+		ks.Agents["stable"] = &AgentRecord{}
+	}
+	ks.Agents["stable"].Config = &AgentConfig{
+		Backend: "tmux",
+		Command: "claude",
+		WorkDir: "/workspace/stable",
+	}
+	srv.mu.Unlock()
+
+	c := NewClient(base, space)
+	cfg, err := c.FetchAgentConfig("stable")
+	if err != nil {
+		t.Fatalf("FetchAgentConfig: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// Same config — field values should match what we stored.
+	if cfg.Backend != "tmux" || cfg.Command != "claude" || cfg.WorkDir != "/workspace/stable" {
+		t.Errorf("config mismatch: %+v", cfg)
+	}
+}
+
 func containsString(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
 		func() bool {

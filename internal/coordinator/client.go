@@ -141,6 +141,25 @@ func (c *Client) DeleteAgent(name string) error {
 	return nil
 }
 
+// RestartAgent calls POST /spaces/:space/agent/:name/restart, which kills the
+// existing session and spawns a fresh one using the agent's stored config.
+func (c *Client) RestartAgent(name string) error {
+	req, err := http.NewRequest(http.MethodPost, c.spacePrefix()+"/agent/"+name+"/restart", nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("restart agent %s: %w", name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // EnsureSpace creates the space if it does not already exist.
 // Returns true if the space was newly created, false if it already existed.
 func (c *Client) EnsureSpace() (created bool, err error) {

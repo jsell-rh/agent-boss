@@ -76,6 +76,9 @@ func cmdImport(args []string) {
 	dryRun := fs.Bool("dry-run", false, "Show planned changes without applying")
 	yes := fs.Bool("yes", false, "Skip confirmation prompt")
 	noCreate := fs.Bool("no-create-space", false, "Fail if the target space does not exist")
+	prune := fs.Bool("prune", false, "Delete agents in the space that are not in the fleet file")
+	force := fs.Bool("force", false, "With --prune: delete agents even when they have an active session")
+	restartChanged := fs.Bool("restart-changed", false, "Restart agents whose config changed after applying the fleet")
 	fs.Bool("spawn-after-import", false, "Spawn agents after import (reserved for Phase 2)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Import an agent-compose.yaml fleet file into a space.
@@ -93,13 +96,17 @@ Usage:
 Examples:
   boss import fleet.yaml --dry-run
   boss import fleet.yaml --space my-space --yes
-  boss import fleet.yaml --no-create-space
+  boss import fleet.yaml --prune --restart-changed
+  boss import fleet.yaml --prune --force --yes
 
 Options:
   --space string          Target space (default: space.name from fleet file)
   --dry-run               Show planned changes without applying
   --yes                   Skip confirmation prompt
   --no-create-space       Fail if the target space does not exist
+  --prune                 Delete agents present in the space but absent from the fleet file
+  --force                 (with --prune) delete agents even if they have an active session
+  --restart-changed       After applying, restart agents whose config changed
   --spawn-after-import    Spawn agents after import (reserved)
 
 Environment:
@@ -149,14 +156,27 @@ Environment:
 	client := newClient(targetSpace)
 
 	if *dryRun {
-		fleetDryRun(client, ff, targetSpace, order)
+		fleetDryRun(client, ff, targetSpace, order, *prune)
 		return
+	}
+
+	// Compute the diff BEFORE applying so --restart-changed knows which agents
+	// actually changed (not which ones were changed by concurrent users after apply).
+	var changedAgents []string
+	if *restartChanged {
+		changedAgents = fleetComputeChangedAgents(client, ff, order)
 	}
 
 	if !*yes {
 		fmt.Printf("Import fleet into space %q?\n", targetSpace)
 		fmt.Printf("  %d persona(s)  %d agent(s)  order: %s\n",
 			len(ff.Personas), len(ff.Agents), strings.Join(order, " → "))
+		if *prune {
+			fmt.Println("  --prune is set: agents not in the fleet file will be deleted")
+		}
+		if *restartChanged {
+			fmt.Printf("  --restart-changed is set: %d agent(s) will be restarted\n", len(changedAgents))
+		}
 		fmt.Print("Proceed? [y/N] ")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
@@ -172,12 +192,33 @@ Environment:
 	}
 	fmt.Printf("imported %d persona(s) and %d agent(s) into space %q\n",
 		len(ff.Personas), len(ff.Agents), targetSpace)
+
+	// --prune: delete agents in the space that are absent from the fleet file.
+	if *prune {
+		if err := fleetPrune(client, ff, *force); err != nil {
+			fmt.Fprintf(os.Stderr, "boss import --prune: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// --restart-changed: restart agents whose config differed before apply.
+	if *restartChanged && len(changedAgents) > 0 {
+		fmt.Printf("restarting %d changed agent(s)...\n", len(changedAgents))
+		for _, name := range changedAgents {
+			if err := client.RestartAgent(name); err != nil {
+				fmt.Fprintf(os.Stderr, "  [warn] restart %s: %v\n", name, err)
+			} else {
+				fmt.Printf("  [restart] %s\n", name)
+			}
+		}
+	}
 }
 
 // ─── Dry-run ──────────────────────────────────────────────────────────────────
 
 // fleetDryRun prints what fleetApply would do without making any changes.
-func fleetDryRun(client *coordinator.Client, ff *coordinator.FleetFile, spaceName string, order []string) {
+// When prune is true it also lists agents in the space that would be deleted.
+func fleetDryRun(client *coordinator.Client, ff *coordinator.FleetFile, spaceName string, order []string, prune bool) {
 	fmt.Printf("=== dry-run: import into %q ===\n\n", spaceName)
 	anyChange := false
 
@@ -231,9 +272,99 @@ func fleetDryRun(client *coordinator.Client, ff *coordinator.FleetFile, spaceNam
 		fmt.Println()
 	}
 
+	if prune {
+		ks, err := client.FetchSpace()
+		if err != nil {
+			fmt.Printf("  [?] could not fetch space for prune preview: %v\n", err)
+		} else {
+			fleetNames := make(map[string]bool, len(ff.Agents))
+			for name := range ff.Agents {
+				fleetNames[name] = true
+			}
+			fmt.Println("Prune candidates:")
+			found := false
+			for name, rec := range ks.Agents {
+				if fleetNames[name] {
+					continue
+				}
+				found = true
+				anyChange = true
+				hasSession := rec != nil && rec.Status != nil && rec.Status.SessionID != ""
+				if hasSession {
+					fmt.Printf("  [-] %s  would delete (has active session — use --force to confirm)\n", name)
+				} else {
+					fmt.Printf("  [-] %s  would delete\n", name)
+				}
+			}
+			if !found {
+				fmt.Println("  (none)")
+			}
+			fmt.Println()
+		}
+	}
+
 	if !anyChange {
 		fmt.Println("No changes needed.")
 	}
+}
+
+// fleetComputeChangedAgents returns the names of agents in the fleet whose
+// config differs from what is currently stored in the space. Call this BEFORE
+// applying so the diff uses pre-apply server state.
+func fleetComputeChangedAgents(client *coordinator.Client, ff *coordinator.FleetFile, order []string) []string {
+	var changed []string
+	for _, name := range order {
+		fa := ff.Agents[name]
+		cfg, err := client.FetchAgentConfig(name)
+		if err != nil {
+			// Treat fetch errors as "unknown" — include to be safe.
+			changed = append(changed, name)
+			continue
+		}
+		// nil or empty config means the agent doesn't exist yet — it will be created.
+		if cfg == nil || (cfg.Backend == "" && cfg.Command == "" && cfg.WorkDir == "" && cfg.InitialPrompt == "") {
+			changed = append(changed, name)
+			continue
+		}
+		if len(fleetAgentConfigDiff(cfg, fa)) > 0 {
+			changed = append(changed, name)
+		}
+	}
+	return changed
+}
+
+// fleetPrune deletes agents in the space that are absent from the fleet file.
+// Agents with an active session (SessionID set) are skipped unless force is true.
+func fleetPrune(client *coordinator.Client, ff *coordinator.FleetFile, force bool) error {
+	ks, err := client.FetchSpace()
+	if err != nil {
+		return fmt.Errorf("fetch space: %w", err)
+	}
+
+	fleetNames := make(map[string]bool, len(ff.Agents))
+	for name := range ff.Agents {
+		fleetNames[name] = true
+	}
+
+	for name, rec := range ks.Agents {
+		if fleetNames[name] {
+			continue
+		}
+		hasSession := rec != nil && rec.Status != nil && rec.Status.SessionID != ""
+		if hasSession && !force {
+			fmt.Printf("  [skip] %s  has active session (use --force to prune)\n", name)
+			continue
+		}
+		if hasSession {
+			fmt.Printf("  [prune] %s  (active session, forcing)\n", name)
+		} else {
+			fmt.Printf("  [prune] %s\n", name)
+		}
+		if err := client.DeleteAgent(name); err != nil {
+			return fmt.Errorf("delete agent %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // ─── Apply ────────────────────────────────────────────────────────────────────
