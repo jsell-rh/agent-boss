@@ -63,7 +63,6 @@ import ImportFleetModal from './ImportFleetModal.vue'
 import { prLink } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
 import api from '@/api/client'
-import * as yaml from 'js-yaml'
 
 const props = defineProps<{
   space: KnowledgeSpace
@@ -210,8 +209,7 @@ const exportingFleet = ref(false)
 async function exportFleet() {
   exportingFleet.value = true
   try {
-    const data = await api.exportFleet(props.space.name)
-    const yamlStr = yaml.dump(data, { lineWidth: 120, noRefs: true })
+    const yamlStr = await api.exportFleet(props.space.name)
     const blob = new Blob([yamlStr], { type: 'application/yaml' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

@@ -116,10 +116,20 @@ class ApiClient {
     return this.request<SpaceSummary[]>('/spaces')
   }
 
-  exportFleet(space: string): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>(
-      `/spaces/${encodeURIComponent(space)}/export`,
-    )
+  async exportFleet(space: string): Promise<string> {
+    const method = 'GET'
+    const headers = new Headers(this.authHeaders(method))
+    const res = await fetch(`${this.baseUrl}/spaces/${encodeURIComponent(space)}/export`, { headers })
+    if (res.status === 401) {
+      setStoredToken('')
+      authRequired.value = true
+      throw new AuthRequiredError()
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`${res.status} ${res.statusText}: ${text}`)
+    }
+    return res.text()
   }
 
   fetchSpace(space: string, signal?: AbortSignal): Promise<KnowledgeSpace> {
