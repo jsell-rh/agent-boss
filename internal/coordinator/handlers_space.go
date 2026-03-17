@@ -324,6 +324,44 @@ type spacePublic struct {
 	UpdatedAt       time.Time                     `json:"updated_at"`
 }
 
+// buildAgentUpdatedSSE serialises the full agent status as an agent_updated SSE payload.
+// Including the full status lets the frontend patch in-place without a space reload.
+func buildAgentUpdatedSSE(spaceName, agentName string, pub *agentStatusPublic) string {
+	payload := struct {
+		Space string `json:"space"`
+		Agent string `json:"agent"`
+		*agentStatusPublic
+	}{Space: spaceName, Agent: agentName, agentStatusPublic: pub}
+	data, _ := json.Marshal(payload)
+	return string(data)
+}
+
+// agentUpdateToPublic converts an AgentUpdate to the public (no-messages) shape,
+// computing the unread message count. Safe to call outside of s.mu.
+func agentUpdateToPublic(st *AgentUpdate) *agentStatusPublic {
+	if st == nil {
+		return nil
+	}
+	unread := 0
+	for _, m := range st.Messages {
+		if !m.Read {
+			unread++
+		}
+	}
+	return &agentStatusPublic{
+		Status: st.Status, Summary: st.Summary, Branch: st.Branch,
+		Worktree: st.Worktree, PR: st.PR, Phase: st.Phase, Mood: st.Mood,
+		TestCount: st.TestCount, Items: st.Items, Sections: st.Sections,
+		Questions: st.Questions, Blockers: st.Blockers, NextSteps: st.NextSteps,
+		FreeText: st.FreeText, Documents: st.Documents, SessionID: st.SessionID,
+		BackendType: st.BackendType, RepoURL: st.RepoURL, UpdatedAt: st.UpdatedAt,
+		Parent: st.Parent, Children: st.Children, Role: st.Role,
+		InferredStatus: st.InferredStatus, Stale: st.Stale,
+		Registration: st.Registration, LastHeartbeat: st.LastHeartbeat,
+		HeartbeatStale: st.HeartbeatStale, UnreadCount: unread,
+	}
+}
+
 // buildSpacePublic constructs a spacePublic from ks. Caller must hold s.mu (at least RLock).
 func buildSpacePublic(ks *KnowledgeSpace) spacePublic {
 	agents := make(map[string]*agentRecordPublic, len(ks.Agents))
@@ -331,27 +369,7 @@ func buildSpacePublic(ks *KnowledgeSpace) spacePublic {
 		if rec == nil {
 			continue
 		}
-		pr := &agentRecordPublic{Config: rec.Config}
-		if st := rec.Status; st != nil {
-			unread := 0
-			for _, m := range st.Messages {
-				if !m.Read {
-					unread++
-				}
-			}
-			pr.Status = &agentStatusPublic{
-				Status: st.Status, Summary: st.Summary, Branch: st.Branch,
-				Worktree: st.Worktree, PR: st.PR, Phase: st.Phase, Mood: st.Mood,
-				TestCount: st.TestCount, Items: st.Items, Sections: st.Sections,
-				Questions: st.Questions, Blockers: st.Blockers, NextSteps: st.NextSteps,
-				FreeText: st.FreeText, Documents: st.Documents, SessionID: st.SessionID,
-				BackendType: st.BackendType, RepoURL: st.RepoURL, UpdatedAt: st.UpdatedAt,
-				Parent: st.Parent, Children: st.Children, Role: st.Role,
-				InferredStatus: st.InferredStatus, Stale: st.Stale,
-				Registration: st.Registration, LastHeartbeat: st.LastHeartbeat,
-				HeartbeatStale: st.HeartbeatStale, UnreadCount: unread,
-			}
-		}
+		pr := &agentRecordPublic{Config: rec.Config, Status: agentUpdateToPublic(rec.Status)}
 		agents[name] = pr
 	}
 	return spacePublic{
@@ -375,11 +393,14 @@ func (s *Server) handleSpaceJSON(w http.ResponseWriter, r *http.Request, spaceNa
 		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
 		return
 	}
-	// Fix 1: strip messages/notifications (100KB+ per agent) from space overview.
-	// Fix 2: release RLock before encoding so writes are not starved during serialisation.
 	s.mu.RLock()
 	pub := buildSpacePublic(ks)
 	s.mu.RUnlock()
+	// Tasks can be 50-100KB. KanbanView fetches them via /tasks directly.
+	// Only include them when explicitly requested with ?include_tasks=true.
+	if r.URL.Query().Get("include_tasks") != "true" {
+		pub.Tasks = nil
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pub)
 }

@@ -125,11 +125,11 @@ func TestAgentHistoryEndpoint(t *testing.T) {
 	base := serverBaseURL(srv)
 	space := "agenthistspace"
 
-	// Post agent twice to get 2 snapshots
-	for i := 0; i < 2; i++ {
-		resp := postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/worker", base, space, ), map[string]any{
-			"status":  "active",
-			"summary": fmt.Sprintf("worker: update %d", i),
+	// Post agent with two different statuses — change-detection should write 2 snapshots.
+	for _, st := range []string{"active", "done"} {
+		resp := postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/worker", base, space), map[string]any{
+			"status":  st,
+			"summary": fmt.Sprintf("worker: status %s", st),
 		})
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("POST agent: want 202, got %d", resp.StatusCode)
@@ -146,7 +146,7 @@ func TestAgentHistoryEndpoint(t *testing.T) {
 		t.Fatalf("unmarshal agent history: %v", err)
 	}
 	if len(snapshots) != 2 {
-		t.Fatalf("expected 2 snapshots, got %d", len(snapshots))
+		t.Fatalf("expected 2 snapshots (one per status change), got %d", len(snapshots))
 	}
 	for _, s := range snapshots {
 		if !strings.EqualFold(s.AgentName, "worker") {
