@@ -112,29 +112,33 @@ async function loadEarlierMessages() {
 onMounted(loadSpaceMessages)
 watch(() => props.space.name, loadSpaceMessages)
 
-// Subscribe to SSE agent_message events so conversations refresh in real time.
-// Post PR #195, messages aren't embedded in the space JSON — the only source of
-// truth is the /messages API, so we must re-fetch when new messages arrive.
-// Debounced to 500ms to batch rapid bursts (e.g. bulk message deliveries).
+// Subscribe to SSE agent_message events and directly append into spaceMessages
+// to avoid a full API re-fetch on every incoming message.
 const sse = useSSE()
 let _unsubMessage: (() => void) | null = null
-let _msgReloadTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleMessagesReload() {
-  if (_msgReloadTimer !== null) clearTimeout(_msgReloadTimer)
-  _msgReloadTimer = setTimeout(() => {
-    _msgReloadTimer = null
-    loadSpaceMessages()
-  }, 500)
-}
 onMounted(() => {
   _unsubMessage = sse.on('agent_message', (data) => {
-    if (data.space === props.space.name) {
-      scheduleMessagesReload()
+    if (data.space !== props.space.name) return
+    const incoming: AgentMessage = {
+      id: `sse-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      message: data.message,
+      sender: data.sender,
+      timestamp: new Date().toISOString(),
+      read: true,
+    }
+    const bucket = spaceMessages.value[data.agent]
+    if (bucket) {
+      // Avoid duplicate if an optimistic message with same content just arrived.
+      const last = bucket.messages[bucket.messages.length - 1]
+      if (!last || last.message !== incoming.message || last.sender !== incoming.sender) {
+        bucket.messages.push(incoming)
+      }
+    } else {
+      spaceMessages.value[data.agent] = { messages: [incoming], has_more: false }
     }
   })
 })
 onUnmounted(() => {
-  if (_msgReloadTimer !== null) clearTimeout(_msgReloadTimer)
   _unsubMessage?.()
 })
 

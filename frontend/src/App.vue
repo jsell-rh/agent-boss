@@ -328,6 +328,7 @@ function showStatus(msg: string) {
 
 // ── Data fetching ──────────────────────────────────────────────────
 let _loadSpaceCtrl: AbortController | null = null
+let _loadSessionStatusCtrl: AbortController | null = null
 
 async function loadSpaces() {
   try {
@@ -375,8 +376,12 @@ async function loadHierarchy(space: string) {
 }
 
 async function loadSessionStatus(space: string) {
+  _loadSessionStatusCtrl?.abort()
+  _loadSessionStatusCtrl = new AbortController()
+  const { signal } = _loadSessionStatusCtrl
   try {
-    const raw = await api.fetchSessionStatus(space)
+    const raw = await api.fetchSessionStatus(space, signal)
+    if (signal.aborted) return
     // The server returns an array of {agent, ...} objects — normalize to a map
     if (Array.isArray(raw)) {
       const map: Record<string, SessionAgentStatus> = {}
@@ -390,7 +395,7 @@ async function loadSessionStatus(space: string) {
       tmuxStatus.value = raw
     }
   } catch {
-    tmuxStatus.value = {}
+    if (!signal.aborted) tmuxStatus.value = {}
   }
 }
 

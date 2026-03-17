@@ -208,9 +208,10 @@ class ApiClient {
 
   // --------------- Session Status ---------------
 
-  fetchSessionStatus(space: string): Promise<Record<string, SessionAgentStatus>> {
+  fetchSessionStatus(space: string, signal?: AbortSignal): Promise<Record<string, SessionAgentStatus>> {
     return this.request<Record<string, SessionAgentStatus>>(
       `/spaces/${encodeURIComponent(space)}/api/session-status`,
+      signal ? { signal } : undefined,
     )
   }
 
