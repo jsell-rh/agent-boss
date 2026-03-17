@@ -171,6 +171,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		}
 		// Auto-link PR: when an agent posts with a pr field, set linked_pr on all
 		// tasks assigned to that agent that don't already have a linked_pr.
+		var linkedTasks []*Task
 		if update.PR != "" && ks.Tasks != nil {
 			now := time.Now().UTC()
 			for _, task := range ks.Tasks {
@@ -179,15 +180,29 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 					task.UpdatedAt = now
 					appendTaskEvent(task, "updated", canonical,
 						fmt.Sprintf("PR linked: %s", update.PR), now)
+					taskCopy := *task
+					linkedTasks = append(linkedTasks, &taskCopy)
 				}
 			}
 		}
-		if err := s.saveSpace(ks); err != nil {
-			s.mu.Unlock()
-			writeJSONError(w, fmt.Sprintf("save: %v", err), http.StatusInternalServerError)
-			return
+		// Refresh protocol (may set SharedContracts) while still under the lock.
+		s.refreshProtocol(ks)
+		// Capture the space metadata and agent config before releasing the lock.
+		// upsertSpaceToDB only needs these stable fields.
+		spaceSnap := *ks // shallow copy of value — Name/SharedContracts/Archive/NextTaskSeq/timestamps
+		var agentCfg *AgentConfig
+		if rec, ok := ks.Agents[canonical]; ok && rec != nil {
+			agentCfg = rec.Config
 		}
 		s.mu.Unlock()
+
+		// Persist only the changed agent and space metadata outside the lock.
+		// This replaces persistSpaceToDB which iterated every agent and task.
+		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg)
+		s.upsertSpaceToDB(&spaceSnap)
+		for _, t := range linkedTasks {
+			s.upsertTaskToDB(spaceName, t)
+		}
 
 		s.logEvent(fmt.Sprintf("[%s/%s] %s: %s", spaceName, canonical, update.Status, update.Summary))
 		s.journal.Append(spaceName, EventAgentUpdated, canonical, &update)
@@ -197,8 +212,7 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		if err := s.appendSnapshot(snap); err != nil {
 			s.logEvent(fmt.Sprintf("[%s/%s] warning: failed to append snapshot: %v", spaceName, canonical, err))
 		}
-		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
-		s.broadcastSSE(spaceName, canonical, "agent_updated", string(sseData))
+		s.broadcastSSE(spaceName, canonical, "agent_updated", buildAgentUpdatedSSE(spaceName, canonical, agentUpdateToPublic(&update)))
 
 		// ?close_tasks=true: when agent posts done, cascade to their in_progress tasks.
 		if update.Status == StatusDone && r.URL.Query().Get("close_tasks") == "true" {

@@ -191,6 +191,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 		if parentChanged {
 			rebuildChildren(ks)
 		}
+		var linkedTasks []*Task
 		if update.PR != "" && ks.Tasks != nil {
 			now := time.Now().UTC()
 			for _, task := range ks.Tasks {
@@ -199,14 +200,24 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 					task.UpdatedAt = now
 					appendTaskEvent(task, "updated", canonical,
 						fmt.Sprintf("PR linked: %s", update.PR), now)
+					taskCopy := *task
+					linkedTasks = append(linkedTasks, &taskCopy)
 				}
 			}
 		}
-		if err := s.saveSpace(ks); err != nil {
-			s.mu.Unlock()
-			return toolError(fmt.Sprintf("save: %v", err)), nil
+		s.refreshProtocol(ks)
+		spaceSnap := *ks
+		var agentCfg *AgentConfig
+		if rec, ok := ks.Agents[canonical]; ok && rec != nil {
+			agentCfg = rec.Config
 		}
 		s.mu.Unlock()
+
+		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg)
+		s.upsertSpaceToDB(&spaceSnap)
+		for _, t := range linkedTasks {
+			s.upsertTaskToDB(spaceName, t)
+		}
 
 		s.logEvent(fmt.Sprintf("[%s/%s] %s: %s", spaceName, canonical, update.Status, update.Summary))
 		s.journal.Append(spaceName, EventAgentUpdated, canonical, &update)
@@ -214,8 +225,7 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 		s.recordDecisionInterrupts(spaceName, canonical, &update)
 		snap := snapshotFromAgent(spaceName, canonical, &update)
 		s.appendSnapshot(snap)
-		sseData, _ := json.Marshal(map[string]string{"space": spaceName, "agent": canonical, "status": string(update.Status), "summary": update.Summary})
-		s.broadcastSSE(spaceName, canonical, "agent_updated", string(sseData))
+		s.broadcastSSE(spaceName, canonical, "agent_updated", buildAgentUpdatedSSE(spaceName, canonical, agentUpdateToPublic(&update)))
 
 		return toolText(fmt.Sprintf("Status posted for %s in %s: %s", canonical, spaceName, update.Status)), nil
 	})

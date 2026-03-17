@@ -85,6 +85,10 @@ type Server struct {
 	// Keyed by "space/agent" (lowercase). LoadOrStore guards the TOCTOU window
 	// between SessionExists() and CreateSession().
 	spawnInProgress sync.Map
+	// snapCache tracks the last-written snapshot value per "space/agent" key.
+	// Used by appendSnapshot to skip DB writes when status+stale is unchanged,
+	// preventing the 37K rows/day unbounded growth of status_snapshots.
+	snapCache sync.Map
 	// apiToken is the value of BOSS_API_TOKEN. When non-empty, all mutating
 	// HTTP requests must carry "Authorization: Bearer <token>". When empty the
 	// server runs in open mode (backward compatible for local development).
@@ -317,6 +321,11 @@ func (s *Server) Start() error {
 	}()
 
 	go s.livenessLoop()
+	if s.repo != nil {
+		// Prune status_snapshots older than 7 days every 6 hours.
+		// This caps the table that was growing at 37K rows/day.
+		go s.snapshotPruneLoop(6*time.Hour, 7*24*time.Hour)
+	}
 	// Compaction rewrites .events.jsonl files; skip it when SQLite is active.
 	if s.repo == nil {
 		s.startCompactionLoop(30 * time.Minute)
