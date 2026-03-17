@@ -1,6 +1,6 @@
 # Agent Boss — Quality Grades
 
-Snapshot as of 2026-03-17 (updated after PRs #213–#231). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
+Snapshot as of 2026-03-17 (updated after PRs #213–#231 + #230). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
 
 ---
 
@@ -52,7 +52,7 @@ Snapshot as of 2026-03-17 (updated after PRs #213–#231). Grades A–D. See [te
 
 - **~12,000+ LOC** across 22+ components (grew significantly from UX and perf sprints PRs #213–#231).
 - Positive: Vue 3 + TypeScript with strong typing. SSE composable is clean. Pre-commit TS typecheck hook added (PR #213).
-- Concern: Three components have grown well beyond 1000 LOC: `SpaceOverview.vue` (1391 LOC, was 1248), `ConversationsView.vue` (1410 LOC, was 1079), `AgentDetail.vue` (1300 LOC, was 1243). Trend is worsening.
+- Concern: Three components have grown well beyond 1000 LOC: `SpaceOverview.vue` (1448 LOC, was 1248), `ConversationsView.vue` (1410 LOC, was 1079), `AgentDetail.vue` (1300 LOC, was 1243). Trend is worsening; fleet import modal (`ImportFleetModal.vue`, 428 LOC) added as a new component (PR #230).
 - Concern: no frontend unit tests. Only tested via manual QA and `server_test.go` integration tests on the API layer.
 - Grade lowered from B- to C+: all three large components grew substantially with no decomposition.
 
@@ -73,7 +73,7 @@ Snapshot as of 2026-03-17 (updated after PRs #213–#231). Grades A–D. See [te
 
 ### Test Coverage — **A**
 
-- **329 tests** pass with `-race` in `internal/coordinator/` (up from 244 — fleet.go added 449 LOC of tests via `fleet_test.go`). Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline`. Multiple dedicated test files by subsystem:
+- **274 tests** pass with `-race` in `internal/coordinator/` (fleet.go added tests via `fleet_test.go`). Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline`. Multiple dedicated test files by subsystem:
   - `server_test.go` — HTTP integration tests, the primary coverage driver
   - `fleet_test.go` — fleet import/export + security validator tests (PR #231)
   - `hierarchy_test.go`, `lifecycle_test.go`, `journal_test.go` — focused unit tests

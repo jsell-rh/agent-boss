@@ -73,23 +73,31 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `internal/coordinator/server.go` | 350 | Server struct, routing, Start/Stop |
-| `internal/coordinator/types.go` | 802 | All domain types + markdown rendering |
-| `internal/coordinator/handlers_agent.go` | 1680 | Agent HTTP handlers (status, spawn, messages) |
+| `internal/coordinator/server.go` | 374 | Server struct, routing, Start/Stop |
+| `internal/coordinator/types.go` | 804 | All domain types + markdown rendering |
+| `internal/coordinator/handlers_agent.go` | 1803 | Agent HTTP handlers (status, spawn, messages) |
 | `internal/coordinator/handlers_task.go` | 887 | Task CRUD + Kanban move |
-| `internal/coordinator/handlers_space.go` | 439 | Space CRUD, hierarchy, bulk ops |
+| `internal/coordinator/handlers_space.go` | 567 | Space CRUD, hierarchy, bulk ops, fleet export route |
+| `internal/coordinator/handlers_space_messages.go` | 85 | Space-level message broadcast handlers |
 | `internal/coordinator/handlers_sse.go` | ~150 | SSE streaming, per-agent ring buffer (cap 200) |
-| `internal/coordinator/mcp_tools.go` | 1104 | All MCP tool implementations |
+| `internal/coordinator/fleet.go` | 404 | Fleet export/import: YAML blueprint, security validators (PR #231) |
+| `internal/coordinator/mcp_tools.go` | 1158 | All MCP tool implementations |
 | `internal/coordinator/mcp_server.go` | ~200 | MCP server setup, tool registration |
-| `internal/coordinator/lifecycle.go` | 879 | Agent liveness, staleness, nudging |
-| `internal/coordinator/personas.go` | 580 | Persona CRUD + version history |
+| `internal/coordinator/lifecycle.go` | 912 | Agent liveness, staleness, nudging |
+| `internal/coordinator/liveness.go` | 265 | Liveness probe loop (split from lifecycle.go) |
+| `internal/coordinator/personas.go` | 572 | Persona CRUD + version history |
 | `internal/coordinator/protocol.go` | 496 | Protocol template rendering |
 | `internal/coordinator/journal.go` | 527 | SpaceEvent log (ring buffer + SQLite) |
+| `internal/coordinator/storage.go` | 295 | Space load/save, migration (extracted from server.go) |
+| `internal/coordinator/middleware.go` | 250 | HTTP middleware: auth, CORS, logging |
+| `internal/coordinator/logger.go` | 200 | Structured logger setup |
+| `internal/coordinator/helpers.go` | 189 | Shared handler helpers |
 | `internal/coordinator/db_adapter.go` | 552 | GORM ↔ domain type bridge |
 | `internal/coordinator/tmux.go` | 723 | Tmux session commands |
 | `internal/coordinator/session_backend_ambient.go` | 513 | Ambient cloud session backend |
-| `frontend/src/components/SpaceOverview.vue` | 1248 | Main dashboard view |
-| `frontend/src/components/AgentDetail.vue` | 1243 | Per-agent detail panel |
+| `frontend/src/components/SpaceOverview.vue` | 1448 | Main dashboard view |
+| `frontend/src/components/AgentDetail.vue` | 1300 | Per-agent detail panel |
+| `frontend/src/components/ImportFleetModal.vue` | 428 | Fleet YAML import modal (PR #230) |
 | `frontend/src/api/client.ts` | 552 | REST API client |
 | `internal/domain/types.go` | — | Canonical domain entities (hexagonal Phase 1) |
 | `internal/domain/ports/storage.go` | — | Storage port interface (hexagonal Phase 1) |
