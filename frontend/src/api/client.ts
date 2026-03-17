@@ -116,9 +116,10 @@ class ApiClient {
     return this.request<SpaceSummary[]>('/spaces')
   }
 
-  fetchSpace(space: string): Promise<KnowledgeSpace> {
+  fetchSpace(space: string, signal?: AbortSignal): Promise<KnowledgeSpace> {
     return this.request<KnowledgeSpace>(`/spaces/${encodeURIComponent(space)}/`, {
       headers: { Accept: 'application/json' },
+      signal,
     }).then(normalizeSpace)
   }
 
@@ -152,13 +153,13 @@ class ApiClient {
 
   fetchSpaceMessages(
     space: string,
-    opts?: { limit?: number; before?: string },
+    opts?: { limit?: number; before?: string; signal?: AbortSignal },
   ): Promise<Record<string, { messages: import('@/types').AgentMessage[]; has_more: boolean }>> {
     const params = new URLSearchParams()
     if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
     if (opts?.before) params.set('before', opts.before)
     const qs = params.toString()
-    return this.request(`/spaces/${encodeURIComponent(space)}/messages${qs ? `?${qs}` : ''}`)
+    return this.request(`/spaces/${encodeURIComponent(space)}/messages${qs ? `?${qs}` : ''}`, opts?.signal ? { signal: opts.signal } : undefined)
   }
 
   ackMessage(space: string, agent: string, messageId: string, agentName: string): Promise<void> {

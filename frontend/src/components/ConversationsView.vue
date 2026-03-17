@@ -58,12 +58,17 @@ const conversationHasMore = computed(() => {
 })
 
 const MESSAGE_LIMIT = 50
+let _loadMessagesCtrl: AbortController | null = null
 
 async function loadSpaceMessages() {
+  _loadMessagesCtrl?.abort()
+  _loadMessagesCtrl = new AbortController()
+  const { signal } = _loadMessagesCtrl
   messagesLoading.value = true
   try {
-    spaceMessages.value = await api.fetchSpaceMessages(props.space.name, { limit: MESSAGE_LIMIT })
-  } catch {
+    spaceMessages.value = await api.fetchSpaceMessages(props.space.name, { limit: MESSAGE_LIMIT, signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return  // superseded by newer request
     // non-fatal: falls back to agentData.messages (empty after PR #195)
   } finally {
     messagesLoading.value = false
@@ -578,7 +583,7 @@ async function replyToDecision(msgId: string, agentName: string) {
 }
 
 function handleDecisionKeydown(e: KeyboardEvent, msgId: string, agentName: string) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault()
     replyToDecision(msgId, agentName)
   }
@@ -1056,9 +1061,10 @@ watch(composeRecipient, async (agent) => {
                         <textarea
                           v-model="decisionReplyTexts[msg.id]"
                           class="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 min-h-[48px] resize-y focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                          placeholder="Type your decision... (Enter to send)"
+                          placeholder="Type your decision…"
                           @keydown="handleDecisionKeydown($event, msg.id, msg.sender)"
                         />
+                        <p class="text-[10px] text-muted-foreground mt-1">Ctrl+Enter to send · Shift+Enter for newline</p>
                         <div class="flex items-center gap-2 mt-1.5">
                           <Button
                             size="sm"

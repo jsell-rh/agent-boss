@@ -327,6 +327,8 @@ function showStatus(msg: string) {
 }
 
 // ── Data fetching ──────────────────────────────────────────────────
+let _loadSpaceCtrl: AbortController | null = null
+
 async function loadSpaces() {
   try {
     const fetched = await api.fetchSpaces()
@@ -340,12 +342,16 @@ async function loadSpaces() {
 }
 
 async function loadSpace(name: string, showLoader = false) {
+  _loadSpaceCtrl?.abort()
+  _loadSpaceCtrl = new AbortController()
+  const { signal } = _loadSpaceCtrl
   if (showLoader) spaceLoading.value = true
   try {
-    currentSpace.value = await api.fetchSpace(name)
+    currentSpace.value = await api.fetchSpace(name, signal)
     // Portal iris reveal — retrigger the curtain animation on each space switch
     if (showLoader) spaceRevealKey.value++
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return  // superseded by newer request
     console.error(`Failed to load space ${name}:`, err)
     // Only null out currentSpace on initial load (showLoader=true) when there's
     // genuinely nothing to show. For background refreshes (SSE-triggered), keep
@@ -697,7 +703,7 @@ async function handleSendMessageToAgent(agentName: string, text: string) {
   }
 }
 
-async function handleReplyToQuestion(agentName: string, questionIndex: number, questionText: string, replyText: string) {
+async function handleReplyToQuestion(agentName: string, questionIndex: number, questionText: string, replyText: string, done: () => void) {
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
@@ -713,10 +719,12 @@ async function handleReplyToQuestion(agentName: string, questionIndex: number, q
   } catch (err) {
     console.error('Reply to question failed:', err)
     showError('Failed to reply to question. Please try again.')
+  } finally {
+    done()
   }
 }
 
-async function handleReplyToBlocker(agentName: string, blockerIndex: number, blockerText: string, replyText: string) {
+async function handleReplyToBlocker(agentName: string, blockerIndex: number, blockerText: string, replyText: string, done: () => void) {
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
@@ -732,6 +740,8 @@ async function handleReplyToBlocker(agentName: string, blockerIndex: number, blo
   } catch (err) {
     console.error('Reply to blocker failed:', err)
     showError('Failed to reply to blocker. Please try again.')
+  } finally {
+    done()
   }
 }
 

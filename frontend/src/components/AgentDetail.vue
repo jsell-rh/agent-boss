@@ -51,8 +51,8 @@ const emit = defineEmits<{
   'dismiss-question': [index: number]
   'dismiss-blocker': [index: number]
   'send-message': [text: string, sender: string]
-  'reply-to-question': [agentName: string, questionIndex: number, questionText: string, replyText: string]
-  'reply-to-blocker': [agentName: string, blockerIndex: number, blockerText: string, replyText: string]
+  'reply-to-question': [agentName: string, questionIndex: number, questionText: string, replyText: string, done: () => void]
+  'reply-to-blocker': [agentName: string, blockerIndex: number, blockerText: string, replyText: string, done: () => void]
   'select-agent': [name: string]
 }>()
 
@@ -73,24 +73,20 @@ function handleQuestionReply(index: number, questionText: string) {
   const text = (questionReplyTexts.value[index] ?? '').trim()
   if (!text) return
   questionReplying.value[index] = true
-  emit('reply-to-question', props.agentName, index, questionText, text)
-  questionReplyTexts.value[index] = ''
-  // Reset loading state after a reasonable timeout
-  setTimeout(() => {
+  emit('reply-to-question', props.agentName, index, questionText, text, () => {
     questionReplying.value[index] = false
-  }, 2000)
+  })
+  questionReplyTexts.value[index] = ''
 }
 
 function handleBlockerReply(index: number, blockerText: string) {
   const text = (blockerReplyTexts.value[index] ?? '').trim()
   if (!text) return
   blockerReplying.value[index] = true
-  emit('reply-to-blocker', props.agentName, index, blockerText, text)
-  blockerReplyTexts.value[index] = ''
-  // Reset loading state after a reasonable timeout
-  setTimeout(() => {
+  emit('reply-to-blocker', props.agentName, index, blockerText, text, () => {
     blockerReplying.value[index] = false
-  }, 2000)
+  })
+  blockerReplyTexts.value[index] = ''
 }
 
 function handleReply() {
