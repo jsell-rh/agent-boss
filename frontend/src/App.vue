@@ -785,11 +785,20 @@ function setupSSE() {
     if (currentSpace.value && currentSpace.value.name === data.space) {
       const agent = currentSpace.value.agents[data.agent]
       if (agent) {
+        // Patch all fields present in the extended SSE payload (TASK-090/PR #223).
+        // With the full agentStatusPublic struct in the event, no HTTP reload is needed.
         agent.status = data.status as AgentUpdate['status']
         agent.summary = data.summary
-        agent.updated_at = new Date().toISOString()
-        // Debounced full reload to pick up items, questions, blockers, etc.
-        scheduleSpaceReload(data.space)
+        agent.updated_at = data.updated_at ?? new Date().toISOString()
+        if (data.branch !== undefined)     agent.branch = data.branch
+        if (data.pr !== undefined)         agent.pr = data.pr
+        if (data.phase !== undefined)      agent.phase = data.phase
+        if (data.items !== undefined)      agent.items = data.items
+        if (data.questions !== undefined)  agent.questions = data.questions
+        if (data.blockers !== undefined)   agent.blockers = data.blockers
+        if (data.next_steps !== undefined) agent.next_steps = data.next_steps
+        if (data.session_id !== undefined) agent.session_id = data.session_id
+        if (data.parent !== undefined)     agent.parent = data.parent
       } else {
         // New agent in this space — fetch immediately so it appears without delay
         loadSpace(data.space)
