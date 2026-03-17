@@ -39,6 +39,10 @@ func main() {
 		cmdAttach(os.Args[2:])
 	case "init":
 		cmdInit(os.Args[2:])
+	case "export":
+		cmdExport(os.Args[2:])
+	case "import":
+		cmdImport(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -66,6 +70,8 @@ Client Commands:
   delete        Delete a space or a single agent from a space
   ignite        Print the ignition prompt for a new agent
   broadcast     Send a boss.check broadcast to all agents in a space
+  export        Export a space as an agent-compose.yaml fleet file
+  import        Import an agent-compose.yaml fleet file into a space
 
 Use "boss <command> --help" for more information about a command.
 

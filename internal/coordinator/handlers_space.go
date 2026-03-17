@@ -242,6 +242,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeJSONError(w, "agent name required", http.StatusBadRequest)
 		}
+	case "export":
+		s.handleSpaceExport(w, r, spaceName)
 	case "restart-all":
 		s.handleRestartAll(w, r, spaceName)
 	case "factory":
