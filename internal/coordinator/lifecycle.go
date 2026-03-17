@@ -370,6 +370,7 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: agentName,
 				Repos:       spawnRepos,
+				SpaceName:   spaceName,
 				EnvVars: func() map[string]string {
 					if s.apiToken == "" {
 						return nil
@@ -397,6 +398,9 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 	sessionID, retErr = backend.CreateSession(ctx, createOpts)
 	if retErr != nil {
 		return "", "", "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("create session: %v", retErr)}
+	}
+	if sessionID == "" {
+		return "", "", "", &lifecycleErr{StatusCode: http.StatusInternalServerError, Msg: fmt.Sprintf("backend returned empty session ID for agent %s", agentName)}
 	}
 
 	// Register session on the agent record.
@@ -613,6 +617,7 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 			Command: command,
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: canonical,
+				SpaceName:   spaceName,
 				EnvVars: func() map[string]string {
 					if s.apiToken == "" {
 						return nil

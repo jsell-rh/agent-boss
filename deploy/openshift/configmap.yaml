@@ -8,7 +8,8 @@ data:
   DATA_DIR: /data
   COORDINATOR_PORT: "8899"
   POSTGRESQL_DATABASE: boss
-  AMBIENT_API_URL: https://public-api-ambient-code.apps.okd1.timslab/v1
+  AMBIENT_API_URL: https://backend-route-ambient-code.apps.okd1.timslab
+  AMBIENT_PROJECT: agent-boss-ambient
   AMBIENT_SKIP_TLS_VERIFY: "true"
   AMBIENT_WORKFLOW_URL: https://github.com/tiwillia/jsell-agent-boss
   AMBIENT_WORKFLOW_BRANCH: worktree-feature/sessionInterface-ambient

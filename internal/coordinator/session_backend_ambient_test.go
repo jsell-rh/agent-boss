@@ -37,12 +37,24 @@ func newTestAmbientBackend(t *testing.T, handler http.Handler) (*AmbientSessionB
 	return b, ts
 }
 
+// backendCR is a test helper that builds a backendSessionCR with common fields.
+func backendCR(name, phase, displayName string, labels map[string]string) backendSessionCR {
+	cr := backendSessionCR{}
+	cr.Metadata.Name = name
+	cr.Metadata.Labels = labels
+	cr.Status.Phase = phase
+	cr.Spec.DisplayName = displayName
+	return cr
+}
+
+const testSessionsPath = "/api/projects/test-project/agentic-sessions"
+
 func TestAmbientAvailable(t *testing.T) {
 	var calls int32
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
-		json.NewEncoder(w).Encode(ambientSessionList{})
+		json.NewEncoder(w).Encode(backendSessionList{})
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -77,7 +89,7 @@ func TestAmbientAvailable(t *testing.T) {
 
 func TestAmbientAvailableUnavailable(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway) // 502 = unavailable
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -90,7 +102,7 @@ func TestAmbientAvailableUnavailable(t *testing.T) {
 
 func TestAmbientAvailable4xxIsAvailable(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized) // 401 = API reachable
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -103,7 +115,7 @@ func TestAmbientAvailable4xxIsAvailable(t *testing.T) {
 
 func TestAmbientCreateSession(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
@@ -112,20 +124,38 @@ func TestAmbientCreateSession(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("missing auth header")
 		}
-		if r.Header.Get("X-Ambient-Project") != "test-project" {
-			t.Error("missing project header")
-		}
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["task"] != "do something" {
-			t.Errorf("unexpected task: %v", body["task"])
+		if body["initialPrompt"] != "do something" {
+			t.Errorf("unexpected initialPrompt: %v", body["initialPrompt"])
 		}
-		if body["display_name"] != "test-agent" {
-			t.Errorf("unexpected display_name: %v", body["display_name"])
+		if body["displayName"] != "test-agent" {
+			t.Errorf("unexpected displayName: %v", body["displayName"])
+		}
+		if body["runnerType"] != "claude-agent-sdk" {
+			t.Errorf("unexpected runnerType: %v", body["runnerType"])
+		}
+		if body["timeout"] == nil {
+			t.Error("missing timeout")
+		}
+		// Verify labels are present.
+		labels, ok := body["labels"].(map[string]interface{})
+		if !ok {
+			t.Error("missing labels")
+		} else {
+			if labels["managed-by"] != "agent-boss" {
+				t.Errorf("unexpected managed-by label: %v", labels["managed-by"])
+			}
+			if labels["boss-agent"] != "test-agent" {
+				t.Errorf("unexpected boss-agent label: %v", labels["boss-agent"])
+			}
+			if labels["boss-space"] != "test-space" {
+				t.Errorf("unexpected boss-space label: %v", labels["boss-space"])
+			}
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(ambientCreateResponse{ID: "sess-123"})
+		json.NewEncoder(w).Encode(map[string]string{"name": "sess-123"})
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -134,6 +164,7 @@ func TestAmbientCreateSession(t *testing.T) {
 		Command: "do something",
 		BackendOpts: AmbientCreateOpts{
 			DisplayName: "test-agent",
+			SpaceName:   "test-space",
 		},
 	})
 	if err != nil {
@@ -147,14 +178,14 @@ func TestAmbientCreateSession(t *testing.T) {
 func TestAmbientCreateSessionFallbackDisplayName(t *testing.T) {
 	var receivedDisplayName string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
-		if dn, ok := body["display_name"].(string); ok {
+		if dn, ok := body["displayName"].(string); ok {
 			receivedDisplayName = dn
 		}
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(ambientCreateResponse{ID: "sess-456"})
+		json.NewEncoder(w).Encode(map[string]string{"name": "sess-456"})
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -167,13 +198,13 @@ func TestAmbientCreateSessionFallbackDisplayName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if receivedDisplayName != "my-session" {
-		t.Fatalf("expected display_name 'my-session', got %q", receivedDisplayName)
+		t.Fatalf("expected displayName 'my-session', got %q", receivedDisplayName)
 	}
 }
 
 func TestAmbientKillSession(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/sess-123", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/sess-123", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
@@ -190,7 +221,7 @@ func TestAmbientKillSession(t *testing.T) {
 
 func TestAmbientKillSession404IsSuccess(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/gone", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/gone", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -203,10 +234,10 @@ func TestAmbientKillSession404IsSuccess(t *testing.T) {
 
 func TestAmbientSessionExists(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/exists", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientSession{ID: "exists", Status: "running"})
+	mux.HandleFunc(testSessionsPath+"/exists", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(backendCR("exists", "Running", "", nil))
 	})
-	mux.HandleFunc("/sessions/missing", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/missing", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -222,14 +253,12 @@ func TestAmbientSessionExists(t *testing.T) {
 
 func TestAmbientListSessions(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientSessionList{
-			Items: []ambientSession{
-				{ID: "s1"},
-				{ID: "s2"},
-				{ID: "s3"},
-			},
-		})
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(backendSessionList{Items: []backendSessionCR{
+			backendCR("s1", "Running", "", nil),
+			backendCR("s2", "Completed", "", nil),
+			backendCR("s3", "Pending", "", nil),
+		}})
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -246,27 +275,21 @@ func TestAmbientListSessions(t *testing.T) {
 func TestAmbientGetStatus(t *testing.T) {
 	tests := []struct {
 		name     string
-		status   string
-		runs     []ambientRun
+		phase    string
 		expected SessionStatus
 	}{
-		{"pending", "pending", nil, SessionStatusPending},
-		{"completed", "completed", nil, SessionStatusCompleted},
-		{"failed", "failed", nil, SessionStatusFailed},
-		{"running with active run", "running", []ambientRun{{Status: "running"}}, SessionStatusRunning},
-		{"running with completed run", "running", []ambientRun{{Status: "completed"}}, SessionStatusIdle},
-		{"running with no runs", "running", nil, SessionStatusIdle},
-		{"running with error run", "running", []ambientRun{{Status: "error"}}, SessionStatusIdle},
+		{"pending", "Pending", SessionStatusPending},
+		{"completed", "Completed", SessionStatusCompleted},
+		{"failed", "Failed", SessionStatusFailed},
+		{"running", "Running", SessionStatusRunning},
+		{"lowercase running", "running", SessionStatusRunning},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mux := http.NewServeMux()
-			mux.HandleFunc("/sessions/s1", func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(ambientSession{ID: "s1", Status: tt.status})
-			})
-			mux.HandleFunc("/sessions/s1/runs", func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(ambientRunList{Items: tt.runs})
+			mux.HandleFunc(testSessionsPath+"/s1", func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(backendCR("s1", tt.phase, "", nil))
 			})
 			b, ts := newTestAmbientBackend(t, mux)
 			defer ts.Close()
@@ -284,7 +307,7 @@ func TestAmbientGetStatus(t *testing.T) {
 
 func TestAmbientGetStatus404(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/missing", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/missing", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -301,28 +324,24 @@ func TestAmbientGetStatus404(t *testing.T) {
 
 func TestAmbientIsIdle(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientSession{ID: "s1", Status: "running"})
-	})
-	mux.HandleFunc("/sessions/s1/runs", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientRunList{Items: []ambientRun{{Status: "completed"}}})
+	mux.HandleFunc(testSessionsPath+"/s1", func(w http.ResponseWriter, r *http.Request) {
+		// Running phase -> SessionStatusRunning (no longer idle without /runs)
+		json.NewEncoder(w).Encode(backendCR("s1", "Running", "", nil))
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
 
-	if !b.IsIdle("s1") {
-		t.Fatal("expected idle")
+	// Without /runs endpoint, running sessions are not considered idle.
+	if b.IsIdle("s1") {
+		t.Fatal("expected not idle for running session")
 	}
 }
 
 func TestAmbientCaptureOutput(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1/output", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("format") != "transcript" {
-			t.Error("expected format=transcript")
-		}
-		json.NewEncoder(w).Encode(ambientTranscriptOutput{
-			Messages: []ambientTranscriptMessage{
+	mux.HandleFunc(testSessionsPath+"/s1/export", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ambientExportResponse{
+			LegacyMessages: []ambientExportMessage{
 				{Role: "user", Content: "hello"},
 				{Role: "assistant", Content: "world"},
 				{Role: "user", Content: "third"},
@@ -350,9 +369,9 @@ func TestAmbientCaptureOutput(t *testing.T) {
 func TestAmbientCaptureOutputTruncation(t *testing.T) {
 	longContent := strings.Repeat("x", 300)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1/output", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientTranscriptOutput{
-			Messages: []ambientTranscriptMessage{
+	mux.HandleFunc(testSessionsPath+"/s1/export", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ambientExportResponse{
+			LegacyMessages: []ambientExportMessage{
 				{Role: "user", Content: longContent},
 			},
 		})
@@ -376,6 +395,78 @@ func TestAmbientCaptureOutputTruncation(t *testing.T) {
 	}
 }
 
+func TestAmbientCaptureOutputAguiFallback(t *testing.T) {
+	snapshot, _ := json.Marshal(map[string]interface{}{
+		"type": "MESSAGES_SNAPSHOT",
+		"messages": []ambientExportMessage{
+			{Role: "user", Content: "prompt"},
+			{Role: "assistant", Content: "response"},
+		},
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc(testSessionsPath+"/s1/export", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ambientExportResponse{
+			LegacyMessages: nil, // empty — forces aguiEvents fallback
+			AguiEvents:     []json.RawMessage{snapshot},
+		})
+	})
+	b, ts := newTestAmbientBackend(t, mux)
+	defer ts.Close()
+
+	lines, err := b.CaptureOutput("s1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines from aguiEvents fallback, got %d", len(lines))
+	}
+	if lines[0] != "[user] prompt" {
+		t.Fatalf("unexpected line 0: %q", lines[0])
+	}
+	if lines[1] != "[assistant] response" {
+		t.Fatalf("unexpected line 1: %q", lines[1])
+	}
+}
+
+func TestAmbientCaptureOutputAguiLastSnapshot(t *testing.T) {
+	// When multiple MESSAGES_SNAPSHOT events exist, use the last one.
+	snap1, _ := json.Marshal(map[string]interface{}{
+		"type": "MESSAGES_SNAPSHOT",
+		"messages": []ambientExportMessage{
+			{Role: "user", Content: "old"},
+		},
+	})
+	snap2, _ := json.Marshal(map[string]interface{}{
+		"type": "MESSAGES_SNAPSHOT",
+		"messages": []ambientExportMessage{
+			{Role: "user", Content: "old"},
+			{Role: "assistant", Content: "latest"},
+		},
+	})
+	other, _ := json.Marshal(map[string]interface{}{
+		"type": "TEXT_MESSAGE_START",
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc(testSessionsPath+"/s1/export", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ambientExportResponse{
+			AguiEvents: []json.RawMessage{snap1, other, snap2},
+		})
+	})
+	b, ts := newTestAmbientBackend(t, mux)
+	defer ts.Close()
+
+	lines, err := b.CaptureOutput("s1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines from last snapshot, got %d", len(lines))
+	}
+	if lines[1] != "[assistant] latest" {
+		t.Fatalf("expected last snapshot, got: %q", lines[1])
+	}
+}
+
 func TestAmbientCheckApproval(t *testing.T) {
 	b := NewAmbientSessionBackend(AmbientBackendConfig{})
 	approval := b.CheckApproval("anything")
@@ -385,16 +476,29 @@ func TestAmbientCheckApproval(t *testing.T) {
 }
 
 func TestAmbientSendInput(t *testing.T) {
-	var receivedContent string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1/message", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/s1/agui/run", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
 		}
-		var body map[string]string
+		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
-		receivedContent = body["content"]
+		// Verify AG-UI envelope structure.
+		msgs, ok := body["messages"].([]interface{})
+		if !ok || len(msgs) != 1 {
+			t.Fatalf("expected 1 message in envelope, got %v", body["messages"])
+		}
+		msg := msgs[0].(map[string]interface{})
+		if msg["role"] != "user" {
+			t.Errorf("expected role 'user', got %v", msg["role"])
+		}
+		if msg["content"] != "/boss.check agent1 space1" {
+			t.Errorf("unexpected content: %v", msg["content"])
+		}
+		if msg["id"] == nil || msg["id"] == "" {
+			t.Error("expected non-empty message id")
+		}
 		w.WriteHeader(http.StatusAccepted)
 	})
 	b, ts := newTestAmbientBackend(t, mux)
@@ -402,9 +506,6 @@ func TestAmbientSendInput(t *testing.T) {
 
 	if err := b.SendInput("s1", "/boss.check agent1 space1"); err != nil {
 		t.Fatal(err)
-	}
-	if receivedContent != "/boss.check agent1 space1" {
-		t.Fatalf("unexpected content: %q", receivedContent)
 	}
 }
 
@@ -417,7 +518,7 @@ func TestAmbientApprove(t *testing.T) {
 
 func TestAmbientInterrupt(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1/interrupt", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/s1/agui/interrupt", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
@@ -434,15 +535,13 @@ func TestAmbientInterrupt(t *testing.T) {
 
 func TestAmbientDiscoverSessions(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientSessionList{
-			Items: []ambientSession{
-				{ID: "s1", DisplayName: "agent-a", Status: "running"},
-				{ID: "s2", DisplayName: "agent-b", Status: "completed"},
-				{ID: "s3", DisplayName: "agent-c", Status: "pending"},
-				{ID: "s4", DisplayName: "", Status: "running"},
-			},
-		})
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(backendSessionList{Items: []backendSessionCR{
+			backendCR("s1", "Running", "agent-a", map[string]string{"boss-agent": "agent-a", "managed-by": "agent-boss"}),
+			backendCR("s2", "Completed", "agent-b", map[string]string{"boss-agent": "agent-b"}),
+			backendCR("s3", "Pending", "agent-c", map[string]string{"boss-agent": "agent-c"}),
+			backendCR("s4", "Running", "", nil),
+		}})
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -452,7 +551,7 @@ func TestAmbientDiscoverSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Only running and pending sessions with display_name should be discovered.
+	// Only running and pending sessions with a name should be discovered.
 	if len(discovered) != 2 {
 		t.Fatalf("expected 2 discovered, got %d: %v", len(discovered), discovered)
 	}
@@ -464,19 +563,36 @@ func TestAmbientDiscoverSessions(t *testing.T) {
 	}
 }
 
+func TestAmbientDiscoverSessionsFallbackDisplayName(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
+		// Session without boss-agent label but with displayName.
+		json.NewEncoder(w).Encode(backendSessionList{Items: []backendSessionCR{
+			backendCR("s1", "Running", "agent-x", nil),
+		}})
+	})
+	b, ts := newTestAmbientBackend(t, mux)
+	defer ts.Close()
+
+	discovered, err := b.DiscoverSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if discovered["agent-x"] != "s1" {
+		t.Fatalf("expected agent-x -> s1, got %v", discovered)
+	}
+}
+
 func TestAmbientWaitForRunning(t *testing.T) {
 	callCount := int32(0)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(testSessionsPath+"/s1", func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&callCount, 1)
-		status := "pending"
+		phase := "Pending"
 		if n >= 3 {
-			status = "running"
+			phase = "Running"
 		}
-		json.NewEncoder(w).Encode(ambientSession{ID: "s1", Status: status})
-	})
-	mux.HandleFunc("/sessions/s1/runs", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientRunList{})
+		json.NewEncoder(w).Encode(backendCR("s1", phase, "", nil))
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -495,8 +611,8 @@ func TestAmbientWaitForRunning(t *testing.T) {
 
 func TestAmbientWaitForRunningFailed(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/s1", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ambientSession{ID: "s1", Status: "failed"})
+	mux.HandleFunc(testSessionsPath+"/s1", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(backendCR("s1", "Failed", "", nil))
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
@@ -519,8 +635,9 @@ func TestAmbientDoRequestHeaders(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer my-token" {
 			t.Error("missing or wrong auth header")
 		}
-		if r.Header.Get("X-Ambient-Project") != "my-project" {
-			t.Error("missing or wrong project header")
+		// X-Ambient-Project header should NOT be set (project is in URL path now).
+		if r.Header.Get("X-Ambient-Project") != "" {
+			t.Error("X-Ambient-Project header should not be set")
 		}
 		w.WriteHeader(http.StatusOK)
 	})
@@ -538,4 +655,164 @@ func TestAmbientDoRequestHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
+}
+
+func TestAmbientDefaultTimeout(t *testing.T) {
+	b := NewAmbientSessionBackend(AmbientBackendConfig{})
+	if b.timeout != 900 {
+		t.Fatalf("expected default timeout 900, got %d", b.timeout)
+	}
+}
+
+func TestAmbientCustomTimeout(t *testing.T) {
+	b := NewAmbientSessionBackend(AmbientBackendConfig{Timeout: 3600})
+	if b.timeout != 3600 {
+		t.Fatalf("expected timeout 3600, got %d", b.timeout)
+	}
+}
+
+func TestAmbientSessionsPath(t *testing.T) {
+	b := NewAmbientSessionBackend(AmbientBackendConfig{Project: "my-proj"})
+	expected := "/api/projects/my-proj/agentic-sessions"
+	if b.sessionsPath() != expected {
+		t.Fatalf("expected %q, got %q", expected, b.sessionsPath())
+	}
+}
+
+func TestAmbientSessionPath(t *testing.T) {
+	b := NewAmbientSessionBackend(AmbientBackendConfig{Project: "my-proj"})
+	expected := "/api/projects/my-proj/agentic-sessions/sess-1"
+	if b.sessionPath("sess-1") != expected {
+		t.Fatalf("expected %q, got %q", expected, b.sessionPath("sess-1"))
+	}
+}
+
+func TestAmbientCreateSessionRejectsInvalidLabelValue(t *testing.T) {
+	b := NewAmbientSessionBackend(AmbientBackendConfig{
+		APIURL:  "http://localhost",
+		Project: "test",
+	})
+
+	// Space name with spaces is invalid for K8s labels.
+	_, err := b.CreateSession(context.Background(), SessionCreateOpts{
+		Command: "test",
+		BackendOpts: AmbientCreateOpts{
+			DisplayName: "agent1",
+			SpaceName:   "My Space Name",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for space name with spaces")
+	}
+	if !strings.Contains(err.Error(), "not a valid Kubernetes label") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Agent name with spaces is also invalid.
+	_, err = b.CreateSession(context.Background(), SessionCreateOpts{
+		Command: "test",
+		BackendOpts: AmbientCreateOpts{
+			DisplayName: "my agent",
+			SpaceName:   "valid-space",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for agent name with spaces")
+	}
+}
+
+func TestValidLabelValue(t *testing.T) {
+	tests := []struct {
+		value string
+		valid bool
+	}{
+		{"", true},
+		{"simple", true},
+		{"with-hyphens", true},
+		{"with_underscores", true},
+		{"with.dots", true},
+		{"MixedCase123", true},
+		{"a", true},
+		{"has spaces", false},
+		{"-starts-with-hyphen", false},
+		{"ends-with-hyphen-", false},
+		{"has/slash", false},
+		{"has:colon", false},
+		{strings.Repeat("a", 63), true},
+		{strings.Repeat("a", 64), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			if got := validLabelValue(tt.value); got != tt.valid {
+				t.Errorf("validLabelValue(%q) = %v, want %v", tt.value, got, tt.valid)
+			}
+		})
+	}
+}
+
+// --- Group 5: Negative / Contract Tests ---
+
+func TestAmbientCreateResponseMissingName(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "bad method", http.StatusMethodNotAllowed)
+			return
+		}
+		// Return empty object — no "name" field.
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{})
+	})
+	b, ts := newTestAmbientBackend(t, mux)
+	defer ts.Close()
+
+	id, err := b.CreateSession(context.Background(), SessionCreateOpts{
+		Command: "test",
+		BackendOpts: AmbientCreateOpts{
+			DisplayName: "agent1",
+			SpaceName:   "valid-space",
+		},
+	})
+	// Should return empty string but no error from the JSON decode itself.
+	// The caller (spawnAgentService) should detect the empty session ID.
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "" {
+		t.Fatalf("expected empty session ID from missing name field, got %q", id)
+	}
+}
+
+func TestAmbientListResponseBareArray(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
+		// Return a bare array instead of {"items": [...]} — this is the wrong shape.
+		json.NewEncoder(w).Encode([]backendSessionCR{
+			backendCR("s1", "Running", "", nil),
+		})
+	})
+	b, ts := newTestAmbientBackend(t, mux)
+	defer ts.Close()
+
+	ids, err := b.ListSessions()
+	// A bare array cannot be decoded into backendSessionList (a struct).
+	// ListSessions should return an error (not panic).
+	if err == nil {
+		t.Fatalf("expected error for bare array response, got %d sessions", len(ids))
+	}
+	if !strings.Contains(err.Error(), "decode session list") {
+		t.Fatalf("expected decode error, got: %v", err)
+	}
+}
+
+func TestGenerateMsgID(t *testing.T) {
+	id := generateMsgID()
+	if len(id) != 32 { // 16 bytes = 32 hex chars
+		t.Fatalf("expected 32-char hex id, got %q (len=%d)", id, len(id))
+	}
+	// Ensure two calls produce different IDs.
+	id2 := generateMsgID()
+	if id == id2 {
+		t.Fatal("expected unique IDs")
+	}
 }

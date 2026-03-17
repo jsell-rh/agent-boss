@@ -129,6 +129,7 @@ type AmbientCreateOpts struct {
 	Repos       []SessionRepo     `json:"repos,omitempty"`
 	Workflow    *WorkflowRef      `json:"workflow,omitempty"`    // override per-session workflow
 	EnvVars     map[string]string `json:"env_vars,omitempty"`   // per-session environment variables
+	SpaceName   string            `json:"space_name,omitempty"` // used for label construction
 }
 
 // WorkflowRef identifies an ACP workflow by git repository location.
