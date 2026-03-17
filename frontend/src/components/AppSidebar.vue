@@ -855,13 +855,24 @@ defineExpose({ openNewSpaceDialog })
 }
 
 /* Status dot animations — pulse, breathe, jitter */
+/* GPU-accelerated sonar ping: ::after uses transform+opacity (compositor only),
+   replacing the former box-shadow animation which forced CPU paint every frame. */
 .dot-pulse-active {
+  overflow: visible;
+}
+.dot-pulse-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: rgba(34, 197, 94, 0.7);
   animation: dot-sonar-ping 2s ease-out infinite;
+  pointer-events: none;
 }
 @keyframes dot-sonar-ping {
-  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-  60%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  0%   { transform: scale(1);   opacity: 0.7; }
+  60%  { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(2.5); opacity: 0; }
 }
 
 .dot-breathe-idle {
@@ -910,5 +921,6 @@ defineExpose({ openNewSpaceDialog })
   .agent-spawn { animation: none; }
   .typing-dots span { animation: none; opacity: 0.6; }
   .dot-pulse-active, .dot-breathe-idle, .dot-jitter-blocked { animation: none; }
+  .dot-pulse-active::after { animation: none; }
 }
 </style>

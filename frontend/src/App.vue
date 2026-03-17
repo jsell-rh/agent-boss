@@ -762,8 +762,21 @@ function scheduleSpacesReload(delayMs = 1000) {
   }, delayMs)
 }
 
+// Debounced hierarchy reload — hierarchy changes are rare and effectiveHierarchy
+// computes client-side from agent.parent fields. Batch rapid agent_updated bursts
+// into a single fetch; 500ms delay avoids hammering /hierarchy on busy fleets.
+let _hierarchyReloadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleHierarchyReload(space: string, delayMs = 500) {
+  if (_hierarchyReloadTimer !== null) clearTimeout(_hierarchyReloadTimer)
+  _hierarchyReloadTimer = setTimeout(() => {
+    _hierarchyReloadTimer = null
+    loadHierarchy(space)
+  }, delayMs)
+}
+
 function setupSSE() {
   sse.on('agent_updated', (data) => {
+    lastSSEEventMs = Date.now()
     // Capture prevStatus BEFORE the in-place patch so mood/alert transitions fire correctly.
     const prevStatus = currentSpace.value?.agents[data.agent]?.status
     // Patch agent in-place immediately for instant UI feedback — no HTTP round-trip.
@@ -781,8 +794,10 @@ function setupSSE() {
         // New agent in this space — fetch immediately so it appears without delay
         loadSpace(data.space)
       }
-      // Refresh hierarchy in case parent/children changed
-      loadHierarchy(data.space)
+      // Refresh hierarchy in case parent/children changed — debounced to avoid
+      // 13+ concurrent requests on busy fleets. effectiveHierarchy computes
+      // client-side; this just keeps the fallback hierarchyTree in sync.
+      scheduleHierarchyReload(data.space)
     }
     // Update sidebar attention counts — debounced to avoid per-keystroke fetches
     scheduleSpacesReload()
@@ -940,13 +955,17 @@ function setupSSE() {
 // ── Polling fallback ───────────────────────────────────────────────
 // SSE handles real-time updates. Polling is a reliability fallback only —
 // 15s interval since SSE covers most updates. Skip polls when tab is hidden.
+// Skip polls when SSE is healthy and has delivered an event in the last 15s.
 const POLL_INTERVAL_MS = 15000
+let lastSSEEventMs = 0
 
 function startPolling() {
   stopPolling()
   pollTimer = setInterval(() => {
     // No point fetching when the tab isn't visible
     if (document.hidden) return
+    // SSE is healthy and recent — polling would be redundant
+    if (sse.connected.value && Date.now() - lastSSEEventMs < 15000) return
     if (selectedSpace.value) {
       loadSpace(selectedSpace.value)
       loadSessionStatus(selectedSpace.value)
