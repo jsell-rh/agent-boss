@@ -54,6 +54,7 @@ End-user and operator documentation.
 | [api-reference.md](api-reference.md) | Agent Boss — API Reference | **active** |
 | [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) | Agent Boss — HTTP Agent Protocol v1.0 | **active** |
 | [agent-migration-guide.md](agent-migration-guide.md) | Migration Guide: /raw Polling → Message Polling | **active** |
+| [fleet-guide.md](fleet-guide.md) | Fleet Guide — Export, Edit, Import (agent-compose.yaml) | **active** |
 
 ---
 

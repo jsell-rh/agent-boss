@@ -48,10 +48,34 @@ To override the embedded frontend at runtime (e.g. for testing a fresh build):
 DATA_DIR=./data FRONTEND_DIR=./internal/coordinator/frontend /tmp/boss serve
 ```
 
+## Fleet CLI (Export / Import)
+
+Capture a running space as a portable `agent-compose.yaml` fleet file and replay it:
+
+```bash
+# Export a space to YAML (stdout or file)
+boss export "My Space"
+boss export "My Space" --output fleet.yaml
+
+# Preview what import will do (no writes)
+boss import fleet.yaml --dry-run
+
+# Apply (interactive confirmation)
+boss import fleet.yaml
+
+# Apply without prompt; override target space
+boss import fleet.yaml --yes --space "Staging"
+
+# Also remove agents not in the fleet file
+boss import fleet.yaml --prune --yes
+```
+
+See **[docs/fleet-guide.md](docs/fleet-guide.md)** for the full workflow guide, schema reference, and common patterns.
+
 ## Project Structure
 
 ```
-cmd/boss/main.go                       CLI entrypoint (serve, post, check)
+cmd/boss/main.go                       CLI entrypoint (serve, post, check, export, import)
 cmd/boss-observe/main.go               Standalone MCP observability plugin (4 read-only tools)
 internal/coordinator/
   types.go                             AgentUpdate, KnowledgeSpace, markdown renderer
