@@ -356,6 +356,42 @@
 .md-content em { font-style: italic; }
 .md-content del, .md-content s { text-decoration: line-through; opacity: 0.7; }
 
+/* Tables */
+.md-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 0.75em 0;
+  overflow-x: auto;
+  display: block;
+}
+.md-content thead {
+  background: oklch(0 0 0 / 6%);
+}
+.dark .md-content thead {
+  background: oklch(1 0 0 / 6%);
+}
+.md-content th,
+.md-content td {
+  padding: 0.35em 0.75em;
+  border: 1px solid oklch(0 0 0 / 14%);
+  text-align: left;
+  vertical-align: top;
+}
+.dark .md-content th,
+.dark .md-content td {
+  border-color: oklch(1 0 0 / 14%);
+}
+.md-content th {
+  font-weight: 600;
+}
+.md-content tbody tr:nth-child(even) {
+  background: oklch(0 0 0 / 3%);
+}
+.dark .md-content tbody tr:nth-child(even) {
+  background: oklch(1 0 0 / 3%);
+}
+
 /* Inline-only markdown (list items, short text) */
 .md-content-inline code {
   font-family: var(--font-mono);

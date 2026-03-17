@@ -7,6 +7,7 @@ marked.use({ breaks: true, gfm: true })
 const BLOCK_ALLOWED_TAGS = [
   'p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li',
   'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'hr', 'del', 's',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
 ]
 const INLINE_ALLOWED_TAGS = ['strong', 'em', 'code', 'a', 'del', 's', 'br']
 const ALLOWED_ATTR = ['href', 'target', 'rel', 'class']
