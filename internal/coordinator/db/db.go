@@ -40,13 +40,18 @@ func Open(dataDir string) (*gorm.DB, error) {
 		if dbPath == "" {
 			dbPath = dataDir + "/boss.db"
 		}
-		db, err = gorm.Open(glebarez.Open(dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on"), cfg)
+		db, err = gorm.Open(glebarez.Open(dbPath+"?_foreign_keys=on"), cfg)
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite %q: %w", dbPath, err)
 		}
-		// SQLite: single writer, many readers — use connection pool of 1 writer.
+		// glebarez/sqlite ignores DSN journal_mode/synchronous params — set via PRAGMA.
+		// WAL mode allows concurrent readers alongside one writer, eliminating the
+		// reader-writer lock contention that causes dashboard slowness under load.
 		sqlDB, _ := db.DB()
-		sqlDB.SetMaxOpenConns(1)
+		sqlDB.Exec("PRAGMA journal_mode=WAL")
+		sqlDB.Exec("PRAGMA synchronous=NORMAL")
+		// WAL supports concurrent readers — raise the connection pool limit.
+		sqlDB.SetMaxOpenConns(10)
 
 	case "postgres":
 		dsn := os.Getenv("DB_DSN")
@@ -154,8 +159,12 @@ func migrateTasksCompositeKey(db *gorm.DB) error {
 
 	// Recreate the table with GORM-compatible DDL (backtick-quoted columns,
 	// composite PK). Use the standard SQLite table-recreation pattern.
-	const recreateSQL = "CREATE TABLE `tasks_new` (`id` TEXT NOT NULL,`space_name` TEXT NOT NULL,`title` TEXT NOT NULL,`description` TEXT,`status` TEXT NOT NULL DEFAULT 'backlog',`priority` TEXT DEFAULT 'medium',`assigned_to` TEXT,`created_by` TEXT NOT NULL,`labels` TEXT,`parent_task` TEXT,`subtasks` TEXT,`linked_branch` TEXT,`linked_pr` TEXT,`created_at` DATETIME,`updated_at` DATETIME,`due_at` DATETIME,PRIMARY KEY (`space_name`,`id`));" +
-		"INSERT OR IGNORE INTO `tasks_new` SELECT `id`,`space_name`,`title`,`description`,`status`,`priority`,`assigned_to`,`created_by`,`labels`,`parent_task`,`subtasks`,`linked_branch`,`linked_pr`,`created_at`,`updated_at`,`due_at` FROM `tasks`;" +
+	// status_changed_at must be included — omitting it from the DDL caused
+	// AutoMigrate to miss it on existing databases.
+	// Insert NULL for status_changed_at; the backfill step in migrate() below
+	// sets it from task_events or created_at so no data is lost.
+	const recreateSQL = "CREATE TABLE `tasks_new` (`id` TEXT NOT NULL,`space_name` TEXT NOT NULL,`title` TEXT NOT NULL,`description` TEXT,`status` TEXT NOT NULL DEFAULT 'backlog',`priority` TEXT DEFAULT 'medium',`assigned_to` TEXT,`created_by` TEXT NOT NULL,`labels` TEXT,`parent_task` TEXT,`subtasks` TEXT,`linked_branch` TEXT,`linked_pr` TEXT,`created_at` DATETIME,`updated_at` DATETIME,`status_changed_at` DATETIME,`due_at` DATETIME,PRIMARY KEY (`space_name`,`id`));" +
+		"INSERT OR IGNORE INTO `tasks_new` SELECT `id`,`space_name`,`title`,`description`,`status`,`priority`,`assigned_to`,`created_by`,`labels`,`parent_task`,`subtasks`,`linked_branch`,`linked_pr`,`created_at`,`updated_at`,NULL,`due_at` FROM `tasks`;" +
 		"DROP TABLE `tasks`;" +
 		"ALTER TABLE `tasks_new` RENAME TO `tasks`;"
 

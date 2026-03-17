@@ -213,12 +213,12 @@ func (r *Repository) GetTask(spaceName, taskID string) (*Task, []*TaskComment, [
 	}
 
 	var comments []*TaskComment
-	if err := r.db.Where("task_id = ?", taskID).Order("created_at ASC").Find(&comments).Error; err != nil {
+	if err := r.db.Where("task_id = ? AND space_name = ?", taskID, spaceName).Order("created_at ASC").Find(&comments).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
 	var events []*TaskEvent
-	if err := r.db.Where("task_id = ?", taskID).Order("created_at ASC").Find(&events).Error; err != nil {
+	if err := r.db.Where("task_id = ? AND space_name = ?", taskID, spaceName).Order("created_at ASC").Find(&events).Error; err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -325,9 +325,13 @@ func (r *Repository) SaveSnapshot(s *StatusSnapshot) error {
 	return r.db.Create(s).Error
 }
 
+// snapshotQueryLimit caps the number of snapshots returned per query to prevent
+// 60MB+ result sets from the unbounded status_snapshots table.
+const snapshotQueryLimit = 5000
+
 // GetSnapshots returns status snapshots for a space, optionally filtered by agent and time.
 func (r *Repository) GetSnapshots(spaceName string, agentName string, since *time.Time) ([]*StatusSnapshot, error) {
-	q := r.db.Where("space_name = ?", spaceName).Order("timestamp ASC")
+	q := r.db.Where("space_name = ?", spaceName).Order("timestamp ASC").Limit(snapshotQueryLimit)
 	if agentName != "" {
 		q = q.Where("agent_name = ?", agentName)
 	}
@@ -336,6 +340,13 @@ func (r *Repository) GetSnapshots(spaceName string, agentName string, since *tim
 	}
 	var snaps []*StatusSnapshot
 	return snaps, q.Find(&snaps).Error
+}
+
+// PruneOldSnapshots deletes status_snapshots older than the given cutoff.
+// Keeps at most keepPerAgent recent rows per (space_name, agent_name) pair beyond the cutoff.
+// Called from a background goroutine; errors are logged by the caller.
+func (r *Repository) PruneOldSnapshots(cutoff time.Time) error {
+	return r.db.Where("timestamp < ?", cutoff).Delete(&StatusSnapshot{}).Error
 }
 
 // ---- SpaceEventLog operations ----
@@ -392,17 +403,18 @@ func UnmarshalJSON(s string, v any) error {
 }
 
 // NextTaskSeqForSpace atomically increments and returns the next task sequence number.
+// Runs inside a transaction to prevent duplicate IDs under concurrent task creates.
 func (r *Repository) NextTaskSeqForSpace(spaceName string) (int, error) {
-	var space Space
-	err := r.db.Where("name = ?", spaceName).First(&space).Error
-	if err != nil {
-		return 0, fmt.Errorf("space not found: %w", err)
-	}
-	next := space.NextTaskSeq + 1
-	if err := r.db.Model(&Space{}).Where("name = ?", spaceName).Update("next_task_seq", next).Error; err != nil {
-		return 0, err
-	}
-	return next, nil
+	var next int
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var space Space
+		if err := tx.Where("name = ?", spaceName).First(&space).Error; err != nil {
+			return fmt.Errorf("space not found: %w", err)
+		}
+		next = space.NextTaskSeq + 1
+		return tx.Model(&Space{}).Where("name = ?", spaceName).Update("next_task_seq", next).Error
+	})
+	return next, err
 }
 
 // ---- InterruptRecord operations ----

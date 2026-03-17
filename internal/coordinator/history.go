@@ -11,15 +11,28 @@ import (
 	"time"
 )
 
+// snapKey is the cache key for write-deduplication.
+type snapKey struct{ status AgentStatus; stale bool }
+
 // spaceHistoryPath returns the path to the NDJSON history file for a space.
 func (s *Server) spaceHistoryPath(spaceName string) string {
 	return filepath.Join(s.dataDir, spaceName+"-history.json")
 }
 
 // appendSnapshot appends a StatusSnapshot to the space history.
+// Skips the write when status+stale has not changed since the last snapshot
+// for this agent — prevents the 37K rows/day unbounded growth.
 // When a repository is available (SQLite active) it is written to SQLite only.
 // Fallback: append to NDJSON file when no repository is configured.
 func (s *Server) appendSnapshot(snapshot StatusSnapshot) error {
+	// Skip write if status+stale is unchanged (most agent heartbeats are idle→idle).
+	cacheKey := snapshot.Space + "/" + snapshot.AgentName
+	newVal := snapKey{status: snapshot.Status, stale: snapshot.Stale}
+	if prev, ok := s.snapCache.Load(cacheKey); ok && prev.(snapKey) == newVal {
+		return nil
+	}
+	s.snapCache.Store(cacheKey, newVal)
+
 	// Persist to SQLite (primary store).
 	if s.repo != nil {
 		s.saveSnapshotToDB(&snapshot)
@@ -151,6 +164,24 @@ func (s *Server) handleAgentHistory(w http.ResponseWriter, r *http.Request, spac
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(snapshots)
+}
+
+// snapshotPruneLoop runs on a background goroutine and deletes status_snapshots
+// older than retainFor on every interval tick.
+func (s *Server) snapshotPruneLoop(interval, retainFor time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stopLiveness:
+			return
+		case <-ticker.C:
+			cutoff := time.Now().UTC().Add(-retainFor)
+			if err := s.repo.PruneOldSnapshots(cutoff); err != nil {
+				s.logEvent(fmt.Sprintf("warning: prune snapshots: %v", err))
+			}
+		}
+	}
 }
 
 // snapshotFromAgent creates a StatusSnapshot from an agent update.
