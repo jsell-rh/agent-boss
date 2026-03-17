@@ -923,6 +923,9 @@ function setupSSE() {
     // Notify boss when a message is directed to them
     if (data.agent === 'boss') {
       notifyBossMessage(data.sender, data.space)
+      // In-app notification — show even when tab is focused (sidebar badge relies on
+      // debounced space reload; this gives an immediate visual signal).
+      showStatus(`📩 New message from ${data.sender}`)
     }
     // Parse @mentions in message body and pulse the mentioned agent's card
     if (data.message && typeof data.message === 'string' && currentSpace.value) {

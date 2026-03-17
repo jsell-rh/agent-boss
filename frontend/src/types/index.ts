@@ -57,6 +57,7 @@ export interface AgentUpdate {
   jira?: string
   repo_url?: string
   messages?: AgentMessage[]
+  unread_count?: number
   updated_at: string
   stale?: boolean
   inferred_status?: string
