@@ -27,6 +27,7 @@ Core design decisions and specifications that shaped the system.
 | [design-docs/auth-model.md](design-docs/auth-model.md) | Auth Model ADR — Phase 1 static token + Phase 2 per-agent tokens | **in-progress** |
 | [design-docs/agent-compose.md](design-docs/agent-compose.md) | agent-compose.yaml — Fleet Blueprint Design Spec (TASK-098) | **implemented** |
 | [design-docs/agent-experience-surface.md](design-docs/agent-experience-surface.md) | Agent Experience Surface — spawn contract, dev loop, MCP surface | **active** |
+| [design-docs/frontend-decomposition.md](design-docs/frontend-decomposition.md) | Frontend Component Decomposition Plan (TD-003) | **proposed** |
 | [design-docs/audio-language-spec.md](design-docs/audio-language-spec.md) | Audio Language & Voice System Spec | **proposed** |
 
 ---
