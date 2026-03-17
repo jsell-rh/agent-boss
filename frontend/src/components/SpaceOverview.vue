@@ -1404,45 +1404,56 @@ const activeSections = computed(() => [
   transform: scale(0.88) translateY(8px);
 }
 
-/* Agent status pulse rings — expand outward from avatar, then fade */
+/* Agent status pulse rings — GPU-composited sonar ping via transform+opacity.
+   Uses ::after pseudo-element so no box-shadow CPU repaint occurs each frame. */
 .agent-pulse-ring {
   position: absolute;
   inset: -3px;
   border-radius: 0.5rem;
   pointer-events: none;
+  overflow: visible;
 }
 
-.pulse-active {
-  animation: pulse-active 2s ease-out infinite;
+/* Shared keyframe — scales up and fades out (transform+opacity = compositor-only) */
+@keyframes ring-sonar-ping {
+  0%   { transform: scale(1);    opacity: 0.7; }
+  70%  { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
 
-.pulse-blocked {
-  animation: pulse-blocked 1.2s ease-out infinite;
+.pulse-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: rgba(96, 165, 250, 0.65);
+  animation: ring-sonar-ping 2s ease-out infinite;
+  pointer-events: none;
 }
 
-.pulse-error {
-  animation: pulse-error 0.7s ease-out infinite;
+.pulse-blocked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: rgba(251, 146, 60, 0.7);
+  animation: ring-sonar-ping 1.2s ease-out infinite;
+  pointer-events: none;
 }
 
-@keyframes pulse-active {
-  0%   { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0.7); }
-  70%  { box-shadow: 0 0 0 7px rgba(96, 165, 250, 0); }
-  100% { box-shadow: 0 0 0 0px rgba(96, 165, 250, 0); }
-}
-
-@keyframes pulse-blocked {
-  0%   { box-shadow: 0 0 0 0px rgba(251, 146, 60, 0.75); }
-  70%  { box-shadow: 0 0 0 6px rgba(251, 146, 60, 0); }
-  100% { box-shadow: 0 0 0 0px rgba(251, 146, 60, 0); }
-}
-
-@keyframes pulse-error {
-  0%   { box-shadow: 0 0 0 0px rgba(248, 113, 113, 0.8); }
-  70%  { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
-  100% { box-shadow: 0 0 0 0px rgba(248, 113, 113, 0); }
+.pulse-error::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: rgba(248, 113, 113, 0.75);
+  animation: ring-sonar-ping 0.7s ease-out infinite;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-pulse-ring { animation: none; }
+  .pulse-active::after,
+  .pulse-blocked::after,
+  .pulse-error::after { animation: none; }
 }
 </style>

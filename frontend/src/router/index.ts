@@ -14,6 +14,11 @@ const router = createRouter({
       component: Empty,
     },
     {
+      // Redirect /spaces/:name → /:name so external links and API URL patterns work
+      path: '/spaces/:space',
+      redirect: (to) => '/' + to.params.space,
+    },
+    {
       path: '/:space',
       name: 'space',
       component: Empty,
