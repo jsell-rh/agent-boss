@@ -16,6 +16,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.2",
+    "js-yaml": "^4.1.1",
     "lucide-vue-next": "^0.577.0",
     "marked": "^17.0.4",
     "reka-ui": "^2.9.0",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "@types/dompurify": "^3.0.5",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vitest/coverage-v8": "^4.0.18",

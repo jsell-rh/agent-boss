@@ -116,6 +116,12 @@ class ApiClient {
     return this.request<SpaceSummary[]>('/spaces')
   }
 
+  exportFleet(space: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      `/spaces/${encodeURIComponent(space)}/export`,
+    )
+  }
+
   fetchSpace(space: string, signal?: AbortSignal): Promise<KnowledgeSpace> {
     return this.request<KnowledgeSpace>(`/spaces/${encodeURIComponent(space)}/`, {
       headers: { Accept: 'application/json' },
