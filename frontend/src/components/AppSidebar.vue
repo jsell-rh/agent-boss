@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SpaceSummary, KnowledgeSpace, AgentStatus } from '@/types'
 import { STATUS_DISPLAY } from '@/types'
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { relativeTime } from '@/composables/useTime'
 import { prLink } from '@/lib/utils'
@@ -253,14 +253,21 @@ const bossUnreadCount = computed(() => {
 
 // ── Typing indicator ───────────────────────────────────────────────────────
 // Show 3-dot bounce when an agent posted an update within the last 10 seconds.
-const now = ref(Date.now())
-let _nowTimer = 0
-onMounted(() => { _nowTimer = window.setInterval(() => { now.value = Date.now() }, 1000) })
-onUnmounted(() => clearInterval(_nowTimer))
+// Computed from SSE data — no polling interval; re-evaluates only when agent data changes.
+const recentlyActiveAgents = computed<Set<string>>(() => {
+  if (!props.currentSpace) return new Set()
+  const cutoff = Date.now() - 10_000
+  const result = new Set<string>()
+  for (const [name, agent] of Object.entries(props.currentSpace.agents)) {
+    if (agent.updated_at && agent.status !== 'done' && agent.status !== 'idle') {
+      if (new Date(agent.updated_at).getTime() > cutoff) result.add(name)
+    }
+  }
+  return result
+})
 
-function isRecentlyActive(agent: { updated_at?: string; status?: string }): boolean {
-  if (!agent.updated_at || agent.status === 'done' || agent.status === 'idle') return false
-  return now.value - new Date(agent.updated_at).getTime() < 10_000
+function isRecentlyActive(name: string): boolean {
+  return recentlyActiveAgents.value.has(name)
 }
 
 // New space dialog
@@ -553,7 +560,7 @@ defineExpose({ openNewSpaceDialog })
                     <div class="flex flex-col gap-0.5 min-w-0 flex-1">
                       <div class="flex items-center gap-1.5 min-w-0">
                         <span class="truncate">{{ name }}</span>
-                        <span v-if="isRecentlyActive(agent)" class="typing-dots shrink-0" aria-label="recently updated" aria-hidden="true">
+                        <span v-if="isRecentlyActive(name)" class="typing-dots shrink-0" aria-label="recently updated" aria-hidden="true">
                           <span /><span /><span />
                         </span>
                       </div>
@@ -816,24 +823,31 @@ defineExpose({ openNewSpaceDialog })
   100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
 }
 
-/* PR badge shimmer — traveling light on "in review" PR links */
+/* PR badge shimmer — traveling light on "in review" PR links.
+   GPU-accelerated: ::before overlay uses transform: translateX (compositor-only),
+   replacing the former background-position animation that forced CPU paint. */
 .pr-shimmer {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+}
+.pr-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    hsl(var(--primary) / 0.35) 50%,
+    hsl(var(--primary) / 0.45) 50%,
     transparent 100%
-  ) no-repeat;
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  );
+  transform: translateX(-100%);
   animation: pr-shimmer-travel 2.4s ease-in-out infinite;
+  pointer-events: none;
 }
 @keyframes pr-shimmer-travel {
-  0%   { background-position: 150% center; }
-  100% { background-position: -50% center; }
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(200%); }
 }
 
 /* Spawn warp — new agents warp in like a portal opening (scale + ring) */
