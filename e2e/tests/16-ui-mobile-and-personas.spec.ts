@@ -19,19 +19,9 @@ test.describe('UI: ConversationsView mobile single-column', () => {
   test('on mobile: conversation list is visible, thread panel is hidden initially', async ({
     page,
     space,
-    api,
   }) => {
-    await api.post(
-      `/spaces/${space}/agent/MobileBot`,
-      { status: 'active', summary: 'MobileBot: mobile test' },
-      'MobileBot',
-    )
-    await api.post(
-      `/spaces/${space}/agent/MobileBot/message`,
-      { message: 'Mobile test message' },
-      'boss',
-    )
-
+    // Do NOT add any agents/messages — empty space means no conversations,
+    // so the auto-select watch cannot fire and the list stays visible.
     await page.setViewportSize(MOBILE_VIEWPORT)
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
@@ -40,10 +30,8 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     const convList = page.locator('aside[aria-label="Conversations"]')
     await expect(convList).toBeVisible({ timeout: 10_000 })
 
-    // Thread panel should be hidden (no conversation selected yet)
-    // The right panel has class "hidden md:flex" when no selectedKey
+    // Thread panel should be hidden (no conversation selected)
     const threadPanel = page.locator('aside[aria-label="Conversations"] ~ div').first()
-    // On mobile with no selection: thread panel has display:none equivalent
     const isHidden = await threadPanel.evaluate(el => {
       const style = window.getComputedStyle(el)
       return style.display === 'none'
@@ -71,16 +59,11 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
 
-    // Tap the conversation
-    const convBtn = page.getByRole('listbox').getByText('TapBot').first()
-    await expect(convBtn).toBeVisible({ timeout: 10_000 })
-    await convBtn.click()
-    await page.waitForTimeout(500)
+    // Auto-select fires and selects TapBot (the only conversation).
+    // The thread panel is already showing — verify the message is visible.
+    await expect(page.getByText('Tap to open this thread').first()).toBeVisible({ timeout: 10_000 })
 
-    // Thread panel should now be visible
-    await expect(page.getByText('Tap to open this thread').first()).toBeVisible({ timeout: 5_000 })
-
-    // Conversation list should now be hidden (hidden md:flex with selectedKey set)
+    // With a conversation selected on mobile, list must be hidden
     const convList = page.locator('aside[aria-label="Conversations"]')
     const listHidden = await convList.evaluate(el => {
       const style = window.getComputedStyle(el)
@@ -109,16 +92,11 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
 
-    // Open the thread
-    const convBtn = page.getByRole('listbox').getByText('BackBot').first()
-    await expect(convBtn).toBeVisible({ timeout: 10_000 })
-    await convBtn.click()
-    await page.waitForTimeout(500)
+    // Auto-select fires and selects BackBot (the only conversation).
+    // Thread should be visible.
+    await expect(page.getByText('Back button test').first()).toBeVisible({ timeout: 10_000 })
 
-    // Thread should be visible
-    await expect(page.getByText('Back button test').first()).toBeVisible({ timeout: 5_000 })
-
-    // Click the back button
+    // Click the back button to return to the list
     const backBtn = page.getByRole('button', { name: 'Back to conversation list' })
     await expect(backBtn).toBeVisible({ timeout: 5_000 })
     await backBtn.click()
@@ -183,12 +161,15 @@ test.describe('UI: Persona display on agent cards', () => {
     })
     const persona = (await personaResp.json()) as { id: string; version: number }
 
-    // Assign persona to agent config
+    // Assign persona to agent config BEFORE navigating
     await api.put(`/spaces/${space}/agent/PersonaAgent/config`, {
       personas: [{ id: persona.id, pinned_version: persona.version }],
     })
 
+    // Navigate and reload to ensure the page sees the latest config
     await page.goto(`${BASE}/${encodeURIComponent(space)}`)
+    await page.waitForTimeout(500)
+    await page.reload()
     await page.waitForTimeout(1500)
 
     // Persona name badge should appear on the agent card
@@ -238,16 +219,15 @@ test.describe('UI: Kanban mobile filter toolbar', () => {
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
     await page.waitForTimeout(1000)
 
-    // Toggle should initially show filters closed (search input not visible)
-    const searchInput = page.getByPlaceholder('Search tasks…').first()
-    // On mobile, search is inside the collapsed filter panel (not always visible)
-
-    // Click toggle
+    // Click toggle to open filter panel
     const filterToggle = page.getByRole('button', { name: /Show filters|Hide filters/ })
     await filterToggle.click()
     await page.waitForTimeout(300)
 
-    // Filter panel should now be open with search input visible
+    // Filter panel should now be open — the mobile search input (inside the
+    // expanded panel) must be visible. Use filter({ visible: true }) to avoid
+    // picking the desktop-only hidden input.
+    const searchInput = page.getByPlaceholder('Search tasks…').filter({ visible: true }).first()
     await expect(searchInput).toBeVisible({ timeout: 5_000 })
   })
 
