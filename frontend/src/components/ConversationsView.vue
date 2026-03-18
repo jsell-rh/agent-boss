@@ -12,7 +12,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown, ChevronUp, Crown } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown, ChevronUp, Crown, ChevronLeft } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -616,8 +616,11 @@ watch(composeRecipient, async (agent) => {
 <template>
   <div class="flex h-full min-h-0 relative overflow-hidden">
     <!-- Left panel: conversation list -->
+    <!-- On mobile: full-width when no thread selected, hidden when thread open -->
+    <!-- On desktop: always visible at fixed width -->
     <aside
-      class="w-72 shrink-0 border-r flex flex-col min-h-0"
+      :class="selectedKey ? 'hidden md:flex md:w-72 md:shrink-0' : 'flex w-full md:w-72 md:shrink-0'"
+      class="border-r flex-col min-h-0"
       aria-label="Conversations"
     >
       <!-- Search + New Message button -->
@@ -869,12 +872,24 @@ watch(composeRecipient, async (agent) => {
     </aside>
 
     <!-- Right panel: thread view + task widget -->
-    <div class="flex-1 flex flex-row min-h-0 min-w-0">
+    <!-- On mobile: full-width when a thread is selected, hidden otherwise -->
+    <div
+      :class="!selectedKey ? 'hidden md:flex' : 'flex'"
+      class="flex-1 flex-row min-h-0 min-w-0"
+    >
       <!-- Thread column -->
       <div class="flex-1 flex flex-col min-h-0 min-w-0 relative">
       <template v-if="selectedConversation">
         <!-- Thread header -->
         <div class="flex items-center gap-3 px-4 py-3 border-b shrink-0">
+          <!-- Back to list (mobile only) -->
+          <button
+            class="md:hidden shrink-0 flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors -ml-1 pr-1"
+            aria-label="Back to conversation list"
+            @click="selectedKey = null"
+          >
+            <ChevronLeft class="size-5" />
+          </button>
           <div class="relative w-9 h-9 shrink-0" aria-hidden="true">
             <AgentAvatar :name="selectedConversation.participants[0]" :size="26" class="absolute top-0 left-0" />
             <AgentAvatar
@@ -1181,10 +1196,10 @@ watch(composeRecipient, async (agent) => {
       </div>
       </div><!-- end thread column -->
 
-      <!-- Task widget panel -->
+      <!-- Task widget panel (desktop only — would crowd mobile thread view) -->
       <aside
         v-if="composeRecipient"
-        class="w-60 shrink-0 border-l flex flex-col min-h-0"
+        class="hidden md:flex w-60 shrink-0 border-l flex-col min-h-0"
         aria-label="Agent tasks"
       >
         <div class="flex items-center justify-between px-3 py-2 border-b shrink-0">

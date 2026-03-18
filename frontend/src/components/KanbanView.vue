@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, Plus, RefreshCw, Search, AlertCircle } from 'lucide-vue-next'
+import { ChevronDown, Plus, RefreshCw, Search, AlertCircle, SlidersHorizontal } from 'lucide-vue-next'
 import KanbanColumn from './KanbanColumn.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
@@ -33,6 +33,7 @@ const filterAssignee = ref('')
 const filterLabel = ref('')
 const filterSearch = ref('')
 const filterOverdueOnly = ref(false)
+const filtersOpen = ref(false) // mobile filter panel toggle
 
 // ── Panel / Dialog ─────────────────────────────────────────────────
 const selectedTask = ref<Task | null>(null)
@@ -275,88 +276,151 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full overflow-hidden">
     <!-- Toolbar -->
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-border shrink-0">
-      <h2 class="text-sm font-semibold">Kanban Board</h2>
-      <span v-if="!loading" class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
+    <div class="flex flex-col border-b border-border shrink-0">
+      <!-- Main toolbar row -->
+      <div class="flex items-center gap-x-3 gap-y-2 px-4 sm:px-6 py-2 sm:py-3">
+        <h2 class="text-sm font-semibold">Kanban Board</h2>
+        <span v-if="!loading" class="text-xs text-muted-foreground">{{ filteredTasks.length }} task{{ filteredTasks.length !== 1 ? 's' : '' }}</span>
 
-      <!-- Search input -->
-      <div class="relative flex items-center">
-        <Search class="absolute left-2 size-3 text-muted-foreground pointer-events-none" />
-        <input
-          v-model="filterSearch"
-          type="search"
-          placeholder="Search tasks…"
-          class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-32 sm:w-40"
-          data-search-focus
-        />
+        <!-- Search input (desktop) -->
+        <div class="relative hidden sm:flex items-center">
+          <Search class="absolute left-2 size-3 text-muted-foreground pointer-events-none" />
+          <input
+            v-model="filterSearch"
+            type="search"
+            placeholder="Search tasks…"
+            class="pl-6 pr-2 h-7 text-xs border border-border rounded bg-background outline-none focus:border-primary w-32 sm:w-40"
+            data-search-focus
+          />
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
+          <!-- Mobile: filter toggle button -->
+          <Button
+            variant="outline"
+            size="sm"
+            class="sm:hidden h-8 w-8 p-0 shrink-0"
+            :class="(filterAssignee || filterLabel || filterOverdueOnly || filterSearch) ? 'border-primary text-primary' : ''"
+            :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+            @click="filtersOpen = !filtersOpen"
+          >
+            <SlidersHorizontal class="size-3.5" />
+          </Button>
+
+          <!-- Desktop: inline filter controls -->
+          <div class="hidden sm:flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              :class="['h-7 text-xs gap-1', filterOverdueOnly ? 'border-destructive text-destructive' : '']"
+              @click="filterOverdueOnly = !filterOverdueOnly"
+            >
+              <AlertCircle class="size-3" />
+              Overdue
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterAssignee ? 'border-primary text-primary' : '']">
+                  {{ filterAssignee || 'All agents' }}
+                  <ChevronDown class="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem :class="{ 'font-semibold': !filterAssignee }" @click="filterAssignee = ''">All agents</DropdownMenuItem>
+                <DropdownMenuItem
+                  v-for="agent in Object.keys(space.agents)"
+                  :key="agent"
+                  :class="{ 'font-semibold': filterAssignee === agent }"
+                  @click="filterAssignee = agent"
+                >{{ agent }}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu v-if="allLabels.length > 0">
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterLabel ? 'border-primary text-primary' : '']">
+                  {{ filterLabel || 'All labels' }}
+                  <ChevronDown class="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem :class="{ 'font-semibold': !filterLabel }" @click="filterLabel = ''">All labels</DropdownMenuItem>
+                <DropdownMenuItem
+                  v-for="label in allLabels"
+                  :key="label"
+                  :class="{ 'font-semibold': filterLabel === label }"
+                  @click="filterLabel = label"
+                >{{ label }}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :disabled="loading" @click="loadTasks">
+            <RefreshCw :class="['size-3.5', loading && 'animate-spin']" />
+          </Button>
+          <Button size="sm" class="h-7 text-xs gap-1" @click="newTaskInitialStatus = 'backlog'; newTaskOpen = true">
+            <Plus class="size-3.5" />
+            <span class="hidden sm:inline">New Task</span>
+          </Button>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2 ml-auto flex-wrap">
-        <!-- Overdue filter -->
-        <Button
-          variant="outline"
-          size="sm"
-          :class="['h-7 text-xs gap-1', filterOverdueOnly ? 'border-destructive text-destructive' : '']"
-          @click="filterOverdueOnly = !filterOverdueOnly"
-        >
-          <AlertCircle class="size-3" />
-          Overdue
-        </Button>
-
-        <!-- Filter by assignee -->
-        <DropdownMenu>
-          <DropdownMenuTrigger as-child>
-            <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterAssignee ? 'border-primary text-primary' : '']">
-              {{ filterAssignee || 'All agents' }}
-              <ChevronDown class="size-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem :class="{ 'font-semibold': !filterAssignee }" @click="filterAssignee = ''">
-              All agents
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              v-for="agent in Object.keys(space.agents)"
-              :key="agent"
-              :class="{ 'font-semibold': filterAssignee === agent }"
-              @click="filterAssignee = agent"
-            >
-              {{ agent }}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <!-- Filter by label -->
-        <DropdownMenu v-if="allLabels.length > 0">
-          <DropdownMenuTrigger as-child>
-            <Button variant="outline" size="sm" :class="['h-7 text-xs gap-1', filterLabel ? 'border-primary text-primary' : '']">
-              {{ filterLabel || 'All labels' }}
-              <ChevronDown class="size-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem :class="{ 'font-semibold': !filterLabel }" @click="filterLabel = ''">
-              All labels
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              v-for="label in allLabels"
-              :key="label"
-              :class="{ 'font-semibold': filterLabel === label }"
-              @click="filterLabel = label"
-            >
-              {{ label }}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :disabled="loading" @click="loadTasks">
-          <RefreshCw :class="['size-3.5', loading && 'animate-spin']" />
-        </Button>
-
-        <Button size="sm" class="h-7 text-xs gap-1" @click="newTaskInitialStatus = 'backlog'; newTaskOpen = true">
-          <Plus class="size-3.5" />
-          New Task
-        </Button>
+      <!-- Mobile: expandable filter panel -->
+      <div v-if="filtersOpen" class="sm:hidden flex flex-col gap-2 px-4 pb-3 border-t pt-3">
+        <!-- Search -->
+        <div class="relative flex items-center">
+          <Search class="absolute left-2 size-3 text-muted-foreground pointer-events-none" />
+          <input
+            v-model="filterSearch"
+            type="search"
+            placeholder="Search tasks…"
+            class="pl-6 pr-2 h-8 text-sm border border-border rounded bg-background outline-none focus:border-primary w-full"
+          />
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            :class="['h-8 text-xs gap-1', filterOverdueOnly ? 'border-destructive text-destructive' : '']"
+            @click="filterOverdueOnly = !filterOverdueOnly"
+          >
+            <AlertCircle class="size-3" />
+            Overdue
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button variant="outline" size="sm" :class="['h-8 text-xs gap-1', filterAssignee ? 'border-primary text-primary' : '']">
+                {{ filterAssignee || 'All agents' }}
+                <ChevronDown class="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem :class="{ 'font-semibold': !filterAssignee }" @click="filterAssignee = ''">All agents</DropdownMenuItem>
+              <DropdownMenuItem
+                v-for="agent in Object.keys(space.agents)"
+                :key="agent"
+                :class="{ 'font-semibold': filterAssignee === agent }"
+                @click="filterAssignee = agent"
+              >{{ agent }}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu v-if="allLabels.length > 0">
+            <DropdownMenuTrigger as-child>
+              <Button variant="outline" size="sm" :class="['h-8 text-xs gap-1', filterLabel ? 'border-primary text-primary' : '']">
+                {{ filterLabel || 'All labels' }}
+                <ChevronDown class="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem :class="{ 'font-semibold': !filterLabel }" @click="filterLabel = ''">All labels</DropdownMenuItem>
+              <DropdownMenuItem
+                v-for="label in allLabels"
+                :key="label"
+                :class="{ 'font-semibold': filterLabel === label }"
+                @click="filterLabel = label"
+              >{{ label }}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
 
