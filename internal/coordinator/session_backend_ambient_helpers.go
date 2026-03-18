@@ -69,17 +69,7 @@ func generateMsgID() string {
 	return fmt.Sprintf("%x", buf)
 }
 
-// splitEnvURL splits a URL value into scheme and host parts to avoid the
-// backend API's rejection of env var values containing "://".
-// For "https://example.com:8899", it sets KEY_SCHEME="https" and KEY_HOST="example.com:8899".
-func splitEnvURL(envVars map[string]string, key, url string) {
-	if idx := strings.Index(url, "://"); idx >= 0 {
-		envVars[key+"_SCHEME"] = url[:idx]
-		envVars[key+"_HOST"] = url[idx+3:]
-	} else {
-		envVars[key] = url
-	}
-}
+
 
 // validLabelValue reports whether s is a valid Kubernetes label value.
 // A valid label value must be 63 characters or less, and must match
