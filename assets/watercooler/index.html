@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🛸 Watercooler</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #070b18; overflow: hidden; font-family: 'Courier New', monospace; }
+#hud {
+  position: fixed; top: 0; left: 0; right: 0; height: 44px;
+  background: rgba(7,11,24,0.92); border-bottom: 1px solid #1a2540;
+  display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 10;
+}
+#sse-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #ef5350;
+  flex-shrink: 0; transition: background 0.4s;
+}
+#sse-dot.on { background: #66bb6a; box-shadow: 0 0 6px #66bb6a66; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+#space-title { color: #90caf9; font-size: 15px; font-weight: bold; letter-spacing: .4px; }
+#agent-count { color: #546e7a; font-size: 12px; }
+#back-link {
+  margin-left: auto; color: #546e7a; font-size: 12px; text-decoration: none;
+  border: 1px solid #1a2540; padding: 3px 10px; border-radius: 4px;
+  transition: color .2s, border-color .2s;
+}
+#back-link:hover { color: #90caf9; border-color: #90caf9; }
+#legend {
+  position: fixed; bottom: 12px; left: 12px; background: rgba(7,11,24,0.82);
+  border: 1px solid #1a2540; border-radius: 8px; padding: 8px 12px;
+  font-size: 11px; line-height: 1.9; z-index: 10;
+}
+.li { display: flex; align-items: center; gap: 8px; color: #78909c; }
+.ld { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+canvas { display: block; position: fixed; top: 44px; left: 0; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="sse-dot"></div>
+  <span id="space-title">🛸 Watercooler</span>
+  <span id="agent-count"></span>
+  <a id="back-link" href="#" onclick="history.back();return false">← back</a>
+</div>
+<canvas id="canvas"></canvas>
+<div id="legend">
+  <div class="li"><div class="ld" style="background:#66bb6a"></div>active / working</div>
+  <div class="li"><div class="ld" style="background:#78909c"></div>idle / done</div>
+  <div class="li"><div class="ld" style="background:#ef5350"></div>blocked / error</div>
+</div>
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const TW = 64;           // tile width  (isometric x-axis stride in px)
+const TH = 32;           // tile height (isometric y-axis stride in px)
+const ROOM_W = 11;       // room tiles wide
+const ROOM_D = 8;        // room tiles deep
+const WALL_H = 54;       // wall height in px above floor
+
+const C = {
+  bg:          '#070b18',
+  floorA:      '#0d1426',
+  floorB:      '#0f1830',
+  grid:        '#17213a',
+  wallL:       '#0b1122',
+  wallB:       '#0c1324',
+  wallTop:     '#162035',
+  deskTop:     '#172436',
+  deskSide:    '#0c1820',
+  monitor:     '#0a2030',
+  monitorOn:   '#4fc3f7',
+  monitorErr:  '#ef5350',
+  monitorIdle: '#37474f',
+  coolerBody:  '#0d3a6e',
+  coolerFace:  '#0a2d56',
+  coolerTop:   '#1565c0',
+  coolerWater: '#4fc3f7',
+};
+
+// Workstation iso positions — up to 20 agents
+const STATIONS = [
+  // Back wall (y=1, x varies)
+  {ix:2,iy:1},{ix:4,iy:1},{ix:6,iy:1},{ix:8,iy:1},{ix:10,iy:1},
+  // Left wall (x=1, y varies)
+  {ix:1,iy:2},{ix:1,iy:4},{ix:1,iy:6},
+  // Right wall (x=10, y varies)
+  {ix:10,iy:2},{ix:10,iy:4},{ix:10,iy:6},
+  // Front row (y=7, x varies)
+  {ix:3,iy:7},{ix:5,iy:7},{ix:7,iy:7},{ix:9,iy:7},
+  // Extra interior
+  {ix:3,iy:3},{ix:8,iy:3},{ix:4,iy:5},{ix:7,iy:5},{ix:5,iy:2},
+];
+
+const COOLER_ISO = {ix:5.5, iy:3.5};
+
+// Wander spots near watercooler
+const WANDER_ISO = [
+  {ix:4.5,iy:3},{ix:6,iy:2.8},{ix:7,iy:3.8},
+  {ix:4,iy:4.5},{ix:6.5,iy:4.5},{ix:5.2,iy:5},{ix:5,iy:3},
+];
+
+// ============================================================
+// STATE
+// ============================================================
+let canvas, ctx, W, H, originX, originY;
+let agents = {};
+let envelopes = [];
+let particles = [];
+let spaceName = '';
+let lastTime = 0;
+
+// ============================================================
+// GEOMETRY
+// ============================================================
+function iso(ix, iy) {
+  return {
+    x: originX + (ix - iy) * (TW / 2),
+    y: originY + (ix + iy) * (TH / 2),
+  };
+}
+
+// ============================================================
+// COLOR UTILS
+// ============================================================
+function hashColor(name) {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return {hue, s: 72, l: 58};
+}
+function css({hue,s,l}) { return `hsl(${hue},${s}%,${l}%)`; }
+function dark({hue,s,l}, p) { return `hsl(${hue},${s}%,${Math.max(0,l-p)}%)`; }
+function lite({hue,s,l}, p) { return `hsl(${hue},${s}%,${Math.min(100,l+p)}%)`; }
+
+// ============================================================
+// GEOMETRY HELPER
+// ============================================================
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.arcTo(x+w, y,   x+w, y+r,   r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);
+  ctx.arcTo(x,   y+h, x, y+h-r, r);
+  ctx.lineTo(x,   y+r);
+  ctx.arcTo(x,   y,   x+r, y,   r);
+  ctx.closePath();
+}
+
+// ============================================================
+// AGENT STATE MACHINE
+// ============================================================
+const ST = {WORKING:'w', WANDERING:'n', BLOCKED:'b', DELIVERING:'d', RETURNING:'r'};
+
+class Agent {
+  constructor(name, idx) {
+    this.name    = name;
+    this.col     = hashColor(name);
+    this.si      = STATIONS[idx % STATIONS.length];
+    this.station = iso(this.si.ix, this.si.iy);
+    this.pos     = {x: this.station.x, y: this.station.y};
+    this.target  = {x: this.station.x, y: this.station.y};
+    this.st      = ST.WORKING;
+    this.status  = 'active';
+    this.bob     = Math.random() * Math.PI * 2;
+    this.walkPh  = Math.random() * Math.PI * 2;
+    this.shakeT  = 0;
+    this._linger = 0;
+    this._onArrive = null;
+  }
+
+  applyStatus(status) {
+    this.status = status;
+    const idle    = status==='idle'||status==='done';
+    const blocked = status==='blocked'||status==='error';
+    const active  = !idle && !blocked;
+    if (this.st === ST.DELIVERING || this.st === ST.RETURNING) return; // mid-animation
+    if (blocked)   { this.st = ST.BLOCKED;   this.target = {...this.station}; this.shakeT=0; }
+    else if (idle) { this.st = ST.WANDERING; this._pickWander(); }
+    else           { this.st = ST.WORKING;   this.target = {...this.station}; }
+  }
+
+  _pickWander() {
+    const w = WANDER_ISO[Math.floor(Math.random() * WANDER_ISO.length)];
+    this.target = iso(w.ix, w.iy);
+  }
+
+  deliverTo(other) {
+    if (this.st === ST.DELIVERING) return;
+    this.st = ST.DELIVERING;
+    this.target = {x: other.pos.x, y: other.pos.y};
+    this._onArrive = () => {
+      this.st = ST.RETURNING;
+      this.target = {...this.station};
+      this._onArrive = null;
+    };
+  }
+
+  update(dt, t) {
+    this.bob    += dt * 1.7;
+    const dx = this.target.x - this.pos.x;
+    const dy = this.target.y - this.pos.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const speed = this.st===ST.WANDERING ? 75 : 140;
+    if (dist > 2) {
+      const step = Math.min(dist, speed * dt);
+      this.pos.x += (dx/dist)*step;
+      this.pos.y += (dy/dist)*step;
+      this.walkPh += dt * 8;
+    } else {
+      if (this.st===ST.WANDERING) {
+        if (!this._linger) this._linger = t + 1.5 + Math.random()*3;
+        if (t >= this._linger) { this._linger = 0; this._pickWander(); }
+      } else if (this.st===ST.DELIVERING && this._onArrive) {
+        this._onArrive();
+      } else if (this.st===ST.RETURNING) {
+        const bl = this.status==='blocked'||this.status==='error';
+        const id = this.status==='idle'||this.status==='done';
+        if (bl) this.st = ST.BLOCKED;
+        else if (id) { this.st = ST.WANDERING; this._pickWander(); }
+        else this.st = ST.WORKING;
+      }
+    }
+    if (this.st===ST.BLOCKED) this.shakeT += dt*9;
+  }
+
+  draw(ctx, t) {
+    let sx = this.pos.x, sy = this.pos.y - 14;
+    if (this.st===ST.WORKING || this.st===ST.BLOCKED)
+      sy += Math.sin(this.bob) * 2.2;
+    if (this.st===ST.BLOCKED)
+      sx += Math.sin(this.shakeT*1.2) * 2.4;
+    drawMate(ctx, sx, sy, this.col, this.name, this.st, this.walkPh, t);
+  }
+}
+
+// ============================================================
+// DRAW CREWMATE
+// ============================================================
+function drawMate(ctx, cx, cy, col, name, st, wph, t) {
+  const s = 26;
+  const moving = st===ST.WANDERING||st===ST.DELIVERING||st===ST.RETURNING;
+  const blocked = st===ST.BLOCKED;
+  const legSwing = moving ? Math.sin(wph)*5 : 0;
+
+  // Drop shadow
+  ctx.save(); ctx.globalAlpha = 0.22;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(cx, cy+s*0.95, s*0.38, s*0.1, 0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // Backpack
+  ctx.fillStyle = dark(col, 18);
+  rr(ctx, cx+s*0.18, cy+s*0.0, s*0.22, s*0.38, 3); ctx.fill();
+  ctx.fillStyle = dark(col, 8);
+  rr(ctx, cx+s*0.21, cy+s*0.05, s*0.1, s*0.13, 2); ctx.fill();
+
+  // Body
+  ctx.fillStyle = css(col);
+  ctx.beginPath(); ctx.ellipse(cx, cy+s*0.27, s*0.37, s*0.43, 0,0,Math.PI*2); ctx.fill();
+  // Body shading
+  ctx.fillStyle = dark(col, 12);
+  ctx.beginPath(); ctx.ellipse(cx+s*0.1, cy+s*0.33, s*0.14,s*0.19, 0.4,0,Math.PI*2); ctx.fill();
+
+  // Helmet
+  ctx.fillStyle = css(col);
+  ctx.beginPath(); ctx.arc(cx, cy, s*0.29, 0, Math.PI*2); ctx.fill();
+
+  // Visor dark bg
+  ctx.fillStyle = blocked ? 'rgba(160,20,20,.9)' : 'rgba(15,35,70,.88)';
+  ctx.beginPath(); ctx.ellipse(cx+s*0.04, cy+s*0.02, s*0.19, s*0.13, -0.18,0,Math.PI*2); ctx.fill();
+
+  // Visor glass
+  ctx.fillStyle = blocked ? 'rgba(255,80,80,.65)' : 'rgba(90,195,255,.62)';
+  ctx.beginPath(); ctx.ellipse(cx+s*0.04, cy+s*0.02, s*0.19, s*0.13, -0.18,0,Math.PI*2); ctx.fill();
+
+  // Visor glint
+  ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.beginPath(); ctx.ellipse(cx-s*0.03, cy-s*0.04, s*0.07, s*0.04, -0.5,0,Math.PI*2); ctx.fill();
+
+  // Legs
+  ctx.fillStyle = dark(col, 22);
+  rr(ctx, cx-s*0.22, cy+s*0.62, s*0.16, s*0.24+legSwing, 4); ctx.fill();
+  rr(ctx, cx+s*0.06, cy+s*0.62, s*0.16, s*0.24-legSwing, 4); ctx.fill();
+
+  // Blocked X
+  if (blocked) {
+    ctx.strokeStyle='rgba(255,190,190,.8)'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(cx-s*.09, cy-s*.05); ctx.lineTo(cx+s*.17, cy+s*.09);
+    ctx.moveTo(cx+s*.17, cy-s*.05); ctx.lineTo(cx-s*.09, cy+s*.09);
+    ctx.stroke(); ctx.lineWidth=1;
+  }
+
+  // Name label
+  ctx.font = "10px 'Courier New',monospace";
+  ctx.textAlign='center'; ctx.textBaseline='bottom';
+  const tw = ctx.measureText(name).width;
+  rr(ctx, cx-tw/2-3, cy-s*0.44, tw+6, 13, 3);
+  ctx.fillStyle='rgba(7,11,24,.75)'; ctx.fill();
+  ctx.fillStyle = blocked ? '#ff8a80' : 'rgba(220,235,255,.9)';
+  ctx.fillText(name, cx, cy-s*0.3);
+  ctx.textBaseline='alphabetic';
+}
+
+// ============================================================
+// DRAW ROOM
+// ============================================================
+function drawFloor(ctx) {
+  for (let iy = 0; iy < ROOM_D; iy++) {
+    for (let ix = 0; ix < ROOM_W; ix++) {
+      const p = iso(ix, iy);
+      ctx.beginPath();
+      ctx.moveTo(p.x,        p.y);
+      ctx.lineTo(p.x+TW/2,   p.y+TH/2);
+      ctx.lineTo(p.x,        p.y+TH);
+      ctx.lineTo(p.x-TW/2,   p.y+TH/2);
+      ctx.closePath();
+      ctx.fillStyle = (ix+iy)%2 ? C.floorA : C.floorB;
+      ctx.fill();
+      ctx.strokeStyle = C.grid; ctx.lineWidth=.5; ctx.stroke();
+    }
+  }
+}
+
+function drawWalls(ctx) {
+  // Left wall: along y=0 (back-left edge)
+  for (let ix = 0; ix < ROOM_W; ix++) {
+    const p = iso(ix, 0);
+    // Left face
+    ctx.fillStyle = C.wallL;
+    ctx.beginPath();
+    ctx.moveTo(p.x-TW/2, p.y+TH/2);
+    ctx.lineTo(p.x-TW/2, p.y+TH/2-WALL_H);
+    ctx.lineTo(p.x,      p.y      -WALL_H);
+    ctx.lineTo(p.x,      p.y);
+    ctx.closePath(); ctx.fill();
+    // Top ledge
+    ctx.fillStyle = C.wallTop;
+    ctx.beginPath();
+    ctx.moveTo(p.x,      p.y      -WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y+TH/2-WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y+TH/2);
+    ctx.lineTo(p.x,      p.y);
+    ctx.closePath(); ctx.fill();
+    // Right face
+    ctx.fillStyle = C.wallB;
+    ctx.beginPath();
+    ctx.moveTo(p.x,      p.y      -WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y+TH/2-WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y+TH/2);
+    ctx.lineTo(p.x,      p.y);
+    ctx.closePath(); ctx.fill();
+  }
+  // Back wall: along x=0 (back-right edge)
+  for (let iy = 1; iy < ROOM_D; iy++) {
+    const p = iso(0, iy);
+    ctx.fillStyle = C.wallB;
+    ctx.beginPath();
+    ctx.moveTo(p.x,      p.y);
+    ctx.lineTo(p.x,      p.y      -WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y-TH/2-WALL_H);
+    ctx.lineTo(p.x+TW/2, p.y-TH/2);
+    ctx.closePath(); ctx.fill();
+    // Top
+    ctx.fillStyle = C.wallTop;
+    ctx.beginPath();
+    ctx.moveTo(p.x,      p.y      -WALL_H);
+    ctx.lineTo(p.x-TW/2, p.y+TH/2-WALL_H);
+    ctx.lineTo(p.x-TW/2, p.y+TH/2);
+    ctx.lineTo(p.x,      p.y);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawWorkstation(ctx, si, status) {
+  const p = iso(si.ix, si.iy);
+  const cx=p.x, cy=p.y;
+  const dw=TW*0.3, dd=TH*0.3, dH=16;
+
+  // Desk left face
+  ctx.fillStyle = C.deskSide;
+  ctx.beginPath();
+  ctx.moveTo(cx-dw/2, cy); ctx.lineTo(cx-dw/2, cy-dH);
+  ctx.lineTo(cx,      cy-dH-dd/2); ctx.lineTo(cx, cy-dd/2);
+  ctx.closePath(); ctx.fill();
+  // Desk right face
+  ctx.fillStyle = '#0a1420';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-dd/2); ctx.lineTo(cx, cy-dH-dd/2);
+  ctx.lineTo(cx+dw/2, cy-dH); ctx.lineTo(cx+dw/2, cy);
+  ctx.closePath(); ctx.fill();
+  // Desk top
+  ctx.fillStyle = C.deskTop;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-dH-dd/2); ctx.lineTo(cx-dw/2, cy-dH);
+  ctx.lineTo(cx, cy-dH+dd/2); ctx.lineTo(cx+dw/2, cy-dH);
+  ctx.closePath(); ctx.fill();
+
+  // Monitor
+  const mh = 18, mY = cy-dH-dd/2-mh;
+  ctx.fillStyle = '#060e18';
+  ctx.fillRect(cx-9, mY-2, 18, mh+2);
+  const sc = status==='blocked'||status==='error'
+    ? C.monitorErr
+    : (status==='idle'||status==='done' ? C.monitorIdle : C.monitorOn);
+  ctx.fillStyle = sc;
+  ctx.globalAlpha = 0.75 + Math.sin(Date.now()/900)*0.08;
+  ctx.fillRect(cx-7, mY, 14, mh-2);
+  ctx.globalAlpha = 1;
+  // Code lines
+  if (status==='active'||status==='in_progress'||status==='review') {
+    ctx.fillStyle = 'rgba(144,202,249,.45)';
+    [4,7,11,14].forEach((y,i) => ctx.fillRect(cx-5, mY+y, 4+i*2, 1.5));
+  }
+  // Monitor stand
+  ctx.fillStyle = '#1a2838'; ctx.fillRect(cx-3, mY+mh, 6, 3);
+}
+
+function drawWatercooler(ctx, t) {
+  const p = iso(COOLER_ISO.ix, COOLER_ISO.iy);
+  const cx=p.x, cy=p.y - 8;
+  const bw=TW*0.32, bd=TH*0.32, bH=52;
+
+  // Cabinet left face
+  ctx.fillStyle = C.coolerBody;
+  ctx.beginPath();
+  ctx.moveTo(cx-bw/2, cy); ctx.lineTo(cx-bw/2, cy-bH);
+  ctx.lineTo(cx,      cy-bH-bd/2); ctx.lineTo(cx, cy-bd/2);
+  ctx.closePath(); ctx.fill();
+  // Cabinet right face
+  ctx.fillStyle = C.coolerFace;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-bd/2); ctx.lineTo(cx, cy-bH-bd/2);
+  ctx.lineTo(cx+bw/2, cy-bH); ctx.lineTo(cx+bw/2, cy);
+  ctx.closePath(); ctx.fill();
+  // Cabinet top
+  ctx.fillStyle = C.coolerTop;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-bH-bd/2); ctx.lineTo(cx-bw/2, cy-bH);
+  ctx.lineTo(cx, cy-bH+bd/2); ctx.lineTo(cx+bw/2, cy-bH);
+  ctx.closePath(); ctx.fill();
+
+  // Panel details on front face
+  ctx.fillStyle = '#1565c088'; ctx.fillRect(cx+2, cy-bH*0.55, bw*0.3, 8);
+  ctx.fillStyle = '#4fc3f755'; ctx.fillRect(cx+2, cy-bH*0.4,  bw*0.15, 4);
+
+  // Tap
+  ctx.fillStyle = '#546e7a';
+  ctx.fillRect(cx-bw*0.3, cy-bH*0.28, 9, 4);
+  ctx.fillRect(cx-bw*0.3, cy-bH*0.28+4, 3, 5);
+
+  // Water jug (bottle on top)
+  const jy = cy-bH-bd/2-28;
+  // Jug body (glass look)
+  ctx.fillStyle = '#90caf9'; ctx.globalAlpha=0.22;
+  ctx.beginPath(); ctx.ellipse(cx, jy+8, bw*0.24, bd*0.3, 0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  // Neck
+  ctx.fillStyle='rgba(187,222,251,.5)';
+  ctx.fillRect(cx-bw*0.07, jy, bw*0.14, 16);
+  // Cap
+  ctx.fillStyle='#1976d2'; ctx.fillRect(cx-bw*0.09, jy-5, bw*0.18, 7);
+  // Water inside jug
+  const wl = Math.sin(t*0.9)*0.06+0.55;
+  ctx.fillStyle=C.coolerWater; ctx.globalAlpha=0.4+Math.sin(t*1.4)*0.08;
+  ctx.beginPath(); ctx.ellipse(cx, jy+8+wl*8, bw*0.2, bd*0.22, 0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+
+  // Ambient glow
+  const g = ctx.createRadialGradient(cx, cy-bH/2, 0, cx, cy-bH/2, 50);
+  g.addColorStop(0, 'rgba(79,195,247,.10)'); g.addColorStop(1, 'transparent');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(cx, cy-bH/2, 50,0,Math.PI*2); ctx.fill();
+}
+
+// ============================================================
+// ENVELOPE ANIMATION
+// ============================================================
+class Envelope {
+  constructor(x,y,tx,ty) {
+    this.x=x; this.y=y; this.tx=tx; this.ty=ty; this.done=false;
+  }
+  update(dt) {
+    const dx=this.tx-this.x, dy=this.ty-this.y;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if (d<4) { this.done=true; spawnBurst(this.tx,this.ty); return; }
+    const sp=210, step=Math.min(d,sp*dt);
+    this.x+=dx/d*step; this.y+=dy/d*step;
+  }
+  draw(ctx) {
+    if(this.done) return;
+    const s=9;
+    rr(ctx, this.x-s, this.y-s*.65, s*2, s*1.3, 2);
+    ctx.fillStyle='#ffd54f'; ctx.fill();
+    ctx.strokeStyle='#f57f17'; ctx.lineWidth=1; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(this.x-s, this.y-s*.65);
+    ctx.lineTo(this.x,   this.y+s*.1);
+    ctx.lineTo(this.x+s, this.y-s*.65);
+    ctx.strokeStyle='#e65100'; ctx.stroke();
+    // trail dot
+    ctx.fillStyle='rgba(255,213,79,.35)';
+    ctx.beginPath(); ctx.arc(this.x, this.y, 3,0,Math.PI*2); ctx.fill();
+  }
+}
+
+class Particle {
+  constructor(x,y,col) {
+    this.x=x; this.y=y;
+    this.vx=(Math.random()-.5)*180;
+    this.vy=(Math.random()-.5)*180-40;
+    this.life=1; this.col=col;
+    this.r=1.5+Math.random()*2.5;
+  }
+  update(dt) { this.x+=this.vx*dt; this.y+=this.vy*dt; this.vy+=180*dt; this.life-=dt*2.2; }
+  draw(ctx) {
+    ctx.save(); ctx.globalAlpha=Math.max(0,this.life);
+    ctx.fillStyle=this.col;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnBurst(x,y) {
+  const pal=['#ffd54f','#ffb300','#ff7043','#66bb6a','#42a5f5','#ce93d8','#80cbc4'];
+  for(let i=0;i<16;i++) particles.push(new Particle(x,y, pal[i%pal.length]));
+}
+
+// ============================================================
+// AMBIENT STARS
+// ============================================================
+let stars=[];
+function initStars() {
+  stars=[];
+  for(let i=0;i<60;i++) stars.push({x:Math.random()*W, y:Math.random()*(H-44)+44, r:Math.random()*.8+.2, ph:Math.random()*Math.PI*2, sp:.4+Math.random()*.6});
+}
+function drawStars(ctx,t) {
+  for(const s of stars) {
+    ctx.globalAlpha=(0.15+Math.sin(t*s.sp+s.ph)*.08);
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ============================================================
+// RESIZE
+// ============================================================
+function resize() {
+  canvas.width  = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - 44;
+  // Center room horizontally (room spans (ROOM_W+ROOM_D)*TW/2 wide)
+  originX = W/2 - (ROOM_W - ROOM_D)*TW/4;
+  // Place origin so walls fit above top of canvas
+  originY = WALL_H + 20;
+  initStars();
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const t = ts/1000;
+  const dt = Math.min(t-lastTime, 0.05);
+  lastTime = t;
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  drawStars(ctx, t);
+  drawFloor(ctx);
+  drawWalls(ctx);
+
+  // Workstations (before agents — painter's order)
+  const al = Object.values(agents);
+  for (const a of al) drawWorkstation(ctx, a.si, a.status);
+
+  // Watercooler
+  drawWatercooler(ctx, t);
+
+  // Update agents then draw sorted by screen Y
+  for (const a of al) a.update(dt, t);
+  al.sort((a,b) => a.pos.y - b.pos.y);
+  for (const a of al) a.draw(ctx, t);
+
+  // Envelopes
+  envelopes = envelopes.filter(e=>!e.done);
+  for (const e of envelopes) { e.update(dt); e.draw(ctx); }
+
+  // Particles
+  particles = particles.filter(p=>p.life>0);
+  for (const p of particles) { p.update(dt); p.draw(ctx); }
+
+  // Vignette
+  const vg = ctx.createRadialGradient(W/2, H/2, H*.25, W/2, H/2, H*.82);
+  vg.addColorStop(0,'transparent');
+  vg.addColorStop(1,'rgba(4,6,12,.45)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+}
+
+// ============================================================
+// SSE
+// ============================================================
+function connectSSE() {
+  const url = `/spaces/${encodeURIComponent(spaceName)}/events`;
+  const es  = new EventSource(url);
+  const dot = document.getElementById('sse-dot');
+  es.onopen  = () => { dot.className='on'; };
+  es.onerror = () => {
+    dot.className='';
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+  es.addEventListener('agent_updated', ev => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (!d.agent) return;
+      if (!agents[d.agent]) addAgent(d.agent);
+      agents[d.agent].applyStatus(d.status||'idle');
+      updateCount();
+    } catch {}
+  });
+  es.addEventListener('agent_message', ev => {
+    try {
+      const d = JSON.parse(ev.data);
+      const from = d.sender, to = d.agent;
+      if (!from||!to||from===to) return;
+      if (!agents[from]||!agents[to]) return;
+      agents[from].deliverTo(agents[to]);
+      // Fly envelope from sender to recipient
+      envelopes.push(new Envelope(
+        agents[from].pos.x, agents[from].pos.y-30,
+        agents[to].pos.x,   agents[to].pos.y-30
+      ));
+    } catch {}
+  });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function addAgent(name) {
+  if (agents[name]) return;
+  const idx = Object.keys(agents).length;
+  agents[name] = new Agent(name, idx);
+}
+
+function updateCount() {
+  const n = Object.keys(agents).length;
+  document.getElementById('agent-count').textContent = `${n} agent${n!==1?'s':''}`;
+}
+
+async function loadSpace() {
+  try {
+    const res = await fetch(`/spaces/${encodeURIComponent(spaceName)}`,
+      {headers:{Accept:'application/json'}});
+    if (!res.ok) return;
+    const data = await res.json();
+    for (const [name, rec] of Object.entries(data.agents||{})) {
+      addAgent(name);
+      agents[name].applyStatus(rec?.status?.status||'idle');
+    }
+    updateCount();
+    document.title = `🛸 ${spaceName} — Watercooler`;
+    document.getElementById('space-title').textContent = `🛸 ${spaceName}`;
+  } catch(e) {
+    console.warn('loadSpace:', e);
+  }
+}
+
+function init() {
+  canvas = document.getElementById('canvas');
+  ctx    = canvas.getContext('2d');
+
+  // Parse space name from path: /spaces/{space}/watercooler
+  const parts = location.pathname.split('/');
+  spaceName = decodeURIComponent(parts[2] || 'Agent Boss Dev');
+
+  resize();
+  window.addEventListener('resize', () => { resize(); });
+
+  loadSpace().then(() => connectSSE());
+  requestAnimationFrame(loop);
+}
+
+init();
+</script>
+</body>
+</html>
