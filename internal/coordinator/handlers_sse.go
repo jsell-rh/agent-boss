@@ -22,19 +22,26 @@ func (s *Server) broadcastSSE(space, targetAgent, event, data string) {
 			s.agentSSEBuf[key] = s.agentSSEBuf[key][len(s.agentSSEBuf[key])-SSEBufCap:]
 		}
 	}
-	for c := range s.sseClients {
-		if c.space != "" && c.space != space {
-			continue
-		}
+	// Deliver to global clients (space == "") and to space-specific clients.
+	// This is O(clients-in-space) instead of O(all-clients) across all spaces.
+	send := func(c *sseClient) {
 		if c.agent != "" {
 			// Per-agent client: only receive events targeted at exactly this agent.
 			if !strings.EqualFold(c.agent, targetAgent) {
-				continue
+				return
 			}
 		}
 		select {
 		case c.ch <- payload:
 		default:
+		}
+	}
+	for c := range s.sseBySpace[""] {
+		send(c)
+	}
+	if space != "" {
+		for c := range s.sseBySpace[space] {
+			send(c)
 		}
 	}
 }
@@ -64,12 +71,15 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, space string) 
 
 	client := &sseClient{ch: make(chan []byte, 64), space: space}
 	s.sseMu.Lock()
-	s.sseClients[client] = struct{}{}
+	if s.sseBySpace[space] == nil {
+		s.sseBySpace[space] = make(map[*sseClient]struct{})
+	}
+	s.sseBySpace[space][client] = struct{}{}
 	s.sseMu.Unlock()
 
 	defer func() {
 		s.sseMu.Lock()
-		delete(s.sseClients, client)
+		delete(s.sseBySpace[space], client)
 		s.sseMu.Unlock()
 	}()
 

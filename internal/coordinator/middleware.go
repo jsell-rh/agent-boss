@@ -216,6 +216,9 @@ func (s *Server) generateAgentToken(spaceName, agentName string) string {
 		s.logEvent("warning: failed to save per-agent token hash for " + agentName + ": " + err.Error() + " — falling back to workspace token")
 		return s.apiToken
 	}
+	// Cache the new hash so the next verifyAgentToken call hits memory, not DB.
+	cacheKey := strings.ToLower(spaceName + "/" + agentName)
+	s.agentTokenCache.Store(cacheKey, hash)
 	return token
 }
 
@@ -239,7 +242,15 @@ func (s *Server) verifyAgentToken(r *http.Request, spaceName, agentName string) 
 		return true
 	}
 
-	// Per-agent token: verify hash against DB.
+	// Per-agent token: check in-memory cache first to avoid a DB round-trip.
+	cacheKey := strings.ToLower(spaceName + "/" + agentName)
+	sum := sha256.Sum256([]byte(token))
+	presented := hex.EncodeToString(sum[:])
+	if cached, ok := s.agentTokenCache.Load(cacheKey); ok {
+		return hmac.Equal([]byte(presented), []byte(cached.(string)))
+	}
+
+	// Cache miss — look up from DB and populate cache.
 	if s.repo == nil {
 		return false
 	}
@@ -247,8 +258,7 @@ func (s *Server) verifyAgentToken(r *http.Request, spaceName, agentName string) 
 	if err != nil || storedHash == "" {
 		return false
 	}
-	sum := sha256.Sum256([]byte(token))
-	presented := hex.EncodeToString(sum[:])
+	s.agentTokenCache.Store(cacheKey, storedHash)
 	return hmac.Equal([]byte(presented), []byte(storedHash))
 }
 

@@ -468,12 +468,15 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request, spaceNam
 		agent: canonical,
 	}
 	s.sseMu.Lock()
-	s.sseClients[client] = struct{}{}
+	if s.sseBySpace[spaceName] == nil {
+		s.sseBySpace[spaceName] = make(map[*sseClient]struct{})
+	}
+	s.sseBySpace[spaceName][client] = struct{}{}
 	s.sseMu.Unlock()
 
 	defer func() {
 		s.sseMu.Lock()
-		delete(s.sseClients, client)
+		delete(s.sseBySpace[spaceName], client)
 		s.sseMu.Unlock()
 	}()
 

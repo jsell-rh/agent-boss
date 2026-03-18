@@ -59,7 +59,10 @@ func (s *Server) loadSpaceFromRepo(name string) (*KnowledgeSpace, error) {
 		if loadErr != nil {
 			return nil, fmt.Errorf("load messages for %s: %w", a.AgentName, loadErr)
 		}
-		const maxMessages = 50
+		// Load up to 200 messages so the /messages endpoint can correctly detect
+		// has_more (e.g. 200 > 50 limit = true). The previous cap of 50 made
+		// has_more always false at the default limit, hiding the "Load earlier" button.
+		const maxMessages = 200
 		if len(msgs) > maxMessages {
 			msgs = msgs[len(msgs)-maxMessages:]
 		}

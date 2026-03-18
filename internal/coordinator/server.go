@@ -52,7 +52,11 @@ type Server struct {
 	EventLog        []string
 	eventMu         sync.Mutex
 	stopLiveness    chan struct{}
-	sseClients   map[*sseClient]struct{}
+	// sseBySpace partitions SSE clients by space name. The empty-string key ""
+	// holds global clients (connected to /events without a space filter).
+	// Broadcast scans only the "" bucket + the target-space bucket instead of
+	// all clients — O(1) space lookup vs the former O(N-clients) scan.
+	sseBySpace   map[string]map[*sseClient]struct{}
 	sseMu        sync.Mutex
 	agentSSEBuf  map[string][]sseEvent // keyed by "space/agent"; guarded by sseMu; ring buffer cap 200
 	interrupts      *InterruptLedger
@@ -93,6 +97,10 @@ type Server struct {
 	// HTTP requests must carry "Authorization: Bearer <token>". When empty the
 	// server runs in open mode (backward compatible for local development).
 	apiToken string
+	// agentTokenCache caches per-agent token hashes in memory to avoid a DB
+	// round-trip on every authenticated agent POST. Keyed by "space/agent"
+	// (lowercase). Invalidated when a new token hash is written (spawn/restart).
+	agentTokenCache sync.Map
 }
 
 func NewServer(port, dataDir string) *Server {
@@ -115,7 +123,7 @@ func NewServer(port, dataDir string) *Server {
 		dataDir:            dataDir,
 		spaces:             make(map[string]*KnowledgeSpace),
 		stopLiveness:       make(chan struct{}),
-		sseClients:         make(map[*sseClient]struct{}),
+		sseBySpace:         make(map[string]map[*sseClient]struct{}),
 		agentSSEBuf:        make(map[string][]sseEvent),
 		interrupts:         NewInterruptLedger(dataDir),
 		approvalTracked:    make(map[string]time.Time),
@@ -330,6 +338,14 @@ func (s *Server) Start() error {
 		// Prune status_snapshots older than 7 days every 6 hours.
 		// This caps the table that was growing at 37K rows/day.
 		go s.snapshotPruneLoop(6*time.Hour, 7*24*time.Hour)
+		// Also prune once immediately at startup to drain any accumulated backlog
+		// (e.g. 162k rows → ~9k rows on first boot after the feature ships).
+		go func() {
+			cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour)
+			if err := s.repo.PruneOldSnapshots(cutoff); err != nil {
+				s.logEvent(fmt.Sprintf("warning: startup prune snapshots: %v", err))
+			}
+		}()
 	}
 	// Compaction rewrites .events.jsonl files; skip it when SQLite is active.
 	if s.repo == nil {
