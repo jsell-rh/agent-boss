@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -70,6 +71,20 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	// Append --dangerously-skip-permissions when global toggle is on.
 	if allowSkipPermissions && !strings.Contains(command, "--dangerously-skip-permissions") {
 		command += " --dangerously-skip-permissions"
+	}
+
+	// Preflight: verify work_dir exists before creating the tmux session.
+	// Without this check, a missing directory causes `cd` to fail silently
+	// inside the shell, and the agent starts in the wrong working directory.
+	if workDir != "" {
+		if info, err := os.Stat(workDir); err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("work_dir %q does not exist", workDir)
+			}
+			return "", fmt.Errorf("work_dir %q: %w", workDir, err)
+		} else if !info.IsDir() {
+			return "", fmt.Errorf("work_dir %q is not a directory", workDir)
+		}
 	}
 
 	if b.SessionExists(sessionID) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -483,5 +484,48 @@ func TestSpawnDoesNotOverrideChildWorkDir(t *testing.T) {
 		}
 	default:
 		t.Fatal("CreateSession was not called")
+	}
+}
+
+// TestTmuxCreateSessionMissingWorkDir verifies that CreateSession returns an
+// error immediately (before any tmux call) when work_dir does not exist.
+func TestTmuxCreateSessionMissingWorkDir(t *testing.T) {
+	b := NewTmuxSessionBackend()
+	_, err := b.CreateSession(context.Background(), SessionCreateOpts{
+		SessionID: "test-missing-cwd",
+		BackendOpts: TmuxCreateOpts{
+			WorkDir: "/nonexistent/path/that/does/not/exist",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for missing work_dir, got nil")
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("error %q should mention 'does not exist'", err.Error())
+	}
+}
+
+// TestTmuxCreateSessionWorkDirIsFile verifies that CreateSession returns an
+// error when work_dir points to a file rather than a directory.
+func TestTmuxCreateSessionWorkDirIsFile(t *testing.T) {
+	f, err := os.CreateTemp("", "boss-cwd-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.Close()
+
+	b := NewTmuxSessionBackend()
+	_, err = b.CreateSession(context.Background(), SessionCreateOpts{
+		SessionID: "test-cwd-is-file",
+		BackendOpts: TmuxCreateOpts{
+			WorkDir: f.Name(),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when work_dir is a file, got nil")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("error %q should mention 'not a directory'", err.Error())
 	}
 }
