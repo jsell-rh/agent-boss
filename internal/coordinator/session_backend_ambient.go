@@ -30,7 +30,7 @@ type AmbientSessionBackend struct {
 	workflowURL    string // default workflow git URL
 	workflowBranch string // default workflow branch
 	workflowPath   string // default workflow path within repo
-	coordinatorURL string // external coordinator URL for BOSS_URL env var
+	coordinatorURL string // external coordinator URL for ODIS_URL env var
 	skipTLSVerify  bool   // pass NODE_TLS_REJECT_UNAUTHORIZED=0 to runner pods
 
 	availMu     sync.Mutex
@@ -203,7 +203,7 @@ func (b *AmbientSessionBackend) CreateSession(ctx context.Context, opts SessionC
 	// Build environment variables: backend defaults first, then per-session overrides.
 	envVars := make(map[string]string)
 	if b.coordinatorURL != "" {
-		envVars["BOSS_URL"] = b.coordinatorURL
+		envVars["ODIS_URL"] = b.coordinatorURL
 	}
 	if opts.SessionID != "" {
 		envVars["AGENT_NAME"] = opts.SessionID

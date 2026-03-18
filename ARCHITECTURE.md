@@ -1,6 +1,6 @@
-# Agent Boss — Architecture
+# OpenDispatch — Architecture
 
-Agent Boss is a self-contained coordination server for multi-agent AI workflows. Agents post structured status updates and messages over HTTP; the server persists state in SQLite and renders a Vue SPA dashboard.
+OpenDispatch is a self-contained coordination server for multi-agent AI workflows. Agents post structured status updates and messages over HTTP; the server persists state in SQLite and renders a Vue SPA dashboard.
 
 ---
 

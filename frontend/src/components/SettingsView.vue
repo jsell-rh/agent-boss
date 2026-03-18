@@ -97,7 +97,7 @@ async function toggleSkipPermissions(value: boolean) {
   <div class="flex flex-col gap-6 p-6 max-w-2xl mx-auto">
     <div>
       <h1 class="text-2xl font-semibold">Settings</h1>
-      <p class="text-sm text-muted-foreground mt-1">Server-wide configuration for Agent Boss.</p>
+      <p class="text-sm text-muted-foreground mt-1">Server-wide configuration for OpenDispatch.</p>
     </div>
 
     <div v-if="loading" class="text-sm text-muted-foreground">Loading settings…</div>
@@ -156,7 +156,7 @@ async function toggleSkipPermissions(value: boolean) {
         <div class="flex flex-col gap-0.5">
           <span class="font-medium text-sm">API Token</span>
           <span class="text-xs text-muted-foreground">
-            Set <code class="rounded bg-muted px-1">BOSS_API_TOKEN</code> on the server to enable auth.
+            Set <code class="rounded bg-muted px-1">OD_API_TOKEN</code> on the server to enable auth.
             Enter the same token here so the dashboard can make authenticated requests.
           </span>
         </div>
@@ -195,7 +195,7 @@ async function toggleSkipPermissions(value: boolean) {
       <!-- Notifications section -->
       <div>
         <h2 class="text-base font-semibold mb-1">Notifications</h2>
-        <p class="text-xs text-muted-foreground mb-3">Controls browser notifications and sound effects for Agent Boss events.</p>
+        <p class="text-xs text-muted-foreground mb-3">Controls browser notifications and sound effects for OpenDispatch events.</p>
 
         <!-- Browser notifications toggle -->
         <div class="rounded-lg border p-4 flex flex-col gap-3 mb-3">

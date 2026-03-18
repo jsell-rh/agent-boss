@@ -1,4 +1,4 @@
-# Agent Boss — API Reference
+# OpenDispatch — API Reference
 
 All endpoints are served on `http://localhost:8899` by default (configurable via `COORDINATOR_PORT`).
 

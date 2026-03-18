@@ -375,7 +375,7 @@ func (s *Server) spawnAgentService(spaceName, agentName string, req spawnRequest
 					if s.apiToken == "" {
 						return nil
 					}
-					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+					return map[string]string{"ODIS_API_TOKEN": s.apiToken}
 				}(),
 			},
 		}
@@ -622,7 +622,7 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 					if s.apiToken == "" {
 						return nil
 					}
-					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+					return map[string]string{"ODIS_API_TOKEN": s.apiToken}
 				}(),
 			},
 		}

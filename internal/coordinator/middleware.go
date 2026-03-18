@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +20,7 @@ var (
 
 func initCORSOrigins() {
 	corsOrigins = []string{"http://localhost:8899", "http://localhost:5173"}
-	if ext := os.Getenv("BOSS_ALLOWED_ORIGINS"); ext != "" {
+	if ext := getEnvWithFallback("ODIS_ALLOWED_ORIGINS", "BOSS_ALLOWED_ORIGINS"); ext != "" {
 		for _, o := range strings.Split(ext, ",") {
 			if o = strings.TrimSpace(o); o != "" {
 				corsOrigins = append(corsOrigins, o)
@@ -32,7 +31,7 @@ func initCORSOrigins() {
 
 // setCORSOriginHeader reflects the request Origin back if it is in the
 // allowed-origins allowlist (defaults: localhost:8899 and localhost:5173;
-// extended via BOSS_ALLOWED_ORIGINS env var, comma-separated).
+// extended via ODIS_ALLOWED_ORIGINS env var, comma-separated).
 // Call this instead of setting "Access-Control-Allow-Origin: *".
 // Vary: Origin is always set so caching proxies do not serve one user's
 // CORS response to a different origin.
@@ -137,7 +136,7 @@ func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
 // is a no-op (open mode — backward compatible for local development).
 //
 // Two token classes are accepted:
-//  1. Workspace token (s.apiToken / BOSS_API_TOKEN) — full access to all endpoints.
+//  1. Workspace token (s.apiToken / OD_API_TOKEN) — full access to all endpoints.
 //  2. Per-agent token — valid only on agent-channel endpoints; the handler verifies
 //     the token belongs to the specific agent being posted to (SEC-006).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {

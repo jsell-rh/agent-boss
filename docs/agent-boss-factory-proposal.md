@@ -1,4 +1,4 @@
-# Agent Boss: From Coordination Tool to TRex-Powered Software Factory
+# OpenDispatch: From Coordination Tool to TRex-Powered Software Factory
 
 **Author:** Claude Code Analysis | **Date:** 2026-03-03  
 **Based on:** agents-design.md, proposal-agent-boss-ambient.md, software-factory.md, rh-trex-ai/generator.md  
@@ -8,12 +8,12 @@
 
 ## Executive Summary
 
-**Agent Boss transforms from coordination tool into autonomous software factory** powered by TRex's ERD-driven generation and proven by real-world data from `sdk-backend-replacement` eliminating human interrupts progressively.
+**OpenDispatch transforms from coordination tool into autonomous software factory** powered by TRex's ERD-driven generation and proven by real-world data from `sdk-backend-replacement` eliminating human interrupts progressively.
 
 ```mermaid
 graph TB
     subgraph "Current State (L0)"
-        H[Human Boss] --> |268 interrupts| AB[Agent Boss Blackboard]
+        H[Human Boss] --> |268 interrupts| AB[OpenDispatch Blackboard]
         AB --> A1[11 Agents + TRex]
     end
     
@@ -289,7 +289,7 @@ graph TB
 
 ```mermaid
 gantt
-    title Agent Boss Factory Implementation
+    title OpenDispatch Factory Implementation
     dateFormat  YYYY-MM-DD
     section Phase 1: Measurement
     Interrupt Ledger        :done, phase1a, 2026-03-01, 2026-03-08
@@ -318,7 +318,7 @@ gantt
 - ✅ **Interrupt ledger** (JSONL per space) - DONE
 - ✅ **Allowlist rules** (93% reduction) - DONE
 - **TRex Agent integration with Boss blackboard**
-- **ERD parser in Agent Boss coordinator** 
+- **ERD parser in OpenDispatch coordinator** 
 - **Factory plan data model with TRex stage**
 
 ### Phase 2: ERD-Driven Pipeline (6 weeks)  
@@ -341,7 +341,7 @@ gantt
 ### Phase 5: Dark Factory (8 weeks)
 - **ERD input → deployed software output**
 - **Zero-interrupt pipeline with TRex foundation**
-- **Agent Boss becomes TRex orchestrator**
+- **OpenDispatch becomes TRex orchestrator**
 
 ## Autonomy Progression
 
@@ -465,10 +465,10 @@ xychart-beta
 graph TB
     subgraph "Ambient Platform"
         CRD[FactoryPlan CRD] --> OP[Ambient Operator]
-        OP --> AB[Agent Boss Controller]
+        OP --> AB[OpenDispatch Controller]
     end
     
-    subgraph "Agent Boss Factory"
+    subgraph "OpenDispatch Factory"
         AB --> BL[Blackboard State]
         AB --> IL[Interrupt Ledger]
         AB --> PL[Policy Engine]
@@ -489,7 +489,7 @@ graph TB
     style METRICS fill:#3fb950,color:#fff
 ```
 
-**Agent Boss becomes Ambient component**:
+**OpenDispatch becomes Ambient component**:
 1. Factory controller exposes `FactoryPlan` CRD
 2. Ambient operator reconciles plans via agent coordination  
 3. Interrupt metrics flow into platform observability
@@ -499,7 +499,7 @@ graph TB
 
 ```mermaid
 graph TD
-    AB[Agent Boss<br/>coordinates agents] -->|"11 agents build"| ACP[Ambient Code Platform<br/>sdk-backend-replacement]
+    AB[OpenDispatch<br/>coordinates agents] -->|"11 agents build"| ACP[Ambient Code Platform<br/>sdk-backend-replacement]
     ACP -->|"provides infrastructure for"| AB
     IL[Interrupt Ledger<br/>268 entries] -->|"feeds"| LT[Loop Tightening<br/>allowlist rules, policy engine]
     LT -->|"reduces interrupts in"| AB
@@ -511,11 +511,11 @@ graph TD
     style LT fill:#a371f7,color:#fff
 ```
 
-**Self-improvement loop**: Agent Boss coordinates agents building Ambient → Ambient hosts Agent Boss → tighter loops
+**Self-improvement loop**: OpenDispatch coordinates agents building Ambient → Ambient hosts OpenDispatch → tighter loops
 
 ## Conclusion
 
-**TRex + Agent Boss transforms multi-agent development** from coordination overhead into competitive advantage through measurable automation and generated foundations.
+**TRex + OpenDispatch transforms multi-agent development** from coordination overhead into competitive advantage through measurable automation and generated foundations.
 
 ### The TRex Advantage
 
@@ -542,9 +542,9 @@ graph LR
 
 **Key Insights**:
 1. **TRex eliminates 70-80% of agent grunt work** — generated boilerplate means agents focus on value
-2. **Agent Boss coordinates the sequence** — TRex foundation → parallel implementation → integrated deployment  
+2. **OpenDispatch coordinates the sequence** — TRex foundation → parallel implementation → integrated deployment  
 3. **Real data proves the pattern** — 268 interrupts, 93% reducible, measured progression L0→L4
-4. **Self-improvement loop** — Agent Boss coordinates agents building Ambient → Ambient hosts Agent Boss
+4. **Self-improvement loop** — OpenDispatch coordinates agents building Ambient → Ambient hosts OpenDispatch
 
 ### The Factory Pattern Revolution
 
@@ -554,8 +554,8 @@ graph LR
 
 **Next Steps**:
 1. **Integrate TRex Agent** with Boss blackboard communication protocol
-2. **Implement ERD parser** in Agent Boss coordinator for factory orchestration  
+2. **Implement ERD parser** in OpenDispatch coordinator for factory orchestration  
 3. **Deploy first ERD-driven Kind** as L2 validation with interrupt measurement
 4. **Scale to Ambient platform component** — the factory controller for all teams
 
-The TRex foundation exists. The Agent Boss coordination exists. The interrupt data proves the reduction works. **Time to connect them and eliminate the grunt work.**
+The TRex foundation exists. The OpenDispatch coordination exists. The interrupt data proves the reduction works. **Time to connect them and eliminate the grunt work.**

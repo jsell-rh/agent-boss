@@ -1233,7 +1233,7 @@ onUnmounted(() => {
               class="text-primary font-bold text-lg font-sans hover:text-primary/80 transition-colors cursor-pointer"
               aria-label="Navigate to home"
               @click="router.push('/')"
-            >Agent Boss</button>
+            >oDispatch</button>
             <template v-if="selectedSpace">
               <span class="text-muted-foreground">/</span>
               <button
@@ -1469,7 +1469,7 @@ onUnmounted(() => {
           <!-- Empty state -->
           <div v-else class="flex flex-col items-center justify-center h-full text-muted-foreground font-text px-4 text-center">
             <div class="h-12 w-1 rounded-full bg-primary mb-4" aria-hidden="true" />
-            <p class="text-lg font-sans font-semibold mb-1">Agent Boss</p>
+            <p class="text-lg font-sans font-semibold mb-1">OpenDispatch</p>
             <p class="text-sm mb-4">Multi-agent coordination dashboard</p>
             <template v-if="spaces.length === 0">
               <p class="text-sm mb-4">No spaces yet. Create one to start coordinating agents.</p>

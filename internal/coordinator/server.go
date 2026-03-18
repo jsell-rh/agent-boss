@@ -135,9 +135,9 @@ func NewServer(port, dataDir string) *Server {
 		backends:             map[string]SessionBackend{"tmux": NewTmuxSessionBackend()},
 		defaultBackend:       "tmux",
 		logger:               NewLogger(os.Stdout),
-		allowSkipPermissions: os.Getenv("BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
+		allowSkipPermissions: getEnvWithFallback("ODIS_ALLOW_SKIP_PERMISSIONS", "BOSS_ALLOW_SKIP_PERMISSIONS") == "true",
 		personas:             nil, // initialized in Start() after DB is ready
-		apiToken:             os.Getenv("BOSS_API_TOKEN"),
+		apiToken:             getEnvWithFallback("ODIS_API_TOKEN", "BOSS_API_TOKEN"),
 	}
 
 	if apiURL := os.Getenv("AMBIENT_API_URL"); apiURL != "" {
@@ -363,19 +363,28 @@ func (s *Server) localURL() string {
 }
 
 // mcpServerName returns a unique MCP server name for this instance.
-// Default (localhost:8899) → "boss-mcp" (unchanged for backwards compat).
-// Non-default port on localhost → "boss-mcp-{port}".
-// Non-localhost host → "boss-mcp-{host}-{port}".
+// Default (localhost:8899) → "odis-mcp".
+// Non-default port on localhost → "odis-mcp-{port}".
+// Non-localhost host → "odis-mcp-{host}-{port}".
 func (s *Server) mcpServerName() string {
 	port := strings.TrimPrefix(s.port, ":")
 	isDefaultHost := s.host == "localhost" || s.host == "127.0.0.1" || s.host == ""
 	if isDefaultHost && port == "8899" {
-		return "boss-mcp"
+		return "odis-mcp"
 	}
 	if isDefaultHost {
-		return "boss-mcp-" + port
+		return "odis-mcp-" + port
 	}
-	return "boss-mcp-" + s.host + "-" + port
+	return "odis-mcp-" + s.host + "-" + port
+}
+
+// getEnvWithFallback reads the primary env var; if empty, falls back to the
+// legacy name for backward compatibility.
+func getEnvWithFallback(primary, legacy string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
 }
 
 func (s *Server) Stop() error {

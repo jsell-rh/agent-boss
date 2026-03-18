@@ -1,6 +1,6 @@
 package main
 
-// fleet.go — "boss export" and "boss import" CLI commands (TASK-104).
+// fleet.go — "odis export" and "odis import" CLI commands (TASK-104).
 //
 // Export: GET /spaces/:space/export → write YAML to stdout or file.
 // Import: parse fleet file, detect cycles, topo-sort, upsert personas and
@@ -16,7 +16,7 @@ import (
 	"github.com/ambient/platform/components/boss/internal/coordinator"
 )
 
-// cmdExport handles "boss export <space> [--output fleet.yaml]".
+// cmdExport handles "odis export <space> [--output fleet.yaml]".
 func cmdExport(args []string) {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	output := fs.String("output", "", "Output file path (default: stdout)")
@@ -28,25 +28,25 @@ session IDs, and any runtime-only state. Credentials (e.g. userinfo in
 repo_url) are stripped automatically.
 
 Usage:
-  boss export <space> [--output fleet.yaml]
+  odis export <space> [--output fleet.yaml]
 
 Examples:
-  boss export my-space
-  boss export my-space --output fleet.yaml
+  odis export my-space
+  odis export my-space --output fleet.yaml
 
 Options:
   --output string   File to write (default: stdout)
 
 Environment:
-  BOSS_URL         Coordinator URL  (default: http://localhost:8899)
-  BOSS_API_TOKEN   Bearer token for authenticated requests (optional)
+  ODIS_URL         Coordinator URL  (default: http://localhost:8899)
+  ODIS_API_TOKEN   Bearer token for authenticated requests (optional)
 `)
 	}
 	fs.Parse(args)
 
 	positional := fs.Args()
 	if len(positional) < 1 {
-		fmt.Fprintln(os.Stderr, "boss export: space name required")
+		fmt.Fprintln(os.Stderr, "odis export: space name required")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -54,13 +54,13 @@ Environment:
 	client := newClient(positional[0])
 	data, err := client.ExportFleet()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss export: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis export: %v\n", err)
 		os.Exit(1)
 	}
 
 	if *output != "" {
 		if err := os.WriteFile(*output, data, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "boss export: write %s: %v\n", *output, err)
+			fmt.Fprintf(os.Stderr, "odis export: write %s: %v\n", *output, err)
 			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "exported %d bytes to %s\n", len(data), *output)
@@ -69,7 +69,7 @@ Environment:
 	}
 }
 
-// cmdImport handles "boss import <file> [flags]".
+// cmdImport handles "odis import <file> [flags]".
 func cmdImport(args []string) {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
 	spaceFlag := fs.String("space", "", "Target space (default: space.name in fleet file)")
@@ -91,13 +91,13 @@ The server validates command and work_dir fields on import. Invalid values
 are rejected before any changes are applied.
 
 Usage:
-  boss import <file> [flags]
+  odis import <file> [flags]
 
 Examples:
-  boss import fleet.yaml --dry-run
-  boss import fleet.yaml --space my-space --yes
-  boss import fleet.yaml --prune --restart-changed
-  boss import fleet.yaml --prune --force --yes
+  odis import fleet.yaml --dry-run
+  odis import fleet.yaml --space my-space --yes
+  odis import fleet.yaml --prune --restart-changed
+  odis import fleet.yaml --prune --force --yes
 
 Options:
   --space string          Target space (default: space.name from fleet file)
@@ -110,22 +110,22 @@ Options:
   --spawn-after-import    Spawn agents after import (reserved)
 
 Environment:
-  BOSS_URL         Coordinator URL  (default: http://localhost:8899)
-  BOSS_API_TOKEN   Bearer token for authenticated requests (optional)
+  ODIS_URL         Coordinator URL  (default: http://localhost:8899)
+  ODIS_API_TOKEN   Bearer token for authenticated requests (optional)
 `)
 	}
 	fs.Parse(args)
 
 	positional := fs.Args()
 	if len(positional) < 1 {
-		fmt.Fprintln(os.Stderr, "boss import: fleet file required")
+		fmt.Fprintln(os.Stderr, "odis import: fleet file required")
 		fs.Usage()
 		os.Exit(1)
 	}
 
 	data, err := os.ReadFile(positional[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss import: read %s: %v\n", positional[0], err)
+		fmt.Fprintf(os.Stderr, "odis import: read %s: %v\n", positional[0], err)
 		os.Exit(1)
 	}
 
@@ -133,7 +133,7 @@ Environment:
 	// are surfaced locally before any network calls.
 	ff, err := coordinator.ParseAndValidateFleetFile(data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss import: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis import: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -142,14 +142,14 @@ Environment:
 		targetSpace = *spaceFlag
 	}
 	if targetSpace == "" {
-		fmt.Fprintln(os.Stderr, "boss import: space name required (--space or space.name in fleet file)")
+		fmt.Fprintln(os.Stderr, "odis import: space name required (--space or space.name in fleet file)")
 		os.Exit(1)
 	}
 
 	// Detect cycles and compute topo order before touching the server.
 	order, err := coordinator.TopoSortAgents(ff.Agents)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss import: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis import: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -187,7 +187,7 @@ Environment:
 	}
 
 	if err := fleetApply(client, ff, targetSpace, order, *noCreate); err != nil {
-		fmt.Fprintf(os.Stderr, "boss import: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis import: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("imported %d persona(s) and %d agent(s) into space %q\n",
@@ -196,7 +196,7 @@ Environment:
 	// --prune: delete agents in the space that are absent from the fleet file.
 	if *prune {
 		if err := fleetPrune(client, ff, *force); err != nil {
-			fmt.Fprintf(os.Stderr, "boss import --prune: %v\n", err)
+			fmt.Fprintf(os.Stderr, "odis import --prune: %v\n", err)
 			os.Exit(1)
 		}
 	}

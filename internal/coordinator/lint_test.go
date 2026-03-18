@@ -326,7 +326,7 @@ func TestHandlerNaming(t *testing.T) {
 // TestAgentExperienceSurfaceInvariants enforces the agent experience contract:
 // any TmuxCreateOpts struct literal that sets MCPServerURL must also set AgentToken.
 //
-// Rationale: MCPServerURL and AgentToken are logically coupled. When BOSS_API_TOKEN
+// Rationale: MCPServerURL and AgentToken are logically coupled. When ODIS_API_TOKEN
 // is set on the server, all MCP tool calls require an Authorization: Bearer header.
 // If MCPServerURL is registered without AgentToken, agents silently receive 401s
 // on every MCP call — a connectivity failure with no obvious error at spawn time.
@@ -408,7 +408,7 @@ func TestAgentExperienceSurfaceInvariants(t *testing.T) {
 				t.Errorf(
 					"LINT FAIL [agent-experience]: %s:%d — TmuxCreateOpts sets MCPServerURL without AgentToken\n"+
 						"  Invariant: MCPServerURL and AgentToken must always be set together.\n"+
-						"  Reason: When BOSS_API_TOKEN is configured, every MCP tool call requires an\n"+
+						"  Reason: When ODIS_API_TOKEN is configured, every MCP tool call requires an\n"+
 						"          Authorization: Bearer header. Omitting AgentToken silently breaks all\n"+
 						"          agent MCP connectivity with no error at spawn time.\n"+
 						"  Fix: Add AgentToken: s.apiToken to this TmuxCreateOpts literal.\n"+

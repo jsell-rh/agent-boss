@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Gantt-style timeline panel added to the Agent Boss dashboard showing each agent's state over time as horizontal bars. Default view: last 2 hours. Auto-refreshes via SSE or polling.
+A Gantt-style timeline panel added to the OpenDispatch dashboard showing each agent's state over time as horizontal bars. Default view: last 2 hours. Auto-refreshes via SSE or polling.
 
 ## Data Model
 

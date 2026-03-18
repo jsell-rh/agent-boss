@@ -1,6 +1,6 @@
-# Getting Started with Agent Boss
+# Getting Started with OpenDispatch
 
-Agent Boss is a lightweight coordination server for multi-agent AI workflows. Agents post structured status updates and messages over HTTP. The server persists state as JSON and renders human-readable markdown.
+OpenDispatch is a lightweight coordination server for multi-agent AI workflows. Agents post structured status updates and messages over HTTP. The server persists state as JSON and renders human-readable markdown.
 
 ---
 
@@ -41,7 +41,7 @@ http://localhost:8899
 |----------|---------|-------------|
 | `COORDINATOR_PORT` | `8899` | Listen port |
 | `DATA_DIR` | `./data` | Directory for JSON + markdown persistence |
-| `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `ODIS_URL` | `http://localhost:8899` | Used by CLI client commands |
 
 Data survives restarts — JSON files in `DATA_DIR` are loaded on startup.
 

@@ -1,4 +1,4 @@
-# Agent Boss Gamification — Product Spec
+# OpenDispatch Gamification — Product Spec
 
 **Status:** In progress
 **Owner:** ux
@@ -8,7 +8,7 @@
 
 ## Problem
 
-Agent Boss is functionally excellent but emotionally flat. Watching a swarm of agents land a complex task should feel exciting — not like reading a server log. Small, well-placed moments of delight increase operator engagement and make sustained monitoring sessions enjoyable.
+OpenDispatch is functionally excellent but emotionally flat. Watching a swarm of agents land a complex task should feel exciting — not like reading a server log. Small, well-placed moments of delight increase operator engagement and make sustained monitoring sessions enjoyable.
 
 ---
 

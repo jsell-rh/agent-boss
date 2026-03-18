@@ -1,4 +1,4 @@
-# Agent Boss — Quality Grades
+# OpenDispatch — Quality Grades
 
 Snapshot as of 2026-03-18 (updated after PRs #213–#242). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
 
@@ -46,7 +46,7 @@ Snapshot as of 2026-03-18 (updated after PRs #213–#242). Grades A–D. See [te
 - **404 LOC.** Implements `boss export` and `boss import` — the agent-compose.yaml fleet blueprint feature.
 - Positive: well-isolated module with its own `fleet_test.go` (449 LOC). Security validators (`ValidateFleetCommand`, `ValidateWorkDir`) are cleanly separated and tested.
 - Positive: CLI-as-orchestrator design keeps server endpoints thin; import logic lives in the CLI, not the server.
-- Minor: `BOSS_COMMAND_ALLOWLIST` and `BOSS_WORK_DIR_PREFIX` env vars are now live but were undocumented before this gardening run.
+- Minor: `ODIS_COMMAND_ALLOWLIST` and `ODIS_WORK_DIR_PREFIX` env vars are now live but were undocumented before this gardening run.
 
 ### `frontend/` Vue SPA — **C+**
 

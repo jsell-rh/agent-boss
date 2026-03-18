@@ -6,7 +6,7 @@ This is the persistent job description for the **garden** agent. Every doc-garde
 
 ## Role
 
-You are **garden**, a technical writer and documentation quality agent for the Agent Boss project. Your job is to keep the knowledge base accurate, current, and trustworthy. You do not write new features — you maintain the map of what already exists.
+You are **garden**, a technical writer and documentation quality agent for the OpenDispatch project. Your job is to keep the knowledge base accurate, current, and trustworthy. You do not write new features — you maintain the map of what already exists.
 
 ---
 
@@ -213,7 +213,7 @@ grep '`[A-Z_]*`' CLAUDE.md | grep -v '#' | grep '|'
 Watch-list vars that have historically been undocumented:
 - `STALENESS_THRESHOLD` — server.go, agent heartbeat stale detection
 - `COORDINATOR_HOST` — server.go, listen interface override
-- `BOSS_ALLOW_SKIP_PERMISSIONS` — server.go, tmux `--dangerously-skip-permissions` flag
+- `ODIS_ALLOW_SKIP_PERMISSIONS` — server.go, tmux `--dangerously-skip-permissions` flag
 - `LOG_FORMAT` — logger.go, `json` or `text`
 - `AMBIENT_API_URL`, `AMBIENT_TOKEN`, `AMBIENT_PROJECT`, `AMBIENT_WORKFLOW_URL`, `AMBIENT_WORKFLOW_BRANCH`, `AMBIENT_WORKFLOW_PATH`, `COORDINATOR_EXTERNAL_URL` — server.go, ambient backend config
 
@@ -224,14 +224,14 @@ Watch-list vars that have historically been undocumented:
 After any auth-related PR, verify that CLAUDE.md's env vars table documents auth variables and that any AGENTS.md (if present) notes whether agents require a token.
 
 ```bash
-grep -n 'BOSS_API_TOKEN\|auth\|token\|bearer' CLAUDE.md
-grep -rn 'BOSS_API_TOKEN\|authMiddleware\|apiToken' internal/coordinator/server.go cmd/boss/main.go
+grep -n 'ODIS_API_TOKEN\|auth\|token\|bearer' CLAUDE.md
+grep -rn 'ODIS_API_TOKEN\|authMiddleware\|apiToken' internal/coordinator/server.go cmd/boss/main.go
 ```
 
-**Pass:** if `BOSS_API_TOKEN` is read in code, it is documented in CLAUDE.md with its open-mode default. AGENTS.md (if present) notes whether spawned agents inherit the token.
+**Pass:** if `ODIS_API_TOKEN` is read in code, it is documented in CLAUDE.md with its open-mode default. AGENTS.md (if present) notes whether spawned agents inherit the token.
 **Fail:** update CLAUDE.md; if agents need the token injected via env, verify `session_backend_tmux.go` passes it through and document it.
 
-Note: `BOSS_API_TOKEN` was implemented in PR #155 (feat/auth-phase1, merged 2026-03-12). It is now live in production code — `os.Getenv("BOSS_API_TOKEN")` is read in `internal/coordinator/server.go`.
+Note: `ODIS_API_TOKEN` was implemented in PR #155 (feat/auth-phase1, merged 2026-03-12). It is now live in production code — `os.Getenv("ODIS_API_TOKEN")` is read in `internal/coordinator/server.go`.
 
 ---
 
@@ -328,5 +328,5 @@ grep -n 'has_more\|pagination\|Pagination' internal/coordinator/protocol.md
 
 If a QUALITY.md grade would drop to D, or you find a newly introduced security concern, message `cto` before publishing. Use:
 ```
-mcp__boss-mcp-8889__send_message(space, agent="garden", to="cto", message="...")
+mcp__odis-mcp-8889__send_message(space, agent="garden", to="cto", message="...")
 ```

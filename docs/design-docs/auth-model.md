@@ -28,7 +28,7 @@ Three classes of principal access the API, each with different trust levels and 
 
 | Principal | Description | Credential |
 |-----------|-------------|------------|
-| **Human Operator** | The person running agent-boss (single operator assumed) | Static API token via `BOSS_API_TOKEN` env var |
+| **Human Operator** | The person running agent-boss (single operator assumed) | Static API token via `ODIS_API_TOKEN` env var |
 | **Agent** | A spawned Claude Code session acting autonomously | Per-agent UUID token injected at spawn time via env var `BOSS_AGENT_TOKEN` |
 | **CLI / External Client** | `boss` CLI commands, scripts, other tools | Same static API token as Human Operator (Phase 1) |
 
@@ -38,7 +38,7 @@ Three classes of principal access the API, each with different trust levels and 
 
 ### Decision
 
-A single static bearer token (`BOSS_API_TOKEN`) protects all mutating HTTP endpoints. If the env var is unset, the server starts in **open mode** (current behavior — backward compatible for local development). If set, the token is required on all non-read-only requests.
+A single static bearer token (`ODIS_API_TOKEN`) protects all mutating HTTP endpoints. If the env var is unset, the server starts in **open mode** (current behavior — backward compatible for local development). If set, the token is required on all non-read-only requests.
 
 ### Scope
 
@@ -50,7 +50,7 @@ A single static bearer token (`BOSS_API_TOKEN`) protects all mutating HTTP endpo
 
 ```go
 // authMiddleware wraps an http.Handler, requiring a Bearer token on mutating requests.
-// If BOSS_API_TOKEN is empty, the middleware is a no-op (open mode).
+// If ODIS_API_TOKEN is empty, the middleware is a no-op (open mode).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         if s.apiToken == "" {
@@ -73,12 +73,12 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 }
 ```
 
-The `apiToken` field is populated from `BOSS_API_TOKEN` at server startup.
+The `apiToken` field is populated from `ODIS_API_TOKEN` at server startup.
 
 ### Environment Variable
 
 ```bash
-export BOSS_API_TOKEN="$(openssl rand -hex 32)"
+export ODIS_API_TOKEN="$(openssl rand -hex 32)"
 DATA_DIR=./data /tmp/boss serve
 ```
 
@@ -92,7 +92,7 @@ For Phase 1, the Vue dashboard stores the operator token in `localStorage` and i
 
 ### CLI Client
 
-`client.go` gains an `authToken` field; `cmd/boss/main.go` reads `BOSS_API_TOKEN` from the environment and passes it to the client. The client sets `Authorization: Bearer <token>` on all requests.
+`client.go` gains an `authToken` field; `cmd/boss/main.go` reads `ODIS_API_TOKEN` from the environment and passes it to the client. The client sets `Authorization: Bearer <token>` on all requests.
 
 ---
 
@@ -154,7 +154,7 @@ Coordinator validation:
 3. Compare hashes (constant-time).
 4. On match: enforce that the agent can only POST to its own channel — `X-Agent-Name` must match the URL agent name.
 
-The operator static token (`BOSS_API_TOKEN`) remains valid and grants full (admin) access.
+The operator static token (`ODIS_API_TOKEN`) remains valid and grants full (admin) access.
 
 ### Agent-Scoped Access Rules
 
@@ -210,7 +210,7 @@ if ext := os.Getenv("COORDINATOR_EXTERNAL_URL"); ext != "" {
 w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 ```
 
-For the Vite dev server, also allow `http://localhost:5173`. A `BOSS_ALLOWED_ORIGINS` env var (comma-separated) can support both.
+For the Vite dev server, also allow `http://localhost:5173`. A `ODIS_ALLOWED_ORIGINS` env var (comma-separated) can support both.
 
 **Security headers (SEC-009):** Add a middleware that sets baseline headers on all responses:
 
@@ -236,7 +236,7 @@ When agent-boss evolves to support multiple human operators:
 - Introduce a `users` table with hashed passwords or OAuth provider links.
 - Issue per-user session tokens (JWT or opaque with expiry).
 - Add RBAC: `admin` (full access), `operator` (spawn/stop agents, create tasks), `viewer` (read-only).
-- The current `BOSS_API_TOKEN` becomes the bootstrap admin credential.
+- The current `ODIS_API_TOKEN` becomes the bootstrap admin credential.
 - Requires a login flow in the Vue frontend.
 
 Not designed here — defer until a concrete multi-user use case emerges.
@@ -252,14 +252,14 @@ Scope: auth middleware, SEC-003 fix, CORS narrowing, security headers, client to
 Files to change:
 | File | Change |
 |------|--------|
-| `internal/coordinator/server.go` | Add `apiToken` field; load from `BOSS_API_TOKEN`; wrap mux with `authMiddleware` and `securityHeaders` |
+| `internal/coordinator/server.go` | Add `apiToken` field; load from `ODIS_API_TOKEN`; wrap mux with `authMiddleware` and `securityHeaders` |
 | `internal/coordinator/lifecycle.go` | Fix SEC-003 in 3 locations |
 | `internal/coordinator/mcp_server.go` | Narrow CORS origin |
 | `internal/coordinator/handlers_sse.go` | Narrow CORS origin |
 | `internal/coordinator/protocol.go` | Narrow CORS origin |
 | `internal/coordinator/client.go` | Add `authToken` field; send `Authorization` header |
-| `cmd/boss/main.go` | Read `BOSS_API_TOKEN`, pass to client |
-| `CLAUDE.md` | Document `BOSS_API_TOKEN` env var |
+| `cmd/boss/main.go` | Read `ODIS_API_TOKEN`, pass to client |
+| `CLAUDE.md` | Document `ODIS_API_TOKEN` env var |
 | `frontend/src/` | Store token in localStorage; send on mutating fetches; add token input to Settings |
 
 ### Phase 2 PR: `fix/auth-phase2`
@@ -307,10 +307,10 @@ The ADR secured the HTTP API but did not explicitly address agents accessing the
 
 ```bash
 # Instead of:
-claude mcp add boss-mcp --transport http http://localhost:8899/mcp
+claude mcp add odis-mcp --transport http http://localhost:8899/mcp
 
 # Use:
-claude mcp add boss-mcp --transport http http://localhost:8899/mcp \
+claude mcp add odis-mcp --transport http http://localhost:8899/mcp \
   --header "Authorization: Bearer ${BOSS_AGENT_TOKEN}"
 ```
 
@@ -318,7 +318,7 @@ In Go (`session_backend_tmux.go`), the `mcpCmd` construction becomes:
 
 ```go
 mcpCmd := fmt.Sprintf(
-    "claude mcp add boss-mcp --transport http %s/mcp --header %s 2>/dev/null || true",
+    "claude mcp add odis-mcp --transport http %s/mcp --header %s 2>/dev/null || true",
     mcpServerURL,
     shellQuote("Authorization: Bearer "+rawToken),
 )
@@ -326,7 +326,7 @@ mcpCmd := fmt.Sprintf(
 
 This ensures the claude MCP client authenticates with the coordinator on every tool call. The token is injected into the `BOSS_AGENT_TOKEN` env var first (see correction 2), so the env var is available when the mcp registration command runs.
 
-**Phase 1 note:** During Phase 1 (static `BOSS_API_TOKEN`), the same pattern applies — the operator token is injected into the MCP registration header. Agents spawned by the coordinator inherit the operator token for MCP access.
+**Phase 1 note:** During Phase 1 (static `ODIS_API_TOKEN`), the same pattern applies — the operator token is injected into the MCP registration header. Agents spawned by the coordinator inherit the operator token for MCP access.
 
 ### 2. tmux Environment — Use `set-environment` Instead of `send-keys`
 
@@ -347,7 +347,7 @@ if err := exec.CommandContext(ctx, "tmux", "set-environment", "-t", sessionID,
 
 // Also set for the MCP registration command to reference
 if err := exec.CommandContext(ctx2, "tmux", "set-environment", "-t", sessionID,
-    "BOSS_API_TOKEN", rawToken).Run(); err != nil {
+    "ODIS_API_TOKEN", rawToken).Run(); err != nil {
     // non-fatal
 }
 
@@ -381,7 +381,7 @@ The ambient backend passes `EnvVars` to the session creation API as environment 
 
 ```go
 mcpCmd := fmt.Sprintf(
-    "claude mcp add boss-mcp --transport http %s/mcp --header %s",
+    "claude mcp add odis-mcp --transport http %s/mcp --header %s",
     mcpServerURL,
     shellQuote("Authorization: Bearer "+rawToken),
 )

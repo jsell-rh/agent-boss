@@ -1,4 +1,4 @@
-# Audio Language Spec — Agent Boss (TASK-062)
+# Audio Language Spec — OpenDispatch (TASK-062)
 
 **Status:** Draft — Pending review by audio-sme and cto before implementation
 **Author:** ux
@@ -8,7 +8,7 @@
 
 ## Problem
 
-Agent Boss currently plays sounds that all live in the same perceptual register: pentatonic
+OpenDispatch currently plays sounds that all live in the same perceptual register: pentatonic
 tones, sine sweeps, chords. A user cannot reliably answer:
 
 - *What happened?* (action)
@@ -23,7 +23,7 @@ questions immediately audible — without requiring the user to consciously pars
 
 ## Design Principle: Three Perceptual Layers
 
-Every sound event in Agent Boss should be decomposable into at most three layers, each occupying
+Every sound event in OpenDispatch should be decomposable into at most three layers, each occupying
 a distinct perceptual register:
 
 ```
@@ -153,7 +153,7 @@ A first-time and on-demand tutorial panel that teaches the audio language in con
 The overlay is a non-blocking drawer (slides in from right, doesn't dim the page) with:
 
 ```
-  Agent Boss Audio Guide
+  OpenDispatch Audio Guide
   ──────────────────────
 
   Actions                          [play each]

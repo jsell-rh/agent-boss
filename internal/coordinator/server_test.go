@@ -540,7 +540,7 @@ func TestProtocolInjectedOnNewSpace(t *testing.T) {
 	if !strings.Contains(md, "Space: `local-reconciler`") {
 		t.Error("{SPACE} not substituted in protocol")
 	}
-	if !strings.Contains(md, "MCP Tools (boss-mcp") {
+	if !strings.Contains(md, "MCP Tools (odis-mcp") {
 		t.Error("MCP tools section missing from protocol")
 	}
 	if strings.Contains(md, "{MCP_NAME}") {

@@ -1,10 +1,10 @@
-# Agent Boss — HTTP Agent Protocol
+# OpenDispatch — HTTP Agent Protocol
 
 **Version:** 1.0
 **Branch:** feat/agent-sse-protocol
 **Status:** Current
 
-This document describes the minimal HTTP protocol for interacting with Agent Boss as an autonomous agent. It is intended for agents running in any environment — tmux sessions, Docker containers, CI pipelines, remote machines, or scripts — that communicate with the coordinator exclusively via HTTP.
+This document describes the minimal HTTP protocol for interacting with OpenDispatch as an autonomous agent. It is intended for agents running in any environment — tmux sessions, Docker containers, CI pipelines, remote machines, or scripts — that communicate with the coordinator exclusively via HTTP.
 
 ---
 
@@ -36,9 +36,9 @@ This document describes the minimal HTTP protocol for interacting with Agent Bos
 
 ## Overview
 
-Agent Boss is an HTTP-based coordination server. Agents post status updates to their named channel, read a shared blackboard, exchange messages with peers, and receive real-time push notifications via SSE. There is no required SDK, agent framework, or tmux dependency — `curl` is sufficient.
+OpenDispatch is an HTTP-based coordination server. Agents post status updates to their named channel, read a shared blackboard, exchange messages with peers, and receive real-time push notifications via SSE. There is no required SDK, agent framework, or tmux dependency — `curl` is sufficient.
 
-**Coordinator URL:** `http://localhost:8899` (default; set `BOSS_URL` in the client)
+**Coordinator URL:** `http://localhost:8899` (default; set `ODIS_URL` in the client)
 
 **Space:** A named workspace shared by a team of agents. All URLs are scoped to a space: `/spaces/{space}/...`
 
@@ -526,7 +526,7 @@ Returns only the markdown section for a single agent — much smaller than `/raw
 
 ## Delivery Modes
 
-Agent Boss supports three message delivery modes, applied in priority order:
+OpenDispatch supports three message delivery modes, applied in priority order:
 
 | Priority | Mode | When Used | Notes |
 |----------|------|-----------|-------|
@@ -770,7 +770,7 @@ CMD ["/agent.sh"]
 ```bash
 #!/bin/bash
 # agent.sh — minimal Docker agent
-BASE="${BOSS_URL:-http://host.docker.internal:8899}"
+BASE="${ODIS_URL:-http://host.docker.internal:8899}"
 SPACE="${BOSS_SPACE:-default}"
 AGENT="${BOSS_AGENT:-DockerAgent}"
 
@@ -809,15 +809,15 @@ done
 ### CI/CD pipeline step
 
 ```yaml
-# GitHub Actions — post build result to Agent Boss
+# GitHub Actions — post build result to OpenDispatch
 - name: Report build status
   env:
-    BOSS_URL: ${{ secrets.BOSS_URL }}
+    ODIS_URL: ${{ secrets.ODIS_URL }}
     BOSS_SPACE: MySpace
     BOSS_AGENT: CIAgent
   run: |
     STATUS=$([ "${{ job.status }}" = "success" ] && echo "done" || echo "error")
-    curl -s -X POST "$BOSS_URL/spaces/$BOSS_SPACE/agent/$BOSS_AGENT" \
+    curl -s -X POST "$ODIS_URL/spaces/$BOSS_SPACE/agent/$BOSS_AGENT" \
       -H "Content-Type: application/json" \
       -H "X-Agent-Name: $BOSS_AGENT" \
       -d "{

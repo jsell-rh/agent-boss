@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -214,10 +213,10 @@ func (s *Server) handleSpaceExport(w http.ResponseWriter, r *http.Request, space
 // ─── Security validators ──────────────────────────────────────────────────────
 
 // fleetCommandAllowlist returns the set of allowed launch commands.
-// Configured via BOSS_COMMAND_ALLOWLIST (comma-separated). Defaults to
+// Configured via ODIS_COMMAND_ALLOWLIST (comma-separated). Defaults to
 // "claude,claude-dev".
 func fleetCommandAllowlist() map[string]struct{} {
-	raw := os.Getenv("BOSS_COMMAND_ALLOWLIST")
+	raw := getEnvWithFallback("ODIS_COMMAND_ALLOWLIST", "BOSS_COMMAND_ALLOWLIST")
 	if raw == "" {
 		raw = "claude,claude-dev"
 	}
@@ -238,7 +237,7 @@ func ValidateFleetCommand(cmd string) error {
 	}
 	allowed := fleetCommandAllowlist()
 	if _, ok := allowed[cmd]; !ok {
-		return fmt.Errorf("command %q is not in the allowlist (BOSS_COMMAND_ALLOWLIST)", cmd)
+		return fmt.Errorf("command %q is not in the allowlist (ODIS_COMMAND_ALLOWLIST)", cmd)
 	}
 	return nil
 }
@@ -318,7 +317,7 @@ func isPrivateIP(ip net.IP) bool {
 
 // ValidateWorkDir checks that a work_dir value is safe.
 // Rules: must be absolute; must not contain ".." after cleaning;
-// must begin with BOSS_WORK_DIR_PREFIX if that env var is set.
+// must begin with ODIS_WORK_DIR_PREFIX if that env var is set.
 func ValidateWorkDir(workDir string) error {
 	if workDir == "" {
 		return nil
@@ -332,7 +331,7 @@ func ValidateWorkDir(workDir string) error {
 		return fmt.Errorf("work_dir contains path traversal (got %q)", workDir)
 	}
 	cleaned := filepath.Clean(workDir)
-	if prefix := os.Getenv("BOSS_WORK_DIR_PREFIX"); prefix != "" {
+	if prefix := getEnvWithFallback("ODIS_WORK_DIR_PREFIX", "BOSS_WORK_DIR_PREFIX"); prefix != "" {
 		// Resolve symlinks before checking the prefix so that a symlink pointing
 		// outside the allowed tree doesn't bypass the guard.
 		resolved := cleaned

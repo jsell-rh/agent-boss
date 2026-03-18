@@ -43,7 +43,7 @@ space:
   name: "My Project"
   description: "Full-stack Node.js / React / Postgres app"     # optional
   shared_contracts: |                                           # optional
-    All agents coordinate via boss-mcp.
+    All agents coordinate via odis-mcp.
     Check in every 10 minutes during active work.
 
 personas:
@@ -115,15 +115,15 @@ Persona IDs are global across the server. To avoid collisions between teams, pre
 
 ```bash
 # Print fleet YAML to stdout
-boss export "Agent Boss Dev"
+boss export "OpenDispatch Dev"
 
 # Write to file
-boss export "Agent Boss Dev" --output fleet.yaml
+boss export "OpenDispatch Dev" --output fleet.yaml
 ```
 
 Environment:
-- `BOSS_URL` — coordinator URL (default: `http://localhost:8899`)
-- `BOSS_API_TOKEN` — bearer token if auth is enabled
+- `ODIS_URL` — coordinator URL (default: `http://localhost:8899`)
+- `ODIS_API_TOKEN` — bearer token if auth is enabled
 
 ---
 
@@ -211,8 +211,8 @@ Two environment variables restrict what the import command accepts:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `BOSS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Agent `command` field must be in this comma-separated list |
-| `BOSS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values must start with this prefix |
+| `ODIS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Agent `command` field must be in this comma-separated list |
+| `ODIS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values must start with this prefix |
 
 These prevent arbitrary command injection or path traversal via a malicious fleet file.
 

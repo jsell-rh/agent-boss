@@ -2,7 +2,7 @@
 
 ## Vision
 
-Agent Boss today is a coordination blackboard with a human in the loop. The human (Boss) reads the dashboard, answers `[?BOSS]` questions, approves tool use, unblocks stalled agents, and decides merge order. Every one of these touchpoints is an **interrupt** — a moment where production stops waiting for a human.
+OpenDispatch today is a coordination blackboard with a human in the loop. The human (Boss) reads the dashboard, answers `[?BOSS]` questions, approves tool use, unblocks stalled agents, and decides merge order. Every one of these touchpoints is an **interrupt** — a moment where production stops waiting for a human.
 
 The software factory pattern eliminates interrupts progressively until the system runs as a **dark factory**: spec in, deployed software out, no humans on the floor.
 
@@ -58,7 +58,7 @@ To reduce interrupts, we must first classify them. Each interrupt type has a dif
 **Frequency**: Once per agent per stage.
 **Automation path**: Deterministic gates (build, test, lint) run automatically. LLM-based review by the Reviewer agent handles code quality. Human review becomes optional at higher autonomy levels.
 
-## Architecture: Factory-Aware Agent Boss
+## Architecture: Factory-Aware OpenDispatch
 
 ### New Data Model: Factory Plan
 
@@ -327,7 +327,7 @@ Secondary metrics:
 
 These metrics should be visible in the dashboard and queryable via API, enabling trend analysis across factory runs.
 
-## Integration with Existing Agent Boss
+## Integration with Existing OpenDispatch
 
 The factory pattern is an **overlay** on the existing blackboard, not a replacement. Spaces that don't use the factory pattern continue to work exactly as they do today. The factory adds:
 
@@ -420,7 +420,7 @@ Full dark factory.
 
 The `sdk-backend-replacement` workspace is the proving ground. The Ambient platform's component dependency tree (CRD → API → SDK → CLI/FE → CP → Cluster) is the canonical factory pipeline. Every new Kind follows the same 8-step cascade documented in the Ambient `software-factory.md`.
 
-Agent Boss becomes the **factory controller** — the system that:
+OpenDispatch becomes the **factory controller** — the system that:
 1. Accepts a Kind spec
 2. Decomposes it into staged work orders
 3. Dispatches work to agents via the blackboard

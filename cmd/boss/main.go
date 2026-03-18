@@ -54,7 +54,7 @@ func main() {
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "boss: unknown command %q\n\n", args[0])
+		fmt.Fprintf(os.Stderr, "odis: unknown command %q\n\n", args[0])
 		printUsage()
 		os.Exit(1)
 	}
@@ -76,10 +76,10 @@ func stripGlobalFlags(args []string) []string {
 }
 
 func printUsage() {
-	fmt.Fprint(os.Stderr, `boss — multi-agent coordination bus
+	fmt.Fprint(os.Stderr, `odis — multi-agent coordination bus
 
 Usage:
-  boss [--insecure] <command> [flags]
+  odis [--insecure] <command> [flags]
 
 Server Commands:
   serve         Start the coordinator HTTP server
@@ -92,23 +92,23 @@ Client Commands:
   attach        Attach to an agent's tmux session
   delete        Delete a space or a single agent from a space
   ignite        Print the ignition prompt for a new agent
-  broadcast     Send a boss.check broadcast to all agents in a space
+  broadcast     Send a odis.check broadcast to all agents in a space
   export        Export a space as an agent-compose.yaml fleet file
   import        Import an agent-compose.yaml fleet file into a space
 
 Global Flags:
   --insecure    Skip TLS certificate verification (for self-signed certs)
 
-Use "boss <command> --help" for more information about a command.
+Use "odis <command> --help" for more information about a command.
 
 Environment (client commands):
-  BOSS_URL         Coordinator URL  (default: http://localhost:8899)
-  BOSS_API_TOKEN   Bearer token for authenticated requests (optional)
+  ODIS_URL         Coordinator URL  (default: http://localhost:8899)
+  ODIS_API_TOKEN   Bearer token for authenticated requests (optional)
 `)
 }
 
 func serverURL() string {
-	if u := os.Getenv("BOSS_URL"); u != "" {
+	if u := odisEnv("ODIS_URL", "BOSS_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
 	port := "8899"
@@ -118,11 +118,19 @@ func serverURL() string {
 	return "http://localhost:" + port
 }
 
+// odisEnv reads the primary env var; if empty, falls back to the legacy name.
+func odisEnv(primary, legacy string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
+}
+
 // newClient returns a coordinator client configured with the server URL and
-// BOSS_API_TOKEN (if set) for authenticated requests.
+// ODIS_API_TOKEN (if set) for authenticated requests.
 func newClient(space string) *coordinator.Client {
 	c := coordinator.NewClient(serverURL(), space)
-	if token := os.Getenv("BOSS_API_TOKEN"); token != "" {
+	if token := odisEnv("ODIS_API_TOKEN", "BOSS_API_TOKEN"); token != "" {
 		c.WithAuthToken(token)
 	}
 	if insecureTLS {
@@ -140,32 +148,32 @@ Persists state to SQLite (or Postgres) and serves the agent dashboard and
 MCP endpoint. Reads all configuration from environment variables.
 
 Usage:
-  boss serve
+  odis serve
 
 Examples:
   # Start with default settings (data stored in ./data/, port 8899)
-  boss serve
+  odis serve
 
   # Custom data directory and port
-  DATA_DIR=/var/lib/boss COORDINATOR_PORT=9000 boss serve
+  DATA_DIR=/var/lib/odis COORDINATOR_PORT=9000 odis serve
 
   # Postgres backend
-  DB_TYPE=postgres DB_DSN="host=db user=boss dbname=boss sslmode=disable" boss serve
+  DB_TYPE=postgres DB_DSN="host=db user=boss dbname=boss sslmode=disable" odis serve
 
   # Development: serve frontend from disk instead of embedded
-  FRONTEND_DIR=./internal/coordinator/frontend boss serve
+  FRONTEND_DIR=./internal/coordinator/frontend odis serve
 
 Environment:
   DATA_DIR              Data directory for SQLite and assets  (default: ./data)
   COORDINATOR_PORT      Listen port                           (default: 8899)
   COORDINATOR_HOST      Hostname for agent-facing URLs        (default: localhost)
-  COORDINATOR_EXTERNAL_URL  External URL injected into ambient sessions as BOSS_URL
+  COORDINATOR_EXTERNAL_URL  External URL injected into ambient sessions as ODIS_URL
   DB_TYPE               Database backend: sqlite | postgres   (default: sqlite)
   DB_DSN                Postgres DSN (required when DB_TYPE=postgres)
   FRONTEND_DIR          Override embedded Vue dist directory  (optional)
-  BOSS_API_TOKEN        Bearer token for mutating endpoints   (optional — disables auth when unset)
-  BOSS_ALLOWED_ORIGINS  Extra CORS origins (comma-separated)  (optional)
-  BOSS_ALLOW_SKIP_PERMISSIONS  Pass --dangerously-skip-permissions to Claude (default: false)
+  ODIS_API_TOKEN        Bearer token for mutating endpoints   (optional — disables auth when unset)
+  ODIS_ALLOWED_ORIGINS  Extra CORS origins (comma-separated)  (optional)
+  ODIS_ALLOW_SKIP_PERMISSIONS  Pass --dangerously-skip-permissions to Claude (default: false)
   STALENESS_THRESHOLD   Heartbeat staleness cutoff            (default: 5m)
   LOG_FORMAT            Log format: text | json               (default: text)
   AMBIENT_API_URL       Enable ambient session backend; set to API base URL
@@ -195,21 +203,21 @@ Environment:
 	if frontendDir := os.Getenv("FRONTEND_DIR"); frontendDir != "" {
 		absDir, _ := filepath.Abs(frontendDir)
 		srv.SetFrontendDir(absDir)
-		fmt.Printf("boss: serving Vue frontend from %s\n", absDir)
+		fmt.Printf("odis: serving Vue frontend from %s\n", absDir)
 	}
 
 	if err := srv.Start(); err != nil {
-		log.Fatalf("boss: failed to start coordinator: %v", err)
+		log.Fatalf("odis: failed to start coordinator: %v", err)
 	}
-	fmt.Printf("boss: coordinator running on %s (data: %s)\n", port, dataDir)
+	fmt.Printf("odis: coordinator running on %s (data: %s)\n", port, dataDir)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
-	fmt.Println("\nboss: shutting down...")
+	fmt.Println("\nodis: shutting down...")
 	if err := srv.Stop(); err != nil {
-		log.Printf("boss: shutdown error: %v", err)
+		log.Printf("odis: shutdown error: %v", err)
 	}
 }
 
@@ -219,20 +227,20 @@ func cmdPost(args []string) {
 		fmt.Fprint(os.Stderr, `Post a status update from an agent to its coordination space.
 
 Agents call this command to report their current status, phase, and next
-steps to the boss. Required for the blackboard pattern to work.
+steps to the odis. Required for the blackboard pattern to work.
 
 Usage:
-  boss post --agent <name> --summary <text> [flags]
+  odis post --agent <name> --summary <text> [flags]
 
 Examples:
   # Report progress (active, default status)
-  boss post --space my-feature --agent api --summary "wiring DB layer" --phase "implementation"
+  odis post --space my-feature --agent api --summary "wiring DB layer" --phase "implementation"
 
   # Mark work complete
-  boss post --agent api --status done --summary "shipped auth endpoint"
+  odis post --agent api --status done --summary "shipped auth endpoint"
 
   # Signal a blocker
-  boss post --agent frontend --status blocked --summary "waiting on API spec" \
+  odis post --agent frontend --status blocked --summary "waiting on API spec" \
       --next "unblock once /spec endpoint is merged"
 
 Options:
@@ -253,7 +261,7 @@ Options:
 	fs.Parse(args)
 
 	if *agent == "" || *summary == "" {
-		fmt.Fprintln(os.Stderr, "boss post: --agent and --summary are required")
+		fmt.Fprintln(os.Stderr, "odis post: --agent and --summary are required")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -266,7 +274,7 @@ Options:
 		NextSteps: *nextSteps,
 	}
 	if err := client.PostAgentUpdate(*agent, update); err != nil {
-		fmt.Fprintf(os.Stderr, "boss post: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis post: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("posted to [%s/%s]: %s\n", *space, *agent, *summary)
@@ -281,17 +289,17 @@ Without --agent, returns the full space snapshot as JSON.
 With --raw, returns the space as rendered Markdown instead of JSON.
 
 Usage:
-  boss get [--agent <name>] [--raw] [flags]
+  odis get [--agent <name>] [--raw] [flags]
 
 Examples:
   # Full space snapshot (JSON)
-  boss get --space my-feature
+  odis get --space my-feature
 
   # Single agent state (JSON)
-  boss get --space my-feature --agent api
+  odis get --space my-feature --agent api
 
   # Rendered Markdown for the whole space
-  boss get --space my-feature --raw
+  odis get --space my-feature --raw
 
 Options:
   --space string   Space name           (default: "default")
@@ -309,7 +317,7 @@ Options:
 	if *raw {
 		md, err := client.FetchMarkdown()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "boss get: %v\n", err)
+			fmt.Fprintf(os.Stderr, "odis get: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Print(md)
@@ -319,7 +327,7 @@ Options:
 	if *agent != "" {
 		a, err := client.FetchAgent(*agent)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "boss get: %v\n", err)
+			fmt.Fprintf(os.Stderr, "odis get: %v\n", err)
 			os.Exit(1)
 		}
 		data, _ := json.MarshalIndent(a, "", "  ")
@@ -329,7 +337,7 @@ Options:
 
 	ks, err := client.FetchSpace()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss get: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis get: %v\n", err)
 		os.Exit(1)
 	}
 	data, _ := json.MarshalIndent(ks, "", "  ")
@@ -342,10 +350,10 @@ func cmdSpaces(args []string) {
 		fmt.Fprint(os.Stderr, `List all coordination spaces and their agent counts.
 
 Usage:
-  boss spaces
+  odis spaces
 
 Examples:
-  boss spaces
+  odis spaces
 `)
 	}
 	fs.Parse(args)
@@ -353,7 +361,7 @@ Examples:
 	client := newClient("")
 	spaces, err := client.ListSpaces()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss spaces: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis spaces: %v\n", err)
 		os.Exit(1)
 	}
 	if len(spaces) == 0 {
@@ -375,14 +383,14 @@ connect it to the coordination bus. Redirect the output into a file or
 pipe it directly to Claude.
 
 Usage:
-  boss ignite [--tmux <session>] <agent-name> <space-name>
+  odis ignite [--tmux <session>] <agent-name> <space-name>
 
 Examples:
   # Print ignition prompt for agent "sdk" in space "sdk-backend-replacement"
-  boss ignite sdk sdk-backend-replacement
+  odis ignite sdk sdk-backend-replacement
 
   # Register a specific tmux session alongside the ignition prompt
-  boss ignite --tmux my-session sdk sdk-backend-replacement
+  odis ignite --tmux my-session sdk sdk-backend-replacement
 
 Options:
   --tmux string   Tmux session name to register (default: auto-detected from $TMUX)
@@ -393,8 +401,8 @@ Options:
 
 	positional := fs.Args()
 	if len(positional) < 2 {
-		fmt.Fprintln(os.Stderr, "boss ignite: requires <agent-name> <workspace>")
-		fmt.Fprintln(os.Stderr, "usage: boss ignite [-tmux SESSION] SDK sdk-backend-replacement")
+		fmt.Fprintln(os.Stderr, "odis ignite: requires <agent-name> <workspace>")
+		fmt.Fprintln(os.Stderr, "usage: odis ignite [-tmux SESSION] SDK sdk-backend-replacement")
 		os.Exit(1)
 	}
 	agentName := positional[0]
@@ -403,7 +411,7 @@ Options:
 	client := newClient(workspace)
 	prompt, err := client.FetchIgnition(agentName, *tmuxSession)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss ignite: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis ignite: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Print(prompt)
@@ -412,16 +420,16 @@ Options:
 func cmdBroadcast(args []string) {
 	fs := flag.NewFlagSet("broadcast", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Send a boss.check broadcast to all agents in a space.
+		fmt.Fprint(os.Stderr, `Send a odis.check broadcast to all agents in a space.
 
 The broadcast signals every registered agent to check in, report status,
 and review the shared task board.
 
 Usage:
-  boss broadcast [--space <name>]
+  odis broadcast [--space <name>]
 
 Examples:
-  boss broadcast --space sdk-backend-replacement
+  odis broadcast --space sdk-backend-replacement
 
 Options:
   --space string   Space name  (default: "default")
@@ -433,7 +441,7 @@ Options:
 	client := newClient(*space)
 	msg, err := client.TriggerBroadcast()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss broadcast: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis broadcast: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println(msg)
@@ -448,10 +456,10 @@ Looks up the agent's registered session ID and replaces the current process
 with tmux attach, handing the terminal directly to the running Claude pane.
 
 Usage:
-  boss attach --agent <name> [--space <name>]
+  odis attach --agent <name> [--space <name>]
 
 Examples:
-  boss attach --space my-feature --agent api
+  odis attach --space my-feature --agent api
 
 Options:
   --space string   Space name           (default: "default")
@@ -463,7 +471,7 @@ Options:
 	fs.Parse(args)
 
 	if *agent == "" {
-		fmt.Fprintln(os.Stderr, "boss attach: --agent is required")
+		fmt.Fprintln(os.Stderr, "odis attach: --agent is required")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -471,24 +479,24 @@ Options:
 	client := newClient(*space)
 	a, err := client.FetchAgent(*agent)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss attach: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis attach: %v\n", err)
 		os.Exit(1)
 	}
 	if a.SessionID == "" {
-		fmt.Fprintf(os.Stderr, "boss attach: agent %q has no tmux session\n", *agent)
+		fmt.Fprintf(os.Stderr, "odis attach: agent %q has no tmux session\n", *agent)
 		os.Exit(1)
 	}
 
 	tmuxBin, err := lookPath("tmux")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss attach: tmux not found in PATH\n")
+		fmt.Fprintf(os.Stderr, "odis attach: tmux not found in PATH\n")
 		os.Exit(1)
 	}
 
 	// Replace the current process with tmux attach so the terminal is handed
 	// over cleanly — no wrapper process sitting between the user and the pane.
 	if err := syscall.Exec(tmuxBin, []string{"tmux", "attach", "-t", a.SessionID}, os.Environ()); err != nil {
-		fmt.Fprintf(os.Stderr, "boss attach: exec tmux: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis attach: exec tmux: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -499,14 +507,14 @@ func cmdDelete(args []string) {
 		fmt.Fprint(os.Stderr, `Delete a space or a single agent from a space.
 
 Usage:
-  boss delete --space <name> [--agent <name>]
+  odis delete --space <name> [--agent <name>]
 
 Examples:
   # Delete a single agent
-  boss delete --space my-feature --agent api
+  odis delete --space my-feature --agent api
 
   # Delete an entire space and all its agents
-  boss delete --space my-feature
+  odis delete --space my-feature
 
 Options:
   --space string   Space name (required)
@@ -518,7 +526,7 @@ Options:
 	fs.Parse(args)
 
 	if *space == "" {
-		fmt.Fprintln(os.Stderr, "boss delete: --space is required")
+		fmt.Fprintln(os.Stderr, "odis delete: --space is required")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -527,7 +535,7 @@ Options:
 
 	if *agent != "" {
 		if err := client.DeleteAgent(*agent); err != nil {
-			fmt.Fprintf(os.Stderr, "boss delete: %v\n", err)
+			fmt.Fprintf(os.Stderr, "odis delete: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("deleted agent [%s] from space %q\n", *agent, *space)
@@ -535,7 +543,7 @@ Options:
 	}
 
 	if err := client.DeleteSpace(); err != nil {
-		fmt.Fprintf(os.Stderr, "boss delete: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis delete: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("deleted space %q\n", *space)
@@ -544,20 +552,20 @@ Options:
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Create a space and register the boss MCP server with the local Claude installation.
+		fmt.Fprint(os.Stderr, `Create a space and register the odis MCP server with the local Claude installation.
 
 Idempotent: safe to run multiple times. Re-registration replaces any existing
-boss-mcp entry so the URL is always current.
+odis-mcp entry so the URL is always current.
 
 Usage:
-  boss init [space-name] [--open]
+  odis init [space-name] [--open]
 
 Examples:
   # Create (or reconnect to) the default space
-  boss init
+  odis init
 
   # Create a named space and open the dashboard
-  boss init my-feature --open
+  odis init my-feature --open
 
 Options:
   --open   Open the space dashboard in your default browser after init
@@ -578,7 +586,7 @@ Options:
 	// Step 1: create space if it doesn't exist.
 	created, err := client.EnsureSpace()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "boss init: %v\n", err)
+		fmt.Fprintf(os.Stderr, "odis init: %v\n", err)
 		os.Exit(1)
 	}
 	if created {
@@ -588,14 +596,14 @@ Options:
 	}
 
 	// Step 2: register the MCP server with Claude.
-	// Remove any existing boss-mcp entry first so re-registration always succeeds.
+	// Remove any existing odis-mcp entry first so re-registration always succeeds.
 	mcpURL := baseURL + "/mcp"
-	runMCPRegister([]string{"claude", "mcp", "remove", "boss-mcp"}) //nolint:errcheck — ignore if not present
-	if err := runMCPRegister([]string{"claude", "mcp", "add", "boss-mcp", "--transport", "http", mcpURL}); err != nil {
-		fmt.Fprintf(os.Stderr, "boss init: MCP registration failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "  Run manually: claude mcp add boss-mcp --transport http %s\n", mcpURL)
+	runMCPRegister([]string{"claude", "mcp", "remove", "odis-mcp"}) //nolint:errcheck — ignore if not present
+	if err := runMCPRegister([]string{"claude", "mcp", "add", "odis-mcp", "--transport", "http", mcpURL}); err != nil {
+		fmt.Fprintf(os.Stderr, "odis init: MCP registration failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  Run manually: claude mcp add odis-mcp --transport http %s\n", mcpURL)
 	} else {
-		fmt.Printf("MCP server registered: boss-mcp → %s\n", mcpURL)
+		fmt.Printf("MCP server registered: odis-mcp → %s\n", mcpURL)
 	}
 
 	// Step 3: print the dashboard URL.
@@ -605,7 +613,7 @@ Options:
 	// Step 4: optionally open in browser.
 	if *openBrowser {
 		if err := openURL(dashURL); err != nil {
-			fmt.Fprintf(os.Stderr, "boss init: could not open browser: %v\n", err)
+			fmt.Fprintf(os.Stderr, "odis init: could not open browser: %v\n", err)
 		}
 	}
 }
