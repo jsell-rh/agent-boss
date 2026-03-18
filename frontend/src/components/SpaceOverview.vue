@@ -313,7 +313,7 @@ function handleCardKeydown(e: KeyboardEvent, name: string) {
 defineExpose({})
 
 const sortedAgents = computed(() => {
-  return Object.entries(props.space.agents).sort(([, a], [, b]) => {
+  return Object.entries(props.space.agents ?? {}).sort(([, a], [, b]) => {
     // Agents needing attention first (blockers > questions), then by name
     const aAttention = (a.blockers?.length ?? 0) * 2 + (a.questions?.length ?? 0)
     const bAttention = (b.blockers?.length ?? 0) * 2 + (b.questions?.length ?? 0)
@@ -327,11 +327,11 @@ const sortedAgents = computed(() => {
   })
 })
 
-const agentCount = computed(() => Object.keys(props.space.agents).length)
+const agentCount = computed(() => Object.keys(props.space.agents ?? {}).length)
 
 // Fleet Vibe — live emoji + label derived from agent status distribution
 const fleetVibe = computed(() => {
-  const agents = Object.values(props.space.agents)
+  const agents = Object.values(props.space.agents ?? {})
   if (agents.length === 0) return null
   const counts = { active: 0, blocked: 0, error: 0, done: 0, idle: 0 }
   for (const a of agents) {
@@ -365,15 +365,15 @@ const showChecklist = computed(
 )
 const hasAgent = computed(() => agentCount.value > 0)
 const hasAgentWithWorkDir = computed(() =>
-  Object.values(props.space.agents).some((a) => (a as any).work_dir)
+  Object.values(props.space.agents ?? {}).some((a) => (a as any).work_dir)
 )
 const hasSpawnedSession = computed(() =>
-  Object.values(props.space.agents).some((a) => (a as any).session_id)
+  Object.values(props.space.agents ?? {}).some((a) => (a as any).session_id)
 )
 
 const needsAttentionCount = computed(() => {
   let count = 0
-  for (const agent of Object.values(props.space.agents)) {
+  for (const agent of Object.values(props.space.agents ?? {})) {
     if ((agent.questions?.length ?? 0) > 0 || (agent.blockers?.length ?? 0) > 0) {
       count++
     }
@@ -396,7 +396,7 @@ const headerSummary = computed(() => {
 const PRESENCE_WINDOW_MS = 5 * 60 * 1000
 const recentlyActiveAgents = computed(() => {
   const now = Date.now()
-  return Object.entries(props.space.agents)
+  return Object.entries(props.space.agents ?? {})
     .filter(([, agent]) => now - new Date(agent.updated_at).getTime() < PRESENCE_WINDOW_MS)
     .sort(([, a], [, b]) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 })
@@ -426,7 +426,7 @@ const recentlyUpdated = ref<Set<string>>(new Set())
 
 const agentTimestamps = computed<Record<string, string>>(() => {
   const result: Record<string, string> = {}
-  for (const [name, agent] of Object.entries(props.space.agents)) {
+  for (const [name, agent] of Object.entries(props.space.agents ?? {})) {
     result[name] = agent.updated_at
   }
   return result

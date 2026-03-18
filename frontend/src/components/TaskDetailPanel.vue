@@ -71,7 +71,7 @@ watch(() => props.task, (t) => {
   pendingReason.value = ''
 })
 
-const agentNames = computed(() => Object.keys(props.space.agents))
+const agentNames = computed(() => Object.keys(props.space.agents ?? {}))
 
 const parentTask = computed(() => {
   if (!props.task?.parent_task || !props.allTasks) return null
@@ -97,7 +97,7 @@ function buildPrUrl(pr: string): string | null {
     }
   }
   // Fall back to any agent in the space that has a repo_url
-  for (const agent of Object.values(props.space.agents)) {
+  for (const agent of Object.values(props.space.agents ?? {})) {
     if (agent.repo_url) {
       const base = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
       const num = pr.replace(/^#/, '')

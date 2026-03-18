@@ -105,7 +105,7 @@ const STATUS_ORDER: Record<string, number> = { error: 0, blocked: 1, active: 2, 
 
 const sortedAgents = computed(() => {
   if (!props.currentSpace) return []
-  return Object.entries(props.currentSpace.agents).sort(([nameA, a], [nameB, b]) => {
+  return Object.entries(props.currentSpace.agents ?? {}).sort(([nameA, a], [nameB, b]) => {
     const aOrder = STATUS_ORDER[a.status] ?? 5
     const bOrder = STATUS_ORDER[b.status] ?? 5
     if (aOrder !== bOrder) return aOrder - bOrder
@@ -136,7 +136,7 @@ const inactiveAgents = computed(() =>
 const agentCountSummary = computed(() => {
   if (!props.currentSpace) return ''
   const counts: Partial<Record<AgentStatus, number>> = {}
-  for (const agent of Object.values(props.currentSpace.agents)) {
+  for (const agent of Object.values(props.currentSpace.agents ?? {})) {
     counts[agent.status] = (counts[agent.status] ?? 0) + 1
   }
   const order: AgentStatus[] = ['error', 'blocked', 'active', 'idle', 'done']
@@ -162,7 +162,7 @@ watch(
   (space) => {
     if (space) {
       // After space loads, open inactive if it's a small space
-      inactiveOpen.value = Object.keys(space.agents).length < 5
+      inactiveOpen.value = Object.keys(space.agents ?? {}).length < 5
     }
   },
   { immediate: true }
@@ -207,7 +207,7 @@ function spaceAttentionCount(space: SpaceSummary): number {
   // For the selected space, compute from actual agent data (always fresh)
   if (space.name === props.selectedSpace && props.currentSpace) {
     let count = 0
-    for (const agent of Object.values(props.currentSpace.agents)) {
+    for (const agent of Object.values(props.currentSpace.agents ?? {})) {
       count += (agent.questions?.length ?? 0) + (agent.blockers?.length ?? 0)
     }
     return count
@@ -258,7 +258,7 @@ const recentlyActiveAgents = computed<Set<string>>(() => {
   if (!props.currentSpace) return new Set()
   const cutoff = Date.now() - 10_000
   const result = new Set<string>()
-  for (const [name, agent] of Object.entries(props.currentSpace.agents)) {
+  for (const [name, agent] of Object.entries(props.currentSpace.agents ?? {})) {
     if (agent.updated_at && agent.status !== 'done' && agent.status !== 'idle') {
       if (new Date(agent.updated_at).getTime() > cutoff) result.add(name)
     }

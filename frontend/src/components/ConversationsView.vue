@@ -146,7 +146,7 @@ onUnmounted(() => {
 const conversations = computed((): Conversation[] => {
   const convMap = new Map<string, Conversation>()
 
-  for (const [agentName, agentData] of Object.entries(props.space.agents)) {
+  for (const [agentName, agentData] of Object.entries(props.space.agents ?? {})) {
     const msgs = spaceMessages.value[agentName]?.messages ?? agentData.messages ?? []
     for (const msg of msgs) {
       const sorted = [agentName, msg.sender].sort()
@@ -396,7 +396,7 @@ const newMsgPickerOpen = ref(false)
 const newMsgSearch = ref('')
 const newMsgInputRef = ref<HTMLInputElement | null>(null)
 
-const allAgentNames = computed(() => Object.keys(props.space.agents).sort())
+const allAgentNames = computed(() => Object.keys(props.space.agents ?? {}).sort())
 
 const filteredAgentNames = computed(() => {
   const q = newMsgSearch.value.toLowerCase()

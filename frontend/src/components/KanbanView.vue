@@ -328,7 +328,7 @@ onUnmounted(() => {
               <DropdownMenuContent>
                 <DropdownMenuItem :class="{ 'font-semibold': !filterAssignee }" @click="filterAssignee = ''">All agents</DropdownMenuItem>
                 <DropdownMenuItem
-                  v-for="agent in Object.keys(space.agents)"
+                  v-for="agent in Object.keys(space.agents ?? {})"
                   :key="agent"
                   :class="{ 'font-semibold': filterAssignee === agent }"
                   @click="filterAssignee = agent"
@@ -396,7 +396,7 @@ onUnmounted(() => {
             <DropdownMenuContent>
               <DropdownMenuItem :class="{ 'font-semibold': !filterAssignee }" @click="filterAssignee = ''">All agents</DropdownMenuItem>
               <DropdownMenuItem
-                v-for="agent in Object.keys(space.agents)"
+                v-for="agent in Object.keys(space.agents ?? {})"
                 :key="agent"
                 :class="{ 'font-semibold': filterAssignee === agent }"
                 @click="filterAssignee = agent"
