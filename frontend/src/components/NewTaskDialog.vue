@@ -175,7 +175,7 @@ async function submit() {
                   <span class="text-muted-foreground">Unassigned</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  v-for="agent in Object.keys(space.agents)"
+                  v-for="agent in Object.keys(space.agents ?? {})"
                   :key="agent"
                   @click="assignedTo = agent"
                 >

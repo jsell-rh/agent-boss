@@ -17,7 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const hasHierarchy = computed(() =>
-  Object.values(props.agents).some(a => a.parent)
+  Object.values(props.agents ?? {}).some(a => a.parent)
 )
 
 function renderNodeList(names: string[], depth: number): { name: string; node: HierarchyNode; depth: number }[] {
