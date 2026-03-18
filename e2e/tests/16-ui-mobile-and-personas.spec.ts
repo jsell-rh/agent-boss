@@ -161,10 +161,10 @@ test.describe('UI: Persona display on agent cards', () => {
     })
     const persona = (await personaResp.json()) as { id: string; version: number }
 
-    // Assign persona to agent config BEFORE navigating
-    await api.put(`/spaces/${space}/agent/PersonaAgent/config`, {
+    // Assign persona to agent config BEFORE navigating (PATCH requires X-Agent-Name)
+    await api.patch(`/spaces/${space}/agent/PersonaAgent/config`, {
       personas: [{ id: persona.id, pinned_version: persona.version }],
-    })
+    }, 'PersonaAgent')
 
     // Navigate and wait for the persona badge to appear
     await page.goto(`${BASE}/${encodeURIComponent(space)}`)

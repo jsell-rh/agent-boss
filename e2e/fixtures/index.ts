@@ -12,6 +12,7 @@ export interface ApiHelper {
   post(path: string, body: unknown, agentName?: string): Promise<Response>
   postText(path: string, body: string, agentName?: string): Promise<Response>
   put(path: string, body: unknown, agentName?: string): Promise<Response>
+  patch(path: string, body: unknown, agentName?: string): Promise<Response>
   del(path: string, agentName?: string): Promise<Response>
   getJSON<T>(path: string): Promise<T>
   postJSON<T>(path: string, body: unknown, agentName?: string): Promise<T>
@@ -56,6 +57,15 @@ function makeApi(baseUrl: string): ApiHelper {
       },
       body: JSON.stringify(body),
     })
+  const patch = (path: string, body: unknown, agentName?: string) =>
+    fetch(url(path), {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(agentName ? { 'X-Agent-Name': agentName } : {}),
+      },
+      body: JSON.stringify(body),
+    })
 
   const getJSON = async <T>(path: string): Promise<T> => {
     const r = await get(path)
@@ -73,7 +83,7 @@ function makeApi(baseUrl: string): ApiHelper {
     return r.json() as Promise<T>
   }
 
-  return { get, post, postText, put, del, getJSON, postJSON, putJSON }
+  return { get, post, postText, put, patch, del, getJSON, postJSON, putJSON }
 }
 
 // ── Server restart helper ───────────────────────────────────────────────────
