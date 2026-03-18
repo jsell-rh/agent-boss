@@ -780,12 +780,18 @@ watch(() => props.agentName, () => {
         <div v-if="introspectError" class="text-xs text-destructive">{{ introspectError }}</div>
         <div v-else-if="!introspectData" class="text-xs text-muted-foreground italic">Loading…</div>
         <div v-else>
-          <div class="flex gap-3 mb-2 text-[11px] text-muted-foreground flex-wrap">
+          <div class="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground flex-wrap">
             <span :class="introspectData.session_exists ? 'text-green-500' : 'text-red-500'">
               {{ introspectData.session_exists ? 'session online' : 'session offline' }}
             </span>
-            <span v-if="introspectData.idle">idle</span>
-            <span v-if="introspectData.needs_approval" class="text-primary">awaiting approval: {{ introspectData.tool_name }}</span>
+            <template v-if="introspectData.idle">
+              <span class="opacity-30 select-none">·</span>
+              <span>idle</span>
+            </template>
+            <template v-if="introspectData.needs_approval">
+              <span class="opacity-30 select-none">·</span>
+              <span class="text-primary">awaiting approval: {{ introspectData.tool_name }}</span>
+            </template>
             <span class="ml-auto tabular-nums">captured {{ new Date(introspectData.captured_at).toLocaleTimeString() }}</span>
           </div>
           <pre class="text-[11px] leading-snug text-foreground/80 bg-background rounded border border-border p-3 overflow-x-auto max-h-64 overflow-y-auto font-mono whitespace-pre-wrap">{{ introspectData.lines.join('\n') }}</pre>
