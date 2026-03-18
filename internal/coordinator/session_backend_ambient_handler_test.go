@@ -324,16 +324,11 @@ func TestHandlerAmbientSpawnEnvVarSplit(t *testing.T) {
 		t.Errorf("expected BOSS_URL_HOST=boss.example.com, got %v", envVars["BOSS_URL_HOST"])
 	}
 
-	// MCP_SERVERS_JSON should register boss-mcp as an HTTP MCP server
-	mcpJSON, ok := envVars["MCP_SERVERS_JSON"].(string)
-	if !ok || mcpJSON == "" {
-		t.Fatal("expected MCP_SERVERS_JSON in environmentVariables")
-	}
-	if !strings.Contains(mcpJSON, `"boss-mcp"`) {
-		t.Errorf("MCP_SERVERS_JSON should contain boss-mcp, got %v", mcpJSON)
-	}
-	if !strings.Contains(mcpJSON, "https://boss.example.com/mcp") {
-		t.Errorf("MCP_SERVERS_JSON should contain coordinator URL, got %v", mcpJSON)
+	// MCP_SERVERS_JSON must NOT be set — the workflow's .mcp.json handles
+	// boss-mcp registration (with auth headers via env var substitution).
+	// MCP_SERVERS_JSON would clobber the workflow entry and drop auth.
+	if _, has := envVars["MCP_SERVERS_JSON"]; has {
+		t.Error("MCP_SERVERS_JSON should not be present — workflow .mcp.json handles MCP registration")
 	}
 }
 

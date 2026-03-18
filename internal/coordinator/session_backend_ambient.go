@@ -224,17 +224,11 @@ func (b *AmbientSessionBackend) CreateSession(ctx context.Context, opts SessionC
 		}
 	}
 
-	// Register boss-mcp as a user-defined MCP server via MCP_SERVERS_JSON.
-	// The ACP runner's build_mcp_servers() reads this env var and merges
-	// HTTP servers into the Claude Agent SDK's MCP config.
-	if b.coordinatorURL != "" {
-		envVars["MCP_SERVERS_JSON"] = `[{"name":"boss-mcp","type":"http","url":"` + b.coordinatorURL + `/mcp"}]`
-		// The Node.js MCP HTTP transport rejects self-signed certs by default.
-		// When TLS verification is skipped for the ambient backend, propagate
-		// this to runner pods so the SDK can connect to the coordinator.
-		if b.skipTLSVerify {
-			envVars["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-		}
+	// The Node.js MCP HTTP transport rejects self-signed certs by default.
+	// When TLS verification is skipped for the ambient backend, propagate
+	// this to runner pods so the SDK can connect to the coordinator.
+	if b.skipTLSVerify {
+		envVars["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
 	}
 
 	if len(envVars) > 0 {
