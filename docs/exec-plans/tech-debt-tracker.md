@@ -1,6 +1,6 @@
 # Tech Debt Tracker
 
-Known technical debt in Agent Boss as of 2026-03-17 (updated after PRs #213–#231). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
+Known technical debt in Agent Boss as of 2026-03-18 (updated after PRs #213–#241). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
 
 Items are ordered by priority: **high** → **medium** → **low**.
 
@@ -8,9 +8,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 
 ## High Priority
 
-### TD-001: `handlers_agent.go` is a 1803-LOC monolith (growing)
+### TD-001: `handlers_agent.go` is a 1807-LOC monolith (growing)
 - **File:** `internal/coordinator/handlers_agent.go`
-- **Issue:** All agent HTTP handlers are in one file: status POST, spawn, kill, restart, messages, register, interrupt, approval. After the TASK-014 server.go split, this became the new concentration point. Grew from 1682 → 1803 LOC across PRs #219–#231.
+- **Issue:** All agent HTTP handlers are in one file: status POST, spawn, kill, restart, messages, register, interrupt, approval. After the TASK-014 server.go split, this became the new concentration point. Grew from 1682 → 1807 LOC across PRs #219–#241.
 - **Impact:** Hard to review, hard to unit-test spawn logic in isolation.
 - **Fix:** Split into `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go` (~400–600 LOC each).
 
@@ -48,9 +48,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Impact:** Hard to understand what the server "is" vs what it "does".
 - **Fix:** Group related fields into embedded sub-structs: `sseState`, `nudgeState`, `agentRegistry`.
 
-### TD-007: `server_test.go` is a 4169-LOC mega-test file
+### TD-007: `server_test.go` is a 4716-LOC mega-test file (growing)
 - **File:** `internal/coordinator/server_test.go`
-- **Issue:** All HTTP integration tests in one file. Hard to navigate and contributes to slow test runs (39s).
+- **Issue:** All HTTP integration tests in one file. Hard to navigate and contributes to slow test runs (~46s). Grew from 4169 → 4716 LOC; PR #241 added 178 LOC for pagination tests, PR #242 added 38 LOC for per-agent token isolation tests.
 - **Impact:** Long compile + test cycle; hard to find relevant tests.
 - **Fix:** Split by domain: `agents_test.go`, `tasks_test.go`, `sse_test.go`, `spawn_test.go`.
 
@@ -81,8 +81,8 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Fix:** Add Postgres CI job (GitHub Actions service container).
 
 ### TD-012: `mcp_tools.go` approaching monolith territory
-- **File:** `internal/coordinator/mcp_tools.go` (1158 LOC, was 1104)
-- **Issue:** All MCP tool implementations in one file. Grew by 54 LOC in this sprint. At current growth rate will hit 1500-LOC split threshold within 2–3 sprints.
+- **File:** `internal/coordinator/mcp_tools.go` (1184 LOC, was 1158)
+- **Issue:** All MCP tool implementations in one file. Grew by 26 LOC in PR #241 (pagination constants + has_more/unread_count response fields). At current growth rate will hit 1500-LOC split threshold within 2–3 sprints.
 - **Impact:** Will become a problem as MCP surface expands.
 - **Fix:** Split by domain when >1500 LOC: `mcp_agent_tools.go`, `mcp_task_tools.go`, `mcp_space_tools.go`.
 
