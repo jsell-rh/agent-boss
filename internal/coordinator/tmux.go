@@ -130,18 +130,16 @@ func tmuxCapturePaneLastLine(session string) (string, error) {
 	return strings.TrimSpace(lines[0]), nil
 }
 
-func tmuxCheckApproval(session string) ApprovalInfo {
-	if tmuxIsIdle(session) {
-		return ApprovalInfo{}
-	}
-	lines, err := tmuxCapturePaneLines(session, 60)
-	if err != nil || len(lines) == 0 {
-		return ApprovalInfo{}
-	}
+// parseApprovalFromLines inspects captured pane lines and returns an ApprovalInfo
+// if a Claude Code approval prompt (tool permission or folder-trust) is detected.
+// Extracted as a pure function so it can be unit-tested without a live tmux session.
+func parseApprovalFromLines(lines []string) ApprovalInfo {
 	promptIdx := -1
 	for i := len(lines) - 1; i >= 0; i-- {
 		trimmed := strings.TrimSpace(lines[i])
-		if strings.Contains(trimmed, "Do you want") && strings.Contains(trimmed, "?") {
+		if (strings.Contains(trimmed, "Do you want") ||
+			strings.Contains(trimmed, "Do you trust") ||
+			strings.Contains(trimmed, "Quick safety check")) && strings.Contains(trimmed, "?") {
 			promptIdx = i
 			break
 		}
@@ -198,6 +196,17 @@ func tmuxCheckApproval(session string) ApprovalInfo {
 		ToolName:      toolName,
 		PromptText:    prompt,
 	}
+}
+
+func tmuxCheckApproval(session string) ApprovalInfo {
+	if tmuxIsIdle(session) {
+		return ApprovalInfo{}
+	}
+	lines, err := tmuxCapturePaneLines(session, 60)
+	if err != nil || len(lines) == 0 {
+		return ApprovalInfo{}
+	}
+	return parseApprovalFromLines(lines)
 }
 
 func tmuxApprove(session string) error {
