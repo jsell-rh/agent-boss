@@ -183,7 +183,7 @@ bash scripts/boss-observe.sh get-session-output agent-boss-dev-arch2 50
 ## Restart Procedure
 
 ```bash
-pkill -f '/tmp/boss'
+pkill -f '/tmp/boss serve'
 sleep 1
 git pull
 cd frontend && npm install && npm run build && cd ..

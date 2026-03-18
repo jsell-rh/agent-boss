@@ -124,7 +124,10 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	// Wrap in restart loop so agent stays alive after claude exits.
 	// Single-quoted heredoc delimiter prevents expansion of the command body,
 	// which is safe even though the command contains single quotes (--mcp-config '...').
-	wrapperPath := "/tmp/boss-agent-" + sessionID + ".sh"
+	// Use a path that does NOT contain "/tmp/boss" so the restart loop is not
+	// accidentally killed when an operator runs "pkill -f '/tmp/boss'" to stop
+	// the server. Agent loops must survive boss server restarts.
+	wrapperPath := "/tmp/agent-loop-" + sessionID + ".sh"
 	heredoc := fmt.Sprintf(
 		"cat > %s <<'BOSSEOF'\n#!/bin/bash\nwhile true; do\n  %s\n  echo '[boss] claude exited (exit $?) -- restarting in 3s'\n  sleep 3\ndone\nBOSSEOF",
 		wrapperPath, command)
