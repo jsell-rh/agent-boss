@@ -807,7 +807,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString(fmt.Sprintf("All tools require `space: \"%s\"` and `agent: \"%s\"` parameters.\n\n", spaceName, agentName))
 
 	b.WriteString("## Protocol\n\n")
-	b.WriteString("1. **Check messages first.** Use `check_messages` at the start of every work cycle.\n")
+	b.WriteString("1. **Check messages first.** Use `check_messages` at the start of every work cycle. If `has_more` is true, call again with the returned `cursor` to read the next page (responses are capped at 20 messages to avoid truncation).\n")
 	b.WriteString("2. **Post status regularly.** Use `post_status` at least every 10 minutes during active work.\n")
 	b.WriteString("3. **Include location fields** in every status update: `branch`, `pr`, `test_count`.\n")
 	b.WriteString("4. **Escalate decisions** — use `request_decision` when you need human input. For peer coordination, use `send_message`.\n")
@@ -823,7 +823,7 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 
 	b.WriteString("## Work Loop\n\n")
 	b.WriteString("```\n")
-	b.WriteString("1. check_messages → read and ACK any directives\n")
+	b.WriteString("1. check_messages → read and ACK any directives (repeat with cursor if has_more: true)\n")
 	b.WriteString("2. Do your assigned work\n")
 	b.WriteString("3. post_status (at least every 10 min during active work)\n")
 	b.WriteString("4. When done: send_message to manager, move_task to done, post_status \"done\"\n")

@@ -3451,6 +3451,184 @@ func TestSpawnInitialMessage(t *testing.T) {
 	}
 }
 
+// callMCPTool sends a JSON-RPC tools/call request to the /mcp endpoint and
+// returns the parsed result JSON text. It handles the StreamableHTTP session
+// handshake automatically.
+func callMCPTool(t *testing.T, base, toolName string, args map[string]any) string {
+	t.Helper()
+
+	// Step 1: initialize the session.
+	initBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      0,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2024-11-05",
+			"capabilities":    map[string]any{},
+			"clientInfo":      map[string]any{"name": "test", "version": "1"},
+		},
+	})
+	initReq, _ := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(string(initBody)))
+	initReq.Header.Set("Content-Type", "application/json")
+	initReq.Header.Set("Accept", "application/json, text/event-stream")
+	initResp, err := http.DefaultClient.Do(initReq)
+	if err != nil {
+		t.Fatalf("MCP initialize: %v", err)
+	}
+	initResp.Body.Close()
+	sessionID := initResp.Header.Get("Mcp-Session-Id")
+
+	// Step 2: call the tool.
+	callBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params":  map[string]any{"name": toolName, "arguments": args},
+	})
+	callReq, _ := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(string(callBody)))
+	callReq.Header.Set("Content-Type", "application/json")
+	callReq.Header.Set("Accept", "application/json, text/event-stream")
+	if sessionID != "" {
+		callReq.Header.Set("Mcp-Session-Id", sessionID)
+	}
+	callResp, err := http.DefaultClient.Do(callReq)
+	if err != nil {
+		t.Fatalf("MCP tools/call %s: %v", toolName, err)
+	}
+	defer callResp.Body.Close()
+	respBytes, _ := io.ReadAll(callResp.Body)
+	respStr := string(respBytes)
+
+	// Extract the JSON text content from the JSON-RPC response.
+	// The response may be a plain JSON object or SSE (text/event-stream).
+	// For SSE, extract the first "data:" line and parse its JSON.
+	var rpcResp struct {
+		Result struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	for _, line := range strings.Split(respStr, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			respStr = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			break
+		}
+	}
+	if err := json.Unmarshal([]byte(respStr), &rpcResp); err != nil {
+		t.Fatalf("parse MCP response: %v\nbody: %s", err, respStr)
+	}
+	if len(rpcResp.Result.Content) == 0 {
+		t.Fatalf("MCP %s: empty content in response: %s", toolName, respStr)
+	}
+	return rpcResp.Result.Content[0].Text
+}
+
+// TestCheckMessagesPagination verifies that check_messages caps responses at
+// checkMessagesPageSize and returns has_more=true when there are more messages.
+// This prevents agents from missing messages when a large backlog would
+// produce a response too large to process (TASK-101).
+func TestCheckMessagesPagination(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	space := "pagination-test"
+	agentName := "bot"
+
+	// Deliver more messages than the page size.
+	total := checkMessagesPageSize + 5
+	for i := 0; i < total; i++ {
+		srv.deliverInternalMessage(space, agentName, "manager", "message body")
+	}
+
+	// First call — no since cursor.
+	result1 := callMCPTool(t, base, "check_messages", map[string]any{
+		"space": space,
+		"agent": agentName,
+	})
+	var r1 struct {
+		Messages    []map[string]any `json:"messages"`
+		HasMore     bool             `json:"has_more"`
+		UnreadCount int              `json:"unread_count"`
+		Cursor      string           `json:"cursor"`
+	}
+	if err := json.Unmarshal([]byte(result1), &r1); err != nil {
+		t.Fatalf("parse first check_messages result: %v\nbody: %s", err, result1)
+	}
+	if len(r1.Messages) != checkMessagesPageSize {
+		t.Errorf("first call: want %d messages, got %d", checkMessagesPageSize, len(r1.Messages))
+	}
+	if !r1.HasMore {
+		t.Error("first call: has_more should be true when there are more pages")
+	}
+	if r1.UnreadCount != total {
+		t.Errorf("first call: want unread_count=%d, got %d", total, r1.UnreadCount)
+	}
+	if r1.Cursor == "" {
+		t.Error("first call: cursor must not be empty")
+	}
+
+	// Second call — use cursor from first call to get remaining messages.
+	result2 := callMCPTool(t, base, "check_messages", map[string]any{
+		"space": space,
+		"agent": agentName,
+		"since": r1.Cursor,
+	})
+	var r2 struct {
+		Messages []map[string]any `json:"messages"`
+		HasMore  bool             `json:"has_more"`
+	}
+	if err := json.Unmarshal([]byte(result2), &r2); err != nil {
+		t.Fatalf("parse second check_messages result: %v\nbody: %s", err, result2)
+	}
+	if len(r2.Messages) != total-checkMessagesPageSize {
+		t.Errorf("second call: want %d messages, got %d", total-checkMessagesPageSize, len(r2.Messages))
+	}
+	if r2.HasMore {
+		t.Error("second call: has_more should be false after draining the backlog")
+	}
+}
+
+// TestCheckMessagesSmallBacklog verifies that when there are fewer messages than
+// the page size, has_more is false and all messages are returned.
+func TestCheckMessagesSmallBacklog(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	space := "small-backlog-test"
+	agentName := "bot2"
+
+	for i := 0; i < 3; i++ {
+		srv.deliverInternalMessage(space, agentName, "manager", "msg")
+	}
+
+	result := callMCPTool(t, base, "check_messages", map[string]any{
+		"space": space,
+		"agent": agentName,
+	})
+	var r struct {
+		Messages    []map[string]any `json:"messages"`
+		HasMore     bool             `json:"has_more"`
+		UnreadCount int              `json:"unread_count"`
+	}
+	if err := json.Unmarshal([]byte(result), &r); err != nil {
+		t.Fatalf("parse result: %v\nbody: %s", err, result)
+	}
+	if len(r.Messages) != 3 {
+		t.Errorf("want 3 messages, got %d", len(r.Messages))
+	}
+	if r.HasMore {
+		t.Error("has_more should be false for small backlog")
+	}
+	if r.UnreadCount != 3 {
+		t.Errorf("want unread_count=3, got %d", r.UnreadCount)
+	}
+}
+
 // TestStaleTaskDetection verifies that is_stale is computed correctly (TASK-070).
 func TestStaleTaskDetection(t *testing.T) {
 	srv, cleanup := mustStartServer(t)

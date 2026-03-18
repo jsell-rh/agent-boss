@@ -233,6 +233,12 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 
 // --- check_messages ---
 
+// checkMessagesPageSize is the maximum number of messages returned per
+// check_messages call. Keeping responses small prevents agents from missing
+// messages when a large backlog causes the MCP response to be truncated.
+// Agents should call again with the returned cursor when has_more is true.
+const checkMessagesPageSize = 20
+
 func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "check_messages",
@@ -255,6 +261,7 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 		if !ok {
 			return toolJSON(map[string]any{
 				"agent": agentName, "messages": []any{}, "cursor": time.Now().UTC().Format(time.RFC3339Nano),
+				"has_more": false, "unread_count": 0,
 			}), nil
 		}
 
@@ -280,6 +287,15 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 		}
 		s.mu.RUnlock()
 
+		// Count total unread messages across the full in-memory store so
+		// the agent knows the full scope of work remaining.
+		totalUnread := 0
+		for _, msg := range allMessages {
+			if !msg.Read {
+				totalUnread++
+			}
+		}
+
 		var filtered []AgentMessage
 		for _, msg := range allMessages {
 			if since.IsZero() || msg.Timestamp.After(since) {
@@ -290,6 +306,14 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 			filtered = []AgentMessage{}
 		}
 
+		// Cap the response to checkMessagesPageSize messages. When has_more is
+		// true the agent should call again with the returned cursor to drain
+		// the remaining backlog.
+		hasMore := len(filtered) > checkMessagesPageSize
+		if hasMore {
+			filtered = filtered[:checkMessagesPageSize]
+		}
+
 		var cursor time.Time
 		if len(filtered) > 0 {
 			cursor = filtered[len(filtered)-1].Timestamp.Add(time.Nanosecond)
@@ -298,9 +322,11 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 		}
 
 		return toolJSON(map[string]any{
-			"agent":    canonical,
-			"messages": filtered,
-			"cursor":   cursor.Format(time.RFC3339Nano),
+			"agent":        canonical,
+			"messages":     filtered,
+			"cursor":       cursor.Format(time.RFC3339Nano),
+			"has_more":     hasMore,
+			"unread_count": totalUnread,
 		}), nil
 	})
 }
