@@ -1089,7 +1089,7 @@ func (s *Server) handleSpaceSessionStatus(w http.ResponseWriter, r *http.Request
 	}
 	s.mu.RUnlock()
 
-	var results []agentSessionStatus
+	results := make([]agentSessionStatus, 0)
 	for i, p := range pairs {
 		st := agentSessionStatus{
 			Agent:      p.name,

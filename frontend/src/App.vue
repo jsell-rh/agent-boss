@@ -251,7 +251,7 @@ const currentAgentNames = computed<string[]>(() =>
 
 // Agents in the current space that have a pending approval
 const agentsNeedingApproval = computed<string[]>(() =>
-  Object.entries(tmuxStatus.value)
+  Object.entries(tmuxStatus.value ?? {})
     .filter(([, s]) => s.needs_approval)
     .map(([name]) => name),
 )
