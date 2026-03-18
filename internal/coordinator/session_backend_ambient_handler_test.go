@@ -106,22 +106,6 @@ func (m *ambientAPIMock) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reject "environmentVariables" — real backend only accepts "envVars".
-	if _, has := body["environmentVariables"]; has {
-		http.Error(w, `{"error":"unknown field: environmentVariables"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Reject env var values containing "://" — real backend validation.
-	if envVars, ok := body["envVars"].(map[string]interface{}); ok {
-		for k, v := range envVars {
-			if vs, ok := v.(string); ok && strings.Contains(vs, "://") {
-				http.Error(w, fmt.Sprintf(`{"error":"envVars.%s: value contains disallowed '://'"}`, k), http.StatusBadRequest)
-				return
-			}
-		}
-	}
-
 	m.nextID++
 	name := fmt.Sprintf("session-%03d", m.nextID)
 
@@ -324,20 +308,21 @@ func TestHandlerAmbientSpawnEnvVarSplit(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	envVars, ok := capturedBody["envVars"].(map[string]interface{})
+	envVars, ok := capturedBody["environmentVariables"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected envVars in request body, got %v", capturedBody["envVars"])
+		t.Fatalf("expected environmentVariables in request body, got %v", capturedBody["environmentVariables"])
 	}
 
-	// BOSS_URL should have been split into BOSS_URL_SCHEME + BOSS_URL_HOST
-	if _, has := envVars["BOSS_URL"]; has {
-		t.Error("BOSS_URL should not be present (contains ://, must be split)")
+	// BOSS_URL should be passed as a single value (no split).
+	if envVars["BOSS_URL"] != "https://boss.example.com" {
+		t.Errorf("expected BOSS_URL=https://boss.example.com, got %v", envVars["BOSS_URL"])
 	}
-	if envVars["BOSS_URL_SCHEME"] != "https" {
-		t.Errorf("expected BOSS_URL_SCHEME=https, got %v", envVars["BOSS_URL_SCHEME"])
-	}
-	if envVars["BOSS_URL_HOST"] != "boss.example.com" {
-		t.Errorf("expected BOSS_URL_HOST=boss.example.com, got %v", envVars["BOSS_URL_HOST"])
+
+	// MCP_SERVERS_JSON must NOT be set — the workflow's .mcp.json handles
+	// boss-mcp registration (with auth headers via env var substitution).
+	// MCP_SERVERS_JSON would clobber the workflow entry and drop auth.
+	if _, has := envVars["MCP_SERVERS_JSON"]; has {
+		t.Error("MCP_SERVERS_JSON should not be present — workflow .mcp.json handles MCP registration")
 	}
 }
 
