@@ -23,20 +23,26 @@ func TestParseApprovalFromLines_ToolPermission(t *testing.T) {
 }
 
 func TestParseApprovalFromLines_TrustFolder(t *testing.T) {
-	// "Do you trust the files in this folder?" prompt that appears when Claude
-	// is launched in a directory it has not seen before. This is TASK-120.
+	// Real "trust this folder?" prompt captured from Claude Code (TASK-120).
+	// Appears when Claude is launched in a directory it hasn't seen before.
 	lines := []string{
-		"  ╭──────────────────────────────────────────────╮",
-		"  │ Do you trust the files in this folder?       │",
-		"  │                                              │",
-		"  │ claude has been asked to operate in          │",
-		"  │ /tmp/new-project. This code may attempt to  │",
-		"  │ read and modify files on your computer.     │",
-		"  │ Trust this folder to allow claude to run    │",
-		"  │ as normal.                                  │",
-		"  ╰──────────────────────────────────────────────╯",
-		"  ❯ 1. Yes, proceed",
-		"    2. No, exit",
+		" ─────────────────────────────────────────────────────────────────────────────────",
+		" Accessing workspace:",
+		"",
+		" /tmp/new-project",
+		"",
+		" Quick safety check: Is this a project you created or one you trust? (Like your own",
+		" code, a well-known open source project, or work from your team). If not, take a",
+		" moment to review what's in this folder first.",
+		"",
+		" Claude Code'll be able to read, edit, and execute files here.",
+		"",
+		" Security guide",
+		"",
+		" ❯ 1. Yes, I trust this folder",
+		"   2. No, exit",
+		"",
+		" Enter to confirm · Esc to cancel",
 	}
 	info := parseApprovalFromLines(lines)
 	if !info.NeedsApproval {

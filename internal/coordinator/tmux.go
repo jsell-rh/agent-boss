@@ -137,7 +137,9 @@ func parseApprovalFromLines(lines []string) ApprovalInfo {
 	promptIdx := -1
 	for i := len(lines) - 1; i >= 0; i-- {
 		trimmed := strings.TrimSpace(lines[i])
-		if (strings.Contains(trimmed, "Do you want") || strings.Contains(trimmed, "Do you trust")) && strings.Contains(trimmed, "?") {
+		if (strings.Contains(trimmed, "Do you want") ||
+			strings.Contains(trimmed, "Do you trust") ||
+			strings.Contains(trimmed, "Quick safety check")) && strings.Contains(trimmed, "?") {
 			promptIdx = i
 			break
 		}
