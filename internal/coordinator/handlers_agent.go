@@ -800,6 +800,9 @@ func (s *Server) buildIgnitionText(spaceName, agentName, sessionID string) strin
 	b.WriteString("| `list_tasks` | List tasks, optionally filtered by status/assignee |\n")
 	b.WriteString("| `move_task` | Change task status: backlog → in_progress → review → done |\n")
 	b.WriteString("| `update_task` | Update task fields (title, PR link, assignee, etc.) |\n")
+	b.WriteString("| `spawn_agent` | Spawn a new agent session (with parent task linking) |\n")
+	b.WriteString("| `restart_agent` | Restart an existing agent session |\n")
+	b.WriteString("| `stop_agent` | Stop an agent and kill its session |\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("All tools require `space: \"%s\"` and `agent: \"%s\"` parameters.\n\n", spaceName, agentName))
 
