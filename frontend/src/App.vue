@@ -926,7 +926,7 @@ function setupSSE() {
     //
     // For the sidebar unread badge: patch boss.unread_count in-place so the
     // badge updates immediately without a full space fetch.
-    if (data.agent === 'boss' && currentSpace.value?.agents['boss'] && currentSpace.value.name === data.space) {
+    if (data.agent === 'boss' && currentSpace.value?.agents?.['boss'] && currentSpace.value.name === data.space) {
       const bossAgent = currentSpace.value.agents['boss']
       bossAgent.unread_count = (bossAgent.unread_count ?? 0) + 1
     }

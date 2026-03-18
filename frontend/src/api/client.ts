@@ -23,7 +23,7 @@ import type {
  * all frontend components can keep accessing agents as plain AgentUpdate objects.
  */
 function normalizeSpace(space: KnowledgeSpace): KnowledgeSpace {
-  if (!space.agents) return space
+  if (!space.agents) return { ...space, agents: {} }
   const normalized: Record<string, import('@/types').AgentUpdate> = {}
   for (const [name, record] of Object.entries(space.agents)) {
     const r = record as unknown as { status: import('@/types').AgentUpdate }
