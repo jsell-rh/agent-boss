@@ -75,13 +75,13 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 |------|-----|---------|
 | `internal/coordinator/server.go` | 374 | Server struct, routing, Start/Stop |
 | `internal/coordinator/types.go` | 804 | All domain types + markdown rendering |
-| `internal/coordinator/handlers_agent.go` | 1803 | Agent HTTP handlers (status, spawn, messages) |
+| `internal/coordinator/handlers_agent.go` | 1807 | Agent HTTP handlers (status, spawn, messages) |
 | `internal/coordinator/handlers_task.go` | 887 | Task CRUD + Kanban move |
 | `internal/coordinator/handlers_space.go` | 567 | Space CRUD, hierarchy, bulk ops, fleet export route |
 | `internal/coordinator/handlers_space_messages.go` | 85 | Space-level message broadcast handlers |
 | `internal/coordinator/handlers_sse.go` | ~150 | SSE streaming, per-agent ring buffer (cap 200) |
 | `internal/coordinator/fleet.go` | 404 | Fleet export/import: YAML blueprint, security validators (PR #231) |
-| `internal/coordinator/mcp_tools.go` | 1158 | All MCP tool implementations |
+| `internal/coordinator/mcp_tools.go` | 1184 | All MCP tool implementations |
 | `internal/coordinator/mcp_server.go` | ~200 | MCP server setup, tool registration |
 | `internal/coordinator/lifecycle.go` | 912 | Agent liveness, staleness, nudging |
 | `internal/coordinator/liveness.go` | 265 | Liveness probe loop (split from lifecycle.go) |
