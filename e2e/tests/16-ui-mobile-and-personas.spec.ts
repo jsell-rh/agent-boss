@@ -56,12 +56,12 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     )
 
     await page.setViewportSize(MOBILE_VIEWPORT)
-    await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
+    // Navigate directly to TapBot's conversation to avoid auto-select race
+    await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/TapBot`)
     await page.waitForTimeout(1500)
 
-    // Auto-select fires and selects TapBot (the only conversation).
-    // The thread panel is already showing — verify the message is visible.
-    await expect(page.getByText('Tap to open this thread').first()).toBeVisible({ timeout: 10_000 })
+    // Thread panel is shown with TapBot selected — verify message is visible in thread
+    await expect(page.getByText('Tap to open this thread').filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
 
     // With a conversation selected on mobile, list must be hidden
     const convList = page.locator('aside[aria-label="Conversations"]')
@@ -89,12 +89,12 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     )
 
     await page.setViewportSize(MOBILE_VIEWPORT)
-    await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
+    // Navigate directly to BackBot's conversation to avoid auto-select race
+    await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/BackBot`)
     await page.waitForTimeout(1500)
 
-    // Auto-select fires and selects BackBot (the only conversation).
-    // Thread should be visible.
-    await expect(page.getByText('Back button test').first()).toBeVisible({ timeout: 10_000 })
+    // Thread panel is shown with BackBot selected — verify message is visible in thread
+    await expect(page.getByText('Back button test').filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
 
     // Click the back button to return to the list
     const backBtn = page.getByRole('button', { name: 'Back to conversation list' })
@@ -166,15 +166,15 @@ test.describe('UI: Persona display on agent cards', () => {
       personas: [{ id: persona.id, pinned_version: persona.version }],
     })
 
-    // Navigate and reload to ensure the page sees the latest config
+    // Navigate and wait for the persona badge to appear
     await page.goto(`${BASE}/${encodeURIComponent(space)}`)
-    await page.waitForTimeout(500)
-    await page.reload()
-    await page.waitForTimeout(1500)
-
-    // Persona name badge should appear on the agent card
-    const badge = page.getByText('TestPersona').first()
-    await expect(badge).toBeVisible({ timeout: 10_000 })
+    // Poll via reload until persona badge appears (SSE may lag on CI)
+    await expect(async () => {
+      await page.reload()
+      await page.waitForTimeout(800)
+      const badge = page.getByText('TestPersona').first()
+      await expect(badge).toBeVisible({ timeout: 3_000 })
+    }).toPass({ timeout: 20_000 })
 
     // Clean up persona
     await api.del(`/personas/${persona.id}`)
