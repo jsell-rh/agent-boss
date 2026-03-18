@@ -185,8 +185,10 @@ All `TmuxCreateOpts{...}` literals across `handlers_agent.go` and `lifecycle.go`
 grep -n 'TmuxCreateOpts{' internal/coordinator/handlers_agent.go internal/coordinator/lifecycle.go -A 8
 ```
 
-**Pass:** all instantiations set the same fields (WorkDir, Width, Height, MCPServerURL, MCPServerName, AllowSkipPermissions).
+**Pass:** all instantiations set the same fields (WorkDir, Width, Height, MCPServerURL, MCPServerName, AllowSkipPermissions, AgentToken).
 **Fail:** note which callsite omits a field, file a task for the engineering team, and notify `cto`.
+
+Per-agent token check (SEC-006 / PR #242): `AgentToken` must use `s.generateAgentToken(spaceName, agentName)` — **not** the global `s.apiToken`. Using the global token breaks per-agent channel isolation. Verify every `TmuxCreateOpts` callsite uses `generateAgentToken`.
 
 Known pattern: restart paths (restartAgentService, restart-all loop in lifecycle.go) historically omit Width and Height. Confirm whether this is intentional (restart inherits terminal size from existing session) or an oversight.
 

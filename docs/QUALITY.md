@@ -1,6 +1,6 @@
 # Agent Boss — Quality Grades
 
-Snapshot as of 2026-03-17 (updated after PRs #213–#231 + #230). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
+Snapshot as of 2026-03-18 (updated after PRs #213–#242). Grades A–D. See [tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) for action items.
 
 ---
 
@@ -35,7 +35,7 @@ Snapshot as of 2026-03-17 (updated after PRs #213–#231 + #230). Grades A–D. 
 
 ### `internal/coordinator/handlers_agent.go` — **C+**
 
-- **1803 LOC.** Grew by 121 LOC since last snapshot (PRs #219–#231 added auth fixes and spawn improvements).
+- **1807 LOC.** Grew by 125 LOC since last snapshot (PRs #219–#241 added auth fixes, spawn improvements, and pagination ignition update).
 - Handles agent status POST, spawn, kill, restart, messages, register, interrupt, approval — all in one file.
 - Positive: each handler function is focused; no global state mutation outside server methods.
 - Concern: file continues to grow and is increasingly hard to review. Split is overdue: `handlers_spawn.go`, `handlers_messages.go`, `handlers_interrupt.go`.
@@ -73,7 +73,7 @@ Snapshot as of 2026-03-17 (updated after PRs #213–#231 + #230). Grades A–D. 
 
 ### Test Coverage — **A**
 
-- **274 tests** pass with `-race` in `internal/coordinator/` (fleet.go added tests via `fleet_test.go`). Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline`. Multiple dedicated test files by subsystem:
+- **305 tests** pass with `-race` in `internal/coordinator/` (PR #241 added `TestCheckMessagesPagination` + `TestCheckMessagesSmallBacklog`; PR #242 added `TestPerAgentTokenIsolation`; fleet.go added tests via `fleet_test.go`). Domain package (`internal/domain/`) adds `TestAdapterIsolationBaseline`. Multiple dedicated test files by subsystem:
   - `server_test.go` — HTTP integration tests, the primary coverage driver
   - `fleet_test.go` — fleet import/export + security validator tests (PR #231)
   - `hierarchy_test.go`, `lifecycle_test.go`, `journal_test.go` — focused unit tests
@@ -98,7 +98,7 @@ Snapshot as of 2026-03-17 (updated after PRs #213–#231 + #230). Grades A–D. 
 |-----------|-------|-------------|
 | `server.go` | B+ | Server struct sprawl |
 | `types.go` | B | Rendering mixed with types; deprecated field |
-| `handlers_agent.go` | C+ | 1803-LOC monolith, growing; split overdue |
+| `handlers_agent.go` | C+ | 1807-LOC monolith, growing; split overdue |
 | `fleet.go` | A- | New — undocumented env vars (now fixed) |
 | Frontend Vue | C+ | Three components >1300 LOC, trend worsening; no unit tests |
 | Task system | A- | Minor: stale logic undocumented |

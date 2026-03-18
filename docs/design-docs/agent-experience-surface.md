@@ -27,6 +27,7 @@ Every spawned agent **must** receive all of the following:
 - **What:** `Authorization: Bearer <token>` header passed to `claude mcp add`.
 - **How:** `TmuxCreateOpts.AgentToken` → `--header 'Authorization: Bearer <token>'`
 - **Why:** When `BOSS_API_TOKEN` is set, all mutating endpoints require auth. Without the header, every MCP tool call returns 401.
+- **Per-agent tokens (SEC-006 / PR #242):** Each agent receives a unique token minted at spawn time via `generateAgentToken(spaceName, agentName)`. The token is isolated to that agent's channel — it cannot post to a sibling agent's endpoint. The workspace `BOSS_API_TOKEN` remains the operator-level credential; per-agent tokens are scoped narrower.
 - **Invariant:** If `MCPServerURL` is set, `AgentToken` **must** also be set. The structural test `TestAgentExperienceSurfaceInvariants` enforces this at build time.
 
 ### 3. Working Directory
@@ -56,11 +57,11 @@ The following rule is mechanically enforced:
 **To satisfy the invariant:**
 
 ```go
-// CORRECT: both fields set together
+// CORRECT: both fields set together (per-agent token since SEC-006 / PR #242)
 BackendOpts: TmuxCreateOpts{
     MCPServerURL:  s.localURL(),
     MCPServerName: s.mcpServerName(),
-    AgentToken:    s.apiToken,   // required when MCPServerURL is set
+    AgentToken:    s.generateAgentToken(spaceName, agentName),   // required when MCPServerURL is set
 }
 
 // WRONG: auth token missing — will fail TestAgentExperienceSurfaceInvariants
@@ -82,7 +83,7 @@ spawnAgentService()
          BackendOpts: TmuxCreateOpts{
              WorkDir:      spawnWorkDir,       // [3] working directory
              MCPServerURL: s.localURL(),       // [1] MCP URL
-             AgentToken:   s.apiToken,         // [2] auth token
+             AgentToken:   s.generateAgentToken(spaceName, agentName), // [2] per-agent auth token (SEC-006)
          }
      })
        └─ TmuxSessionBackend.CreateSession()
@@ -101,7 +102,7 @@ spawnAgentService()
 
 If you add a new location that creates a `TmuxCreateOpts` with `MCPServerURL`:
 
-1. Set `AgentToken: s.apiToken` alongside it.
+1. Set `AgentToken: s.generateAgentToken(spaceName, agentName)` alongside it. Do **not** use the global `s.apiToken` — each agent must receive its own isolated token (SEC-006).
 2. Run `go test ./internal/coordinator/` — `TestAgentExperienceSurfaceInvariants` will fail if you forget.
 3. Update this doc if the spawn flow changes structurally.
 
