@@ -351,6 +351,40 @@ test.describe('UI: Conversations View', () => {
     await expect(page.locator('#app')).toBeVisible()
   })
 
+  test('sent message appears exactly once — no duplicate from SSE race', async ({
+    page,
+    space,
+    api,
+  }) => {
+    await api.post(
+      `/spaces/${space}/agent/DedupBot`,
+      { status: 'active', summary: 'DedupBot: dedup test' },
+      'DedupBot',
+    )
+
+    await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/DedupBot`)
+    await page.waitForTimeout(1500)
+
+    const textarea = page.locator('textarea').first()
+    if (!(await textarea.isVisible().catch(() => false))) {
+      // Compose not available — skip
+      await expect(page.locator('#app')).toBeVisible()
+      return
+    }
+
+    const uniqueMsg = `dedup-test-${Date.now()}`
+    await textarea.fill(uniqueMsg)
+    await textarea.press('Enter')
+
+    // Wait for SSE to arrive (server fires SSE before HTTP response returns)
+    await page.waitForTimeout(1200)
+
+    // The message must appear exactly once — no duplicate from SSE race
+    const thread = page.getByRole('log', { name: 'Conversation thread' })
+    const count = await thread.getByText(uniqueMsg).count()
+    expect(count).toBe(1)
+  })
+
   // ── Read receipts ──────────────────────────────────────────────────────────
 
   test('"Delivered" indicator shown for boss-sent unread messages', async ({
