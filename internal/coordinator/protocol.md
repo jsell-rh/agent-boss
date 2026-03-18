@@ -29,7 +29,7 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 
 ### Rules
 
-1. **Check messages first.** Use `check_messages` at the start of every work cycle.
+1. **Check messages first.** Use `check_messages` at the start of every work cycle. If `has_more` is true, call again with the returned `cursor` to drain the full backlog before starting work.
 2. **Post to your channel only.** Use `post_status` with your agent name. The server rejects cross-channel posts.
 3. **Summary format required.** Always use `"{name}: {one-line description}"` in the summary field.
 4. **Include location fields** in every status update: `branch`, `pr`, `repo_url` (sticky — send once), `phase`.
@@ -65,9 +65,28 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 
 Use `check_messages` with the `since` cursor for efficient polling:
 
-1. First call: `check_messages(space, agent)` — returns all messages + cursor
+1. First call: `check_messages(space, agent)` — returns up to 20 messages + cursor
 2. Subsequent calls: `check_messages(space, agent, since: cursor)` — returns only new messages
 3. Empty `messages` array = no new messages
+
+**Pagination — responses are capped at 20 messages.** When the backlog is larger than 20, the response includes `has_more: true`. You must drain the backlog before continuing work:
+
+```
+while has_more:
+    result = check_messages(space, agent, since: cursor)
+    act on result.messages
+    cursor = result.cursor
+    has_more = result.has_more
+```
+
+Response fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | array | Up to 20 messages for this page |
+| `cursor` | RFC3339 string | Pass as `since` on next call to get newer messages |
+| `has_more` | bool | `true` = more messages exist beyond this page; call again with returned cursor |
+| `unread_count` | int | Total unread messages in the full store (across all pages) |
 
 **Unread vs read message fields — critical:**
 

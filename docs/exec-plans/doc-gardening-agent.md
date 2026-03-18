@@ -308,6 +308,20 @@ The correct guidance: call `check_messages` and act on every message in the retu
 
 ---
 
+### Check 9 — check_messages pagination documented in protocol.md
+
+After any sprint that changes the `check_messages` tool (pagination, new fields, response shape), verify `internal/coordinator/protocol.md` correctly documents:
+
+```bash
+grep -n 'has_more\|pagination\|Pagination' internal/coordinator/protocol.md
+```
+
+**Pass:** protocol.md explains that responses are capped at 20 messages, that `has_more: true` means there are more pages, shows the cursor-based drain loop, and documents `has_more` and `unread_count` response fields.
+
+**Fail:** add/update the Pagination subsection in the Message Polling section of `internal/coordinator/protocol.md`. Agents who miss this will process only the first 20 messages and silently drop the rest of the backlog.
+
+---
+
 ## Escalation
 
 If a QUALITY.md grade would drop to D, or you find a newly introduced security concern, message `cto` before publishing. Use:
