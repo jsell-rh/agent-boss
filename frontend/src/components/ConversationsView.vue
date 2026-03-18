@@ -146,8 +146,12 @@ onUnmounted(() => {
 const conversations = computed((): Conversation[] => {
   const convMap = new Map<string, Conversation>()
 
-  for (const [agentName, agentData] of Object.entries(props.space.agents ?? {})) {
-    const msgs = spaceMessages.value[agentName]?.messages ?? agentData.messages ?? []
+  // Derive from spaceMessages only — no dependency on props.space.agents.
+  // This prevents the O(n×m) rebuild on every agent_updated SSE patch because
+  // props.space is replaced wholesale by loadSpace(). spaceMessages is a
+  // separate ref that only changes on agent_message events.
+  for (const [agentName, bucket] of Object.entries(spaceMessages.value)) {
+    const msgs = bucket.messages
     for (const msg of msgs) {
       const sorted = [agentName, msg.sender].sort()
       const participants = sorted as [string, string]

@@ -815,8 +815,8 @@ function setupSSE() {
         if (data.session_id !== undefined) agent.session_id = data.session_id
         if (data.parent !== undefined)     agent.parent = data.parent
       } else {
-        // New agent in this space — fetch immediately so it appears without delay
-        loadSpace(data.space)
+        // New agent in this space — debounced to avoid 13 concurrent GETs on fleet restart
+        scheduleSpaceReload(data.space, 150)
       }
       // Refresh hierarchy in case parent/children changed — debounced to avoid
       // 13+ concurrent requests on busy fleets. effectiveHierarchy computes
