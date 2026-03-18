@@ -226,9 +226,11 @@ function scheduleSSEReload() {
     const fresh = await api.fetchTasks(props.space.name).catch(() => null)
     if (fresh === null) return
     // Merge fresh data: update status in place so TransitionGroup animates moves.
+    // Build O(1) index map once instead of O(N) findIndex per task.
+    const indexById = new Map<string, number>(tasks.value.map((t, i) => [t.id, i]))
     for (const t of fresh) {
-      const idx = tasks.value.findIndex(x => x.id === t.id)
-      if (idx >= 0) {
+      const idx = indexById.get(t.id)
+      if (idx !== undefined) {
         Object.assign(tasks.value[idx] as object, t)
       } else {
         tasks.value.push(t)

@@ -796,6 +796,7 @@ const activeSections = computed(() => [
                   <Card
                     v-for="[name, agent] in section.agents"
                     :key="name"
+                    v-memo="[agent.status, agent.summary, agent.branch, agent.pr, agent.phase, agent.mood, recentlyUpdated.has(name), tmuxStatus?.[name]?.needs_approval]"
                     role="listitem"
                     tabindex="0"
                     class="group cursor-pointer transition-all duration-200 hover:bg-accent/50 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 relative flex flex-col !py-0 !gap-0 min-h-[180px]"
