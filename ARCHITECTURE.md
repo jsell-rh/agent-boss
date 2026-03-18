@@ -89,7 +89,7 @@ Agent Boss is a self-contained coordination server for multi-agent AI workflows.
 | `internal/coordinator/protocol.go` | 496 | Protocol template rendering |
 | `internal/coordinator/journal.go` | 527 | SpaceEvent log (ring buffer + SQLite) |
 | `internal/coordinator/storage.go` | 295 | Space load/save, migration (extracted from server.go) |
-| `internal/coordinator/middleware.go` | 250 | HTTP middleware: auth, CORS, logging |
+| `internal/coordinator/middleware.go` | 254 | HTTP middleware: auth, CORS, logging, per-agent token verification |
 | `internal/coordinator/logger.go` | 200 | Structured logger setup |
 | `internal/coordinator/helpers.go` | 189 | Shared handler helpers |
 | `internal/coordinator/db_adapter.go` | 552 | GORM ↔ domain type bridge |

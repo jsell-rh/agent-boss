@@ -48,9 +48,9 @@ Items are ordered by priority: **high** → **medium** → **low**.
 - **Impact:** Hard to understand what the server "is" vs what it "does".
 - **Fix:** Group related fields into embedded sub-structs: `sseState`, `nudgeState`, `agentRegistry`.
 
-### TD-007: `server_test.go` is a 4678-LOC mega-test file (growing)
+### TD-007: `server_test.go` is a 4716-LOC mega-test file (growing)
 - **File:** `internal/coordinator/server_test.go`
-- **Issue:** All HTTP integration tests in one file. Hard to navigate and contributes to slow test runs (~46s). Grew from 4169 → 4678 LOC; PR #241 alone added 178 LOC for pagination tests.
+- **Issue:** All HTTP integration tests in one file. Hard to navigate and contributes to slow test runs (~46s). Grew from 4169 → 4716 LOC; PR #241 added 178 LOC for pagination tests, PR #242 added 38 LOC for per-agent token isolation tests.
 - **Impact:** Long compile + test cycle; hard to find relevant tests.
 - **Fix:** Split by domain: `agents_test.go`, `tasks_test.go`, `sse_test.go`, `spawn_test.go`.
 
