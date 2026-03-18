@@ -541,7 +541,7 @@ async function setDueDate(value: string) {
                   class="text-sm min-h-[60px] resize-none"
                   @keydown.ctrl.enter.prevent="submitComment"
                 />
-                <p class="text-[10px] text-muted-foreground">Ctrl+Enter to send</p>
+                <p class="text-[10px] text-muted-foreground hidden sm:block">Ctrl+Enter to send</p>
               </div>
               <Button
                 size="sm"

@@ -7,7 +7,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import StatusBadge from './StatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare, Crown, Music2 } from 'lucide-vue-next'
+import { GitBranch, ExternalLink, Clock, ArrowUpRight, MessageSquare, Crown, Music2, Sparkles } from 'lucide-vue-next'
 import { prLink } from '@/lib/utils'
 import { previewAgentVoice, soundEnabled } from '@/composables/useNotifications'
 
@@ -15,6 +15,7 @@ const props = defineProps<{
   agentName: string
   agent?: AgentUpdate | null
   spaceName?: string
+  personas?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -76,6 +77,17 @@ function onMouseEnter(e: MouseEvent) {
       _greetedOnCurrentHover = true
       previewAgentVoice(props.agentName)
     }, 1200)
+  }
+}
+
+function onTap(e: TouchEvent) {
+  // Touch tap toggles the card (mobile: no hover available)
+  triggerEl.value = e.currentTarget as HTMLElement
+  if (visible.value) {
+    visible.value = false
+  } else {
+    computePosition()
+    visible.value = true
   }
 }
 
@@ -161,6 +173,7 @@ onUnmounted(() => {
     class="inline-flex items-center min-w-0 cursor-default"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
+    @touchend.stop.prevent="onTap"
   >
     <slot />
   </span>
@@ -219,6 +232,13 @@ onUnmounted(() => {
             <p v-if="summaryText" class="text-xs text-muted-foreground leading-relaxed line-clamp-3">
               {{ summaryText }}
             </p>
+
+            <!-- Personas -->
+            <div v-if="personas && personas.length > 0" class="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Sparkles class="size-2.5 shrink-0 text-violet-500" />
+              <span class="opacity-60">Persona</span>
+              <span class="font-medium text-foreground">{{ personas.join(', ') }}</span>
+            </div>
 
             <!-- Hierarchy: parent -->
             <div v-if="agent.parent" class="flex items-center gap-1 text-[11px] text-muted-foreground">

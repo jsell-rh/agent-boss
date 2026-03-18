@@ -361,7 +361,6 @@ defineExpose({ openNewSpaceDialog })
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
                   <SidebarMenuAction
-                    :show-on-hover="true"
                     :aria-label="`Options for space ${space.name}`"
                   >
                     <MoreHorizontal class="size-4" aria-hidden="true" />

@@ -85,15 +85,23 @@ const emit = defineEmits<{
   'open-personas': []
 }>()
 
-// Persona version tracking for outdated badge
+// Persona version + name tracking
 const personaVersions = ref<Record<string, number>>({})
+const personaNames = ref<Record<string, string>>({})
 async function loadPersonaVersions() {
   try {
     const personas = await api.fetchPersonas()
     const versions: Record<string, number> = {}
-    for (const p of personas) versions[p.id] = p.version
+    const names: Record<string, string> = {}
+    for (const p of personas) { versions[p.id] = p.version; names[p.id] = p.name }
     personaVersions.value = versions
+    personaNames.value = names
   } catch { /* non-critical */ }
+}
+function getAgentPersonaNames(agent: any): string[] {
+  const config = agent?.config || (agent as any)?.Config
+  if (!config?.personas?.length) return []
+  return (config.personas as { id: string }[]).map(ref => personaNames.value[ref.id] ?? ref.id)
 }
 function isPersonaOutdated(agent: any): boolean {
   const config = agent?.config || (agent as any)?.Config
@@ -811,6 +819,7 @@ const activeSections = computed(() => [
                             :agent-name="name"
                             :agent="agent"
                             :space-name="space.name"
+                            :personas="getAgentPersonaNames(agent)"
                             @select-agent="emit('select-agent', $event)"
                           >
                             <div class="flex items-center gap-2.5 min-w-0" @click.stop>
@@ -842,7 +851,31 @@ const activeSections = computed(() => [
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                           <StatusBadge :status="agent.status" />
-                          <Tooltip v-if="isPersonaOutdated(agent)">
+                          <template v-if="getAgentPersonaNames(agent).length > 0">
+                            <Tooltip v-if="isPersonaOutdated(agent)">
+                              <TooltipTrigger as-child>
+                                <Badge
+                                  variant="outline"
+                                  class="border-amber-500/50 text-amber-500 text-[10px] h-5 px-1.5"
+                                >
+                                  {{ getAgentPersonaNames(agent).join(', ') }}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>Outdated persona: {{ personaOutdatedTooltip(agent) }}. Restart to update.</TooltipContent>
+                            </Tooltip>
+                            <Tooltip v-else>
+                              <TooltipTrigger as-child>
+                                <Badge
+                                  variant="outline"
+                                  class="border-violet-500/50 text-violet-500 text-[10px] h-5 px-1.5"
+                                >
+                                  {{ getAgentPersonaNames(agent).join(', ') }}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>Active persona{{ getAgentPersonaNames(agent).length > 1 ? 's' : '' }}: {{ getAgentPersonaNames(agent).join(', ') }}</TooltipContent>
+                            </Tooltip>
+                          </template>
+                          <Tooltip v-else-if="isPersonaOutdated(agent)">
                             <TooltipTrigger as-child>
                               <Badge
                                 variant="outline"

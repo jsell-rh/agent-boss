@@ -261,9 +261,9 @@ onMounted(loadPersonas)
     </div>
 
     <!-- Persona list + detail panel -->
-    <div v-else class="flex-1 overflow-hidden flex">
+    <div v-else class="flex-1 overflow-hidden flex flex-col md:flex-row">
       <!-- Left: persona list -->
-      <div class="flex-1 overflow-y-auto p-6 space-y-4 min-w-0" :class="{ 'max-w-[50%]': selectedId }">
+      <div class="flex-1 overflow-y-auto p-6 space-y-4 min-w-0" :class="{ 'md:max-w-[50%]': selectedId }">
         <div
           v-for="persona in personas"
           :key="persona.id"

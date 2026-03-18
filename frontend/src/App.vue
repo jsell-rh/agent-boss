@@ -918,18 +918,21 @@ function setupSSE() {
   })
 
   sse.on('agent_message', (data) => {
-    // ConversationsView subscribes to agent_message directly and refreshes
-    // its own message data via the /messages API. No full space reload needed
-    // here — that was causing expensive fetches on every message event.
-    // Only schedule a debounced space reload for metadata (agent list, etc.).
-    if (selectedSpace.value && selectedSpace.value === data.space) {
-      scheduleSpaceReload(selectedSpace.value, 2000)
+    // ConversationsView subscribes to agent_message directly and appends new
+    // messages in-place via the SSE payload. Do NOT call scheduleSpaceReload
+    // here — replacing currentSpace.value triggers a conversations recompute
+    // with new array references, which resets the ConversationsView scroll
+    // position even when no new messages were added for the open thread.
+    //
+    // For the sidebar unread badge: patch boss.unread_count in-place so the
+    // badge updates immediately without a full space fetch.
+    if (data.agent === 'boss' && currentSpace.value?.agents['boss'] && currentSpace.value.name === data.space) {
+      const bossAgent = currentSpace.value.agents['boss']
+      bossAgent.unread_count = (bossAgent.unread_count ?? 0) + 1
     }
     // Notify boss when a message is directed to them
     if (data.agent === 'boss') {
       notifyBossMessage(data.sender, data.space)
-      // In-app notification — show even when tab is focused (sidebar badge relies on
-      // debounced space reload; this gives an immediate visual signal).
       showStatus(`📩 New message from ${data.sender}`)
     }
     // Parse @mentions in message body and pulse the mentioned agent's card
@@ -1228,7 +1231,7 @@ onUnmounted(() => {
       <SidebarInset class="flex flex-col h-dvh min-w-0 overflow-x-hidden">
         <!-- Header -->
         <header class="flex items-center gap-3 h-14 shrink-0 border-b px-4 overflow-hidden">
-          <SidebarTrigger class="-ml-1" />
+          <SidebarTrigger class="-ml-1 h-11 w-11 md:h-7 md:w-7" />
           <Separator orientation="vertical" class="h-5" />
           <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm font-text">
             <button

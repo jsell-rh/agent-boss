@@ -36,7 +36,7 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
     <DropdownMenuTrigger as-child>
       <button
         type="button"
-        class="relative flex items-center justify-center size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        class="relative flex items-center justify-center size-11 md:size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         :aria-label="`${count} agent${count !== 1 ? 's' : ''} waiting for approval`"
         :title="`${count} pending approval${count !== 1 ? 's' : ''}`"
       >

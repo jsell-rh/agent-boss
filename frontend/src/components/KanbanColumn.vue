@@ -79,7 +79,7 @@ const statusHeaderClass: Record<TaskStatus, string> = {
           {{ tasks.length }}
         </span>
         <button
-          class="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          class="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center md:min-h-0 md:min-w-0"
           title="Add task to this column"
           @click.stop="emit('create-in-column', status)"
         >
@@ -115,14 +115,15 @@ const statusHeaderClass: Record<TaskStatus, string> = {
       <div
         v-if="tasks.length === 0"
         class="flex-1 flex flex-col items-center justify-center py-8 text-center gap-2 cursor-pointer select-none rounded-md hover:bg-muted/60 transition-colors"
-        title="Double-click to add a task"
+        title="Click or double-click to add a task"
+        @click="emit('create-in-column', status)"
         @dblclick="emit('create-in-column', status)"
       >
         <div class="rounded-full bg-muted p-2.5">
           <LayoutList class="size-4 text-muted-foreground/50" aria-hidden="true" />
         </div>
         <p class="text-[11px] text-muted-foreground">No tasks</p>
-        <p class="text-[10px] text-muted-foreground/50">Double-click to add</p>
+        <p class="text-[10px] text-muted-foreground/50">Click or double-click to add</p>
       </div>
     </div>
   </div>

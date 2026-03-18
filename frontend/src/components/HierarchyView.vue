@@ -129,7 +129,7 @@ const flatTree = computed(() => {
         <!-- Summary snippet -->
         <span
           v-if="agents[name]?.summary"
-          class="text-xs text-muted-foreground truncate hidden md:block"
+          class="text-xs text-muted-foreground line-clamp-1 md:truncate"
         >
           {{ agents[name].summary.replace(/^[^:]+:\s*/, '').slice(0, 60) }}
         </span>
