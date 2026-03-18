@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This document defines the **formal contract** for everything the coordinator must deliver to an agent at spawn time. It was introduced after TASK-015 (PR #155) revealed that BOSS_API_TOKEN auth was added to the HTTP layer but the MCP registration command at agent spawn time never received the `--header` flag — leaving all agents silently broken when auth was enabled.
+This document defines the **formal contract** for everything the coordinator must deliver to an agent at spawn time. It was introduced after TASK-015 (PR #155) revealed that ODIS_API_TOKEN auth was added to the HTTP layer but the MCP registration command at agent spawn time never received the `--header` flag — leaving all agents silently broken when auth was enabled.
 
 The lesson: _encode invariants mechanically, not in documentation alone._
 
@@ -26,8 +26,8 @@ Every spawned agent **must** receive all of the following:
 
 - **What:** `Authorization: Bearer <token>` header passed to `claude mcp add`.
 - **How:** `TmuxCreateOpts.AgentToken` → `--header 'Authorization: Bearer <token>'`
-- **Why:** When `BOSS_API_TOKEN` is set, all mutating endpoints require auth. Without the header, every MCP tool call returns 401.
-- **Per-agent tokens (SEC-006 / PR #242):** Each agent receives a unique token minted at spawn time via `generateAgentToken(spaceName, agentName)`. The token is isolated to that agent's channel — it cannot post to a sibling agent's endpoint. The workspace `BOSS_API_TOKEN` remains the operator-level credential; per-agent tokens are scoped narrower.
+- **Why:** When `ODIS_API_TOKEN` is set, all mutating endpoints require auth. Without the header, every MCP tool call returns 401.
+- **Per-agent tokens (SEC-006 / PR #242):** Each agent receives a unique token minted at spawn time via `generateAgentToken(spaceName, agentName)`. The token is isolated to that agent's channel — it cannot post to a sibling agent's endpoint. The workspace `ODIS_API_TOKEN` remains the operator-level credential; per-agent tokens are scoped narrower.
 - **Invariant:** If `MCPServerURL` is set, `AgentToken` **must** also be set. The structural test `TestAgentExperienceSurfaceInvariants` enforces this at build time.
 
 ### 3. Working Directory
@@ -88,7 +88,7 @@ spawnAgentService()
      })
        └─ TmuxSessionBackend.CreateSession()
             ├─ cd <workDir>
-            ├─ claude mcp add boss-mcp --transport http <url>/mcp
+            ├─ claude mcp add odis-mcp --transport http <url>/mcp
             │       --header 'Authorization: Bearer <token>'
             └─ <command>  (e.g. "claude --dangerously-skip-permissions")
 
@@ -117,10 +117,10 @@ Agents spawned via `make dev-spawn AGENT=<name> SPACE=<space>` (or `scripts/spaw
 ```json
 {
   "mcpServers": {
-    "boss-mcp": {
+    "odis-mcp": {
       "type": "http",
       "url": "http://localhost:8899/mcp",
-      "headers": {"Authorization": "Bearer <BOSS_API_TOKEN>"}
+      "headers": {"Authorization": "Bearer <ODIS_API_TOKEN>"}
     },
     "boss-dev": {
       "type": "http",
@@ -132,7 +132,7 @@ Agents spawned via `make dev-spawn AGENT=<name> SPACE=<space>` (or `scripts/spaw
 
 | Server | What it connects to | When to use it |
 |--------|---------------------|----------------|
-| `boss-mcp` | Production coordinator (`data/boss.db`) | Check in, post status, tasks, messages |
+| `odis-mcp` | Production coordinator (`data/boss.db`) | Check in, post status, tasks, messages |
 | `boss-dev` | Local isolated dev instance (`data-dev/boss.db`) | Test API changes against the branch's binary |
 
 The dev instance port is auto-assigned (≥ 9000) and stored in `data-dev/boss.port`. `spawn-dev-agent.sh` reads this file after running `make dev-start`.
@@ -141,7 +141,7 @@ The dev instance port is auto-assigned (≥ 9000) and stored in `data-dev/boss.p
 
 | Capability | How |
 |------------|-----|
-| Check in / tasks / messages | `boss-mcp.*` tools |
+| Check in / tasks / messages | `odis-mcp.*` tools |
 | Test API changes locally | `boss-dev.*` tools |
 | Observe running sessions | `boss-observe.*` tools (when registered) |
 | Rebuild and redeploy binary | `make dev-restart` |
@@ -157,14 +157,14 @@ The dev instance port is auto-assigned (≥ 9000) and stored in `data-dev/boss.p
 ### Spawn flow for dev agents
 
 ```
-make dev-spawn AGENT=worker1 SPACE="Agent Boss Dev"
-  └─ scripts/spawn-dev-agent.sh worker1 "Agent Boss Dev"
+make dev-spawn AGENT=worker1 SPACE="OpenDispatch Dev"
+  └─ scripts/spawn-dev-agent.sh worker1 "OpenDispatch Dev"
        ├─ make dev-start          (no-op if already running)
        ├─ DEV_PORT=$(cat data-dev/boss.port)
-       ├─ build --mcp-config JSON with boss-mcp + boss-dev
+       ├─ build --mcp-config JSON with odis-mcp + boss-dev
        └─ claude --mcp-config /tmp/mcp-config.json \
                  --strict-mcp-config \
-                 [--dangerously-skip-permissions if BOSS_ALLOW_SKIP_PERMISSIONS=true]
+                 [--dangerously-skip-permissions if ODIS_ALLOW_SKIP_PERMISSIONS=true]
 ```
 
 ### Checklist before shipping spawn infrastructure changes

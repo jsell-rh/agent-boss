@@ -1,6 +1,6 @@
-# Agent Boss — Docs Index
+# OpenDispatch — Docs Index
 
-Knowledge base for the Agent Boss coordination server. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the system map.
+Knowledge base for the OpenDispatch coordination server. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the system map.
 
 ---
 
@@ -22,7 +22,7 @@ Core design decisions and specifications that shaped the system.
 | [design-spec-task-014.md](design-spec-task-014.md) | Frontend UX Overhaul (TASK-014) | **implemented** |
 | [resolve-agent-name-audit.md](resolve-agent-name-audit.md) | resolveAgentName Lock Audit | **implemented** |
 | [agent-names.md](agent-names.md) | Agent Names — Supported Characters | **implemented** |
-| [paude.md](paude.md) | Paude Integration for Agent Boss | **proposed** |
+| [paude.md](paude.md) | Paude Integration for OpenDispatch | **proposed** |
 | [design-docs/hexagonal-architecture.md](design-docs/hexagonal-architecture.md) | Hexagonal Architecture Migration Plan | **in-progress** |
 | [design-docs/auth-model.md](design-docs/auth-model.md) | Auth Model ADR — Phase 1 static token + Phase 2 per-agent tokens | **in-progress** |
 | [design-docs/agent-compose.md](design-docs/agent-compose.md) | agent-compose.yaml — Fleet Blueprint Design Spec (TASK-098) | **implemented** |
@@ -38,8 +38,8 @@ Strategic direction, roadmaps, and factory-scale proposals.
 
 | File | Title | Status |
 |------|-------|--------|
-| [proposal-agent-boss-ambient.md](proposal-agent-boss-ambient.md) | Agent Boss: Operational Proof at Scale (Ambient backend) | **implemented** |
-| [agent-boss-factory-proposal.md](agent-boss-factory-proposal.md) | Agent Boss: TRex-Powered Software Factory | **proposed** |
+| [proposal-agent-boss-ambient.md](proposal-agent-boss-ambient.md) | OpenDispatch: Operational Proof at Scale (Ambient backend) | **implemented** |
+| [agent-boss-factory-proposal.md](agent-boss-factory-proposal.md) | OpenDispatch: TRex-Powered Software Factory | **proposed** |
 | [software-factory.md](software-factory.md) | Software Factory: Autonomous Multi-Agent Production | **proposed** |
 | [software-factory2.md](software-factory2.md) | Software Factory: Component Dependency Tree | **proposed** |
 
@@ -51,9 +51,9 @@ End-user and operator documentation.
 
 | File | Title | Status |
 |------|-------|--------|
-| [getting-started.md](getting-started.md) | Getting Started with Agent Boss | **active** |
-| [api-reference.md](api-reference.md) | Agent Boss — API Reference | **active** |
-| [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) | Agent Boss — HTTP Agent Protocol v1.0 | **active** |
+| [getting-started.md](getting-started.md) | Getting Started with OpenDispatch | **active** |
+| [api-reference.md](api-reference.md) | OpenDispatch — API Reference | **active** |
+| [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) | OpenDispatch — HTTP Agent Protocol v1.0 | **active** |
 | [agent-migration-guide.md](agent-migration-guide.md) | Migration Guide: /raw Polling → Message Polling | **active** |
 | [fleet-guide.md](fleet-guide.md) | Fleet Guide — Export, Edit, Import (agent-compose.yaml) | **active** |
 

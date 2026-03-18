@@ -28,7 +28,7 @@ space:
   name: "My Project"
   description: "Full-stack Node.js / React / Postgres app"       # optional
   shared_contracts: |                                              # optional
-    All agents coordinate via boss-mcp.
+    All agents coordinate via odis-mcp.
     Check in every 10 minutes during active work.
 
 personas:
@@ -105,7 +105,7 @@ On import: personas are upserted via existing persona endpoints. If a persona wi
 | `description` | string | no | Short description of the agent's purpose. Aids readability in large fleet files. |
 | `parent` | string | no | Agent name of this agent's manager. Omit for root nodes. |
 | `personas` | string[] | no | Ordered list of persona IDs from the `personas:` section (or pre-existing server persona IDs). |
-| `work_dir` | string | no | Absolute working directory path. Must be an absolute path; relative paths and paths containing `..` after cleaning are rejected. Must begin with `BOSS_WORK_DIR_PREFIX` if that env var is set. |
+| `work_dir` | string | no | Absolute working directory path. Must be an absolute path; relative paths and paths containing `..` after cleaning are rejected. Must begin with `ODIS_WORK_DIR_PREFIX` if that env var is set. |
 | `backend` | string | no | `tmux` (default) or `ambient`. |
 | `command` | string | no | Launch command. Default: `claude`. Must be in the server's command allowlist (see Security). |
 | `initial_prompt` | string | no | Instructions injected into the agent at session start. |
@@ -249,7 +249,7 @@ Per-agent tokens are generated server-side at spawn time. They are never exporte
 The server does not sanitize persona prompts — they are stored as-is and injected at spawn time. Operators are responsible for reviewing persona content before importing from untrusted sources. The dry-run preview displays the full text of any persona being created or changed.
 
 ### Command allowlist
-The `command` field is validated against a server-side allowlist. The allowlist is configured via the `BOSS_COMMAND_ALLOWLIST` environment variable (comma-separated values; defaults to `claude`). Arbitrary shell commands and paths not in the allowlist are rejected with a 400 error. This prevents the YAML from being used as a code execution vector.
+The `command` field is validated against a server-side allowlist. The allowlist is configured via the `ODIS_COMMAND_ALLOWLIST` environment variable (comma-separated values; defaults to `claude`). Arbitrary shell commands and paths not in the allowlist are rejected with a 400 error. This prevents the YAML from being used as a code execution vector.
 
 ### YAML bomb protection
 Both the CLI and the server enforce limits before parsing:
@@ -267,7 +267,7 @@ Git repo URLs in the `repos` field are validated server-side before use:
 ### `work_dir` path validation
 - Absolute path required (relative paths rejected)
 - Paths containing `..` after `filepath.Clean` are rejected
-- If `BOSS_WORK_DIR_PREFIX` env var is set, `work_dir` must begin with that prefix (e.g., `/workspace`)
+- If `ODIS_WORK_DIR_PREFIX` env var is set, `work_dir` must begin with that prefix (e.g., `/workspace`)
 
 ### `--prune` safety
 `--prune` will not remove an agent with an active tmux or ambient session without explicit confirmation. The CLI checks session liveness before proposing removal.
@@ -276,7 +276,7 @@ Git repo URLs in the `repos` field are validated server-side before use:
 All YAML-sourced content in the diff preview (persona prompts, agent names, descriptions, initial prompts) must be rendered as plain text. No `innerHTML` insertion of user-controlled strings. The UI uses text nodes or a safe escaping function for all diff content.
 
 ### Auth
-Export and import require a valid `BOSS_API_TOKEN` when the server has auth enabled. CORS and token validation apply to all underlying agent/persona endpoints.
+Export and import require a valid `ODIS_API_TOKEN` when the server has auth enabled. CORS and token validation apply to all underlying agent/persona endpoints.
 
 ---
 
@@ -301,8 +301,8 @@ Export and import require a valid `BOSS_API_TOKEN` when the server has auth enab
 
 ```bash
 # Export current space to YAML
-boss export "Agent Boss Dev"
-boss export "Agent Boss Dev" > fleet.yaml
+boss export "OpenDispatch Dev"
+boss export "OpenDispatch Dev" > fleet.yaml
 
 # Import YAML into a space
 boss import fleet.yaml

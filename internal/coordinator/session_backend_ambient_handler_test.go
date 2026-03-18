@@ -313,13 +313,13 @@ func TestHandlerAmbientSpawnEnvVarSplit(t *testing.T) {
 		t.Fatalf("expected environmentVariables in request body, got %v", capturedBody["environmentVariables"])
 	}
 
-	// BOSS_URL should be passed as a single value (no split).
-	if envVars["BOSS_URL"] != "https://boss.example.com" {
-		t.Errorf("expected BOSS_URL=https://boss.example.com, got %v", envVars["BOSS_URL"])
+	// ODIS_URL should be passed as a single value (no split).
+	if envVars["ODIS_URL"] != "https://boss.example.com" {
+		t.Errorf("expected ODIS_URL=https://boss.example.com, got %v", envVars["ODIS_URL"])
 	}
 
 	// MCP_SERVERS_JSON must NOT be set — the workflow's .mcp.json handles
-	// boss-mcp registration (with auth headers via env var substitution).
+	// odis-mcp registration (with auth headers via env var substitution).
 	// MCP_SERVERS_JSON would clobber the workflow entry and drop auth.
 	if _, has := envVars["MCP_SERVERS_JSON"]; has {
 		t.Error("MCP_SERVERS_JSON should not be present — workflow .mcp.json handles MCP registration")

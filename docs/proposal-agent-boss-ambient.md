@@ -1,4 +1,4 @@
-# Agent Boss: Operational Proof of Agentic Development at Scale
+# OpenDispatch: Operational Proof of Agentic Development at Scale
 
 **Author:** Mike Turanski | **Date:** 2026-03-01 | **Status:** Proposal  
 **Audience:** Jeremy Eder, AI Engineering Leadership  
@@ -9,13 +9,13 @@
 
 ## TL;DR
 
-While building Ambient's `sdk-backend-replacement` with 11 concurrent agents, we built Agent Boss — a coordination system that implements the interrupt tracking, loop tightening, and role-based agent teaming described in Jeremy's *Agentic Development at Red Hat AI Engineering*. This proposal shows what we've proven, what's missing, and how Agent Boss becomes a component of Ambient itself.
+While building Ambient's `sdk-backend-replacement` with 11 concurrent agents, we built OpenDispatch — a coordination system that implements the interrupt tracking, loop tightening, and role-based agent teaming described in Jeremy's *Agentic Development at Red Hat AI Engineering*. This proposal shows what we've proven, what's missing, and how OpenDispatch becomes a component of Ambient itself.
 
 ---
 
 ## 1. What We Built (and What It Proves)
 
-Agent Boss is a Go server (zero dependencies, stdlib only) that manages multi-agent coordination through a shared blackboard, real-time dashboard, and structured interrupt ledger.
+OpenDispatch is a Go server (zero dependencies, stdlib only) that manages multi-agent coordination through a shared blackboard, real-time dashboard, and structured interrupt ledger.
 
 ### Live Data from `sdk-backend-replacement` (2026-03-01)
 
@@ -34,7 +34,7 @@ Agent Boss is a Go server (zero dependencies, stdlib only) that manages multi-ag
 
 ```mermaid
 graph TB
-    subgraph "Agent Boss Coordinator (:8899)"
+    subgraph "OpenDispatch Coordinator (:8899)"
         BL[Blackboard<br/>JSON + Markdown]
         IL[Interrupt Ledger<br/>JSONL per space]
         SSE[SSE Event Stream]
@@ -78,7 +78,7 @@ graph TB
 
 ### Lesson 1: Agents at Every SDLC Phase
 
-| Paper Recommendation | Agent Boss Implementation | Status |
+| Paper Recommendation | OpenDispatch Implementation | Status |
 |---------------------|--------------------------|--------|
 | Agents compress phase transitions | Blackboard carries context across agents and phases | Done |
 | Specs flow into tests, tests into code | Reviewer agent reviews by worktree; test_count tracked per agent | Partial |
@@ -98,7 +98,7 @@ graph LR
         O[Operator<br/>Tunes system]
     end
 
-    subgraph "Agent Boss Roles"
+    subgraph "OpenDispatch Roles"
         H((Human Boss)) -.->|resolves ?BOSS| S
         H -.->|approves tools| R
         H -.->|tunes allowlists| O
@@ -140,7 +140,7 @@ We implemented exactly this:
 
 ### Lesson 5: Scaling
 
-| Paper Recommendation | Agent Boss | Status |
+| Paper Recommendation | OpenDispatch | Status |
 |---------------------|-----------|--------|
 | Standardize control loop | Protocol template auto-refreshes on every agent POST | Done |
 | Share context packages | Protocol is space-scoped; no cross-space sharing yet | Gap |
@@ -198,9 +198,9 @@ graph TD
 
 ---
 
-## 4. The Plan: Agent Boss as Ambient's Factory Controller
+## 4. The Plan: OpenDispatch as Ambient's Factory Controller
 
-Ambient's component dependency tree is a natural factory pipeline. Agent Boss should become the system that accepts a Kind spec and produces deployed code — the exact "dark factory" pattern Jeremy envisions.
+Ambient's component dependency tree is a natural factory pipeline. OpenDispatch should become the system that accepts a Kind spec and produces deployed code — the exact "dark factory" pattern Jeremy envisions.
 
 ### Ambient Component Pipeline
 
@@ -227,7 +227,7 @@ graph LR
     style DONE fill:#3fb950,color:#fff
 ```
 
-Every new Ambient Kind (Workflow, Task, Skill, Agent, WorkflowTask) follows this exact cascade. Agent Boss already coordinates it manually. The factory plan formalizes it.
+Every new Ambient Kind (Workflow, Task, Skill, Agent, WorkflowTask) follows this exact cascade. OpenDispatch already coordinates it manually. The factory plan formalizes it.
 
 ### Implementation: 4 Phases
 
@@ -348,11 +348,11 @@ L4 is "zero *routine* interrupts" — not zero total. Every new Kind introduces 
 
 ## 5. The Self-Improvement Loop
 
-Here's the key insight: **Agent Boss is being built to improve Ambient, and Ambient is the platform that will host Agent Boss.**
+Here's the key insight: **OpenDispatch is being built to improve Ambient, and Ambient is the platform that will host OpenDispatch.**
 
 ```mermaid
 graph TD
-    AB[Agent Boss<br/>coordinates agents] -->|"11 agents build"| ACP[Ambient Code Platform<br/>sdk-backend-replacement]
+    AB[OpenDispatch<br/>coordinates agents] -->|"11 agents build"| ACP[Ambient Code Platform<br/>sdk-backend-replacement]
     ACP -->|"provides infrastructure for"| AB
     IL[Interrupt Ledger<br/>199 entries] -->|"feeds"| LT[Loop Tightening<br/>allowlist rules, policy engine]
     LT -->|"reduces interrupts in"| AB
@@ -365,21 +365,21 @@ graph TD
 ```
 
 Concretely:
-1. Agent Boss coordinates 11 agents building Ambient's SDK backend replacement
-2. The interrupt data from that work feeds back into Agent Boss's factory rules
-3. Agent Boss itself runs on Ambient's infrastructure (Kubernetes, ROSA cluster already deployed)
-4. Each new Ambient Kind processed through Agent Boss makes the next Kind faster
-5. Agent Boss becomes a first-class Ambient component — the factory controller that ACP exposes to all teams
+1. OpenDispatch coordinates 11 agents building Ambient's SDK backend replacement
+2. The interrupt data from that work feeds back into OpenDispatch's factory rules
+3. OpenDispatch itself runs on Ambient's infrastructure (Kubernetes, ROSA cluster already deployed)
+4. Each new Ambient Kind processed through OpenDispatch makes the next Kind faster
+5. OpenDispatch becomes a first-class Ambient component — the factory controller that ACP exposes to all teams
 
 This is Jeremy's compounding advantage made literal: the tool improves the platform, and the platform improves the tool.
 
-As an Ambient component, Agent Boss would expose a `FactoryPlan` CRD. The Ambient operator would reconcile FactoryPlans by coordinating agent sessions according to the stage DAG — following the existing CRD-driven pattern used for AgenticSessions (User Creates Session -> Backend Creates CR -> Operator Spawns Job). The coordinator server becomes the reconciler, the blackboard becomes the CR status, and interrupt metrics flow into Ambient's observability pipeline.
+As an Ambient component, OpenDispatch would expose a `FactoryPlan` CRD. The Ambient operator would reconcile FactoryPlans by coordinating agent sessions according to the stage DAG — following the existing CRD-driven pattern used for AgenticSessions (User Creates Session -> Backend Creates CR -> Operator Spawns Job). The coordinator server becomes the reconciler, the blackboard becomes the CR status, and interrupt metrics flow into Ambient's observability pipeline.
 
 ---
 
 ## 6. Alignment Summary
 
-| Jeremy's Paper | Agent Boss | Evidence |
+| Jeremy's Paper | OpenDispatch | Evidence |
 |---------------|-----------|---------|
 | "Interrupts are the most valuable signal" | JSONL ledger, `/factory/metrics`, dashboard tracker | 268 entries, 35.9 min human wait measured |
 | "Loop tightening" | Analyzed data → allowlist rules → 93% reduction | settings.json with 47 rules |
@@ -448,7 +448,7 @@ The principle: **every automated action has a rollback path, and every rollback 
 ## 9. Ask
 
 1. **Review this proposal** for alignment with the agentic development paper and ACP roadmap.
-2. **Designate a pilot Kind** (Workflow, Task, or Skill) to run through Agent Boss as the first formal L2 factory run with spec-first workflow.
-3. **Integrate Agent Boss into ACP** as a platform component — the factory controller for multi-agent coordination, interrupt tracking, and autonomy progression.
+2. **Designate a pilot Kind** (Workflow, Task, or Skill) to run through OpenDispatch as the first formal L2 factory run with spec-first workflow.
+3. **Integrate OpenDispatch into ACP** as a platform component — the factory controller for multi-agent coordination, interrupt tracking, and autonomy progression.
 
 The infrastructure exists. The data — 268 interrupts measured, 93% reducible by allowlist, 35.9 minutes of human wait time quantified — proves the pattern works. The question is whether we formalize it.

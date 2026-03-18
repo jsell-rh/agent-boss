@@ -302,7 +302,7 @@ defineExpose({ openNewSpaceDialog })
     <SidebarHeader class="p-4">
       <div class="flex items-center gap-2">
         <div class="h-6 w-1 rounded-full bg-primary" aria-hidden="true" />
-        <h2 class="text-lg font-semibold tracking-tight">Agent Boss</h2>
+        <h2 class="text-lg font-semibold tracking-tight">oDispatch</h2>
       </div>
       <div class="flex items-center gap-1.5 mt-1 text-xs text-amber-600 dark:text-amber-400">
         <Crown class="size-3 shrink-0" aria-hidden="true" />

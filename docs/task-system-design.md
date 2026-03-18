@@ -9,13 +9,13 @@
 
 ## Executive Summary
 
-This document specifies a first-class task management system for Agent Boss. Tasks are not bolted on — they are a core entity alongside agents and spaces, with a Kanban board as the primary human-facing view. Both humans and agents can create, update, and close tasks via HTTP API. Tasks integrate with the existing hierarchy, messaging, and Gantt timeline systems.
+This document specifies a first-class task management system for OpenDispatch. Tasks are not bolted on — they are a core entity alongside agents and spaces, with a Kanban board as the primary human-facing view. Both humans and agents can create, update, and close tasks via HTTP API. Tasks integrate with the existing hierarchy, messaging, and Gantt timeline systems.
 
 ---
 
 ## 1. Motivation
 
-The current Agent Boss workflow uses agent status updates as a proxy for task tracking. This works at small scale but breaks down with 10+ agents: there is no canonical list of "what work is open," no way to see blocked items, no assignment history, and no structured handoff between agents. A task system fills this gap while remaining lightweight (stdlib-only Go, no external task DB).
+The current OpenDispatch workflow uses agent status updates as a proxy for task tracking. This works at small scale but breaks down with 10+ agents: there is no canonical list of "what work is open," no way to see blocked items, no assignment history, and no structured handoff between agents. A task system fills this gap while remaining lightweight (stdlib-only Go, no external task DB).
 
 ---
 

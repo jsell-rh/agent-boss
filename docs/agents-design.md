@@ -1,6 +1,6 @@
 # Agent Definition System Design
 
-**Author:** Agent Boss Development | **Date:** 2026-03-02  
+**Author:** OpenDispatch Development | **Date:** 2026-03-02  
 **Context:** Pre-defined agents for software factory automation  
 
 ## Overview
@@ -656,4 +656,4 @@ This agent definition system addresses key gaps from the proposal:
 3. **Phase 3:** Implement factory pipeline loading and stage enforcement
 4. **Phase 4:** Add quality gate automation and rollback policies
 
-This transforms Agent Boss from a coordination tool into a true software factory where agents are well-defined, reusable components that can be composed into different workflows based on the work at hand.
+This transforms OpenDispatch from a coordination tool into a true software factory where agents are well-defined, reusable components that can be composed into different workflows based on the work at hand.

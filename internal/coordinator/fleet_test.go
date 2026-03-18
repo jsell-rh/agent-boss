@@ -196,7 +196,7 @@ func TestHandleSpaceExportMethodNotAllowed(t *testing.T) {
 // ─── Security validators ──────────────────────────────────────────────────────
 
 func TestCommandAllowlist(t *testing.T) {
-	t.Setenv("BOSS_COMMAND_ALLOWLIST", "claude,claude-dev")
+	t.Setenv("ODIS_COMMAND_ALLOWLIST", "claude,claude-dev")
 
 	cases := []struct {
 		cmd  string
@@ -221,7 +221,7 @@ func TestCommandAllowlist(t *testing.T) {
 }
 
 func TestCommandAllowlistDefault(t *testing.T) {
-	t.Setenv("BOSS_COMMAND_ALLOWLIST", "")
+	t.Setenv("ODIS_COMMAND_ALLOWLIST", "")
 	if err := ValidateFleetCommand("claude"); err != nil {
 		t.Errorf("claude should be in default allowlist: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestYAMLBombGuard(t *testing.T) {
 }
 
 func TestWorkDirValidation(t *testing.T) {
-	t.Setenv("BOSS_WORK_DIR_PREFIX", "")
+	t.Setenv("ODIS_WORK_DIR_PREFIX", "")
 	cases := []struct {
 		dir  string
 		want bool // true = valid
@@ -273,7 +273,7 @@ func TestWorkDirValidation(t *testing.T) {
 }
 
 func TestWorkDirPrefix(t *testing.T) {
-	t.Setenv("BOSS_WORK_DIR_PREFIX", "/workspace")
+	t.Setenv("ODIS_WORK_DIR_PREFIX", "/workspace")
 	if err := ValidateWorkDir("/workspace/myapp"); err != nil {
 		t.Errorf("inside prefix: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestTopoSortAgentsEmpty(t *testing.T) {
 // ─── Export round-trip ────────────────────────────────────────────────────────
 
 func TestExportRoundTrip(t *testing.T) {
-	t.Setenv("BOSS_COMMAND_ALLOWLIST", "claude")
+	t.Setenv("ODIS_COMMAND_ALLOWLIST", "claude")
 
 	srv, stop := mustStartServer(t)
 	defer stop()
@@ -784,8 +784,8 @@ func containsString(s, sub string) bool {
 }
 
 func TestParseAndValidateFleetFile(t *testing.T) {
-	t.Setenv("BOSS_COMMAND_ALLOWLIST", "claude,claude-dev")
-	t.Setenv("BOSS_WORK_DIR_PREFIX", "")
+	t.Setenv("ODIS_COMMAND_ALLOWLIST", "claude,claude-dev")
+	t.Setenv("ODIS_WORK_DIR_PREFIX", "")
 
 	valid := `version: "1"
 space:

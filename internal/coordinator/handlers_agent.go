@@ -1511,7 +1511,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 					if s.apiToken == "" {
 						return nil
 					}
-					return map[string]string{"BOSS_API_TOKEN": s.apiToken}
+					return map[string]string{"ODIS_API_TOKEN": s.apiToken}
 				}(),
 			},
 		}

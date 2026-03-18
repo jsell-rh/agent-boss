@@ -1,4 +1,4 @@
-# Paude Integration for Agent Boss
+# Paude Integration for OpenDispatch
 
 ## Why Paude?
 
@@ -12,7 +12,7 @@ Multi-agent Claude Code environments face critical problems that Paude solves:
 
 **Paude Solutions:**
 - ✅ **Container isolation** - Each agent runs in separate environment
-- ✅ **Network filtering** - Safe access to Vertex AI + Agent Boss only
+- ✅ **Network filtering** - Safe access to Vertex AI + OpenDispatch only
 - ✅ **Safe YOLO mode** - Dangerous tools enabled with network protection
 - ✅ **Clean session management** - Container restart = fresh state
 - ✅ **Pre-configured environment** - Claude Code + dependencies ready
@@ -23,7 +23,7 @@ Multi-agent Claude Code environments face critical problems that Paude solves:
 
 ```
 Host System
-├── Agent Boss Server (:8899)
+├── OpenDispatch Server (:8899)
 ├── Project Files (~/projects)
 └── Paude Containers
     ├── agent-api (isolated Claude environment)
@@ -39,7 +39,7 @@ Host System
 ┌─────────────────────────────────────────────────────────┐
 │ Host System                                             │
 │ ┌─────────────────┐  ┌─────────────────────────────────┐ │
-│ │ Agent Boss      │  │ Paude Containers                │ │  
+│ │ OpenDispatch      │  │ Paude Containers                │ │  
 │ │ Server          │  │ ┌─────────────────────────────┐ │ │
 │ │ :8899           │◄─┼─│ Agent Container             │ │ │
 │ │                 │  │ │ • Network filtered          │ │ │
@@ -66,7 +66,7 @@ cd paude && podman build -t localhost/paude-proxy-centos9:latest .
 cd /path/to/agent-boss
 ./scripts/build-paude-claude.sh
 
-# 3. Start Agent Boss server
+# 3. Start OpenDispatch server
 DATA_DIR=./data ./boss serve
 ```
 
@@ -94,7 +94,7 @@ podman run -it --rm \
   --name claude-test \
   --network=host \
   -v ~/projects/src/gitlab.cee.redhat.com/ocm/agent-boss:/workspace:Z \
-  -e BOSS_URL=http://localhost:8899 \
+  -e ODIS_URL=http://localhost:8899 \
   -e AGENT_NAME=TestAgent \
   -e WORKSPACE_NAME=sdk-backend-replacement \
   localhost/paude-claude:latest
@@ -138,7 +138,7 @@ def register_agent(self):
 - Container restart provides clean slate
 
 **Network Filtering (Paude Base):**
-- Containers can only reach Vertex AI API + Agent Boss server
+- Containers can only reach Vertex AI API + OpenDispatch server
 - External data exfiltration blocked at network level
 - Custom domains configurable via `--allowed-domains`
 
@@ -163,7 +163,7 @@ def register_agent(self):
 
 ### Management Commands
 
-**Agent Boss Integration:**
+**OpenDispatch Integration:**
 ```bash
 # Check-in all agents (safe with Paude isolation)
 curl -X POST http://localhost:8899/spaces/sdk-backend-replacement/broadcast
@@ -219,7 +219,7 @@ This integration is **fully implemented and ready to use**. All components have 
 | Component | Purpose | Status |
 |-----------|---------|---------|
 | `docker/Dockerfile.paude-claude` | Integrated container image | ✅ Complete |
-| `scripts/coordination-client.py` | Agent Boss API client | ✅ Complete |
+| `scripts/coordination-client.py` | OpenDispatch API client | ✅ Complete |
 | `scripts/agent-ignition.sh` | Session lifecycle management | ✅ Complete |
 | `scripts/claude-wrapper.sh` | Execution hooks | ✅ Complete |
 | `scripts/build-paude-claude.sh` | Build automation | ✅ Complete |
@@ -243,7 +243,7 @@ agent-boss/
 
 ### Why This Works
 
-The combination of Paude + Agent Boss provides:
+The combination of Paude + OpenDispatch provides:
 
 - ✅ **No `.claude.json` corruption**: Each container has isolated config
 - ✅ **Safe concurrent operations**: Multiple agents can broadcast simultaneously  

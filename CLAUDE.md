@@ -1,4 +1,4 @@
-# Agent Boss — Development Guide
+# OpenDispatch — Development Guide
 
 ## Build
 
@@ -9,7 +9,7 @@ The Vue frontend is embedded in the Go binary via `//go:embed`. You **must** bui
 cd frontend && npm install && npm run build && cd ..
 
 # Step 2: Build the Go binary (embeds the compiled frontend)
-go build -o /tmp/boss ./cmd/boss/
+go build -o /tmp/odis ./cmd/boss/
 ```
 
 The binary is self-contained — no `FRONTEND_DIR` env var needed at runtime.
@@ -23,7 +23,7 @@ go test -race -v ./internal/coordinator/
 ## Run
 
 ```bash
-DATA_DIR=./data /tmp/boss serve
+DATA_DIR=./data /tmp/odis serve
 ```
 
 Server starts on `:8899`. Dashboard at `http://localhost:8899`. Data persists to `DATA_DIR/boss.db` (SQLite).
@@ -34,7 +34,7 @@ During frontend development, run the Vite dev server and the Go binary together:
 
 ```bash
 # Terminal 1 — Go backend
-DATA_DIR=./data /tmp/boss serve
+DATA_DIR=./data /tmp/odis serve
 
 # Terminal 2 — Vite dev server (proxies API to :8899)
 cd frontend && npm run dev
@@ -45,7 +45,7 @@ The Vite dev server proxies `/spaces`, `/events`, `/api`, `/raw`, and `/agent` t
 To override the embedded frontend at runtime (e.g. for testing a fresh build):
 
 ```bash
-DATA_DIR=./data FRONTEND_DIR=./internal/coordinator/frontend /tmp/boss serve
+DATA_DIR=./data FRONTEND_DIR=./internal/coordinator/frontend /tmp/odis serve
 ```
 
 ## Fleet CLI (Export / Import)
@@ -54,20 +54,20 @@ Capture a running space as a portable `agent-compose.yaml` fleet file and replay
 
 ```bash
 # Export a space to YAML (stdout or file)
-boss export "My Space"
-boss export "My Space" --output fleet.yaml
+odis export "My Space"
+odis export "My Space" --output fleet.yaml
 
 # Preview what import will do (no writes)
-boss import fleet.yaml --dry-run
+odis import fleet.yaml --dry-run
 
 # Apply (interactive confirmation)
-boss import fleet.yaml
+odis import fleet.yaml
 
 # Apply without prompt; override target space
-boss import fleet.yaml --yes --space "Staging"
+odis import fleet.yaml --yes --space "Staging"
 
 # Also remove agents not in the fleet file
-boss import fleet.yaml --prune --yes
+odis import fleet.yaml --prune --yes
 ```
 
 See **[docs/fleet-guide.md](docs/fleet-guide.md)** for the full workflow guide, schema reference, and common patterns.
@@ -115,10 +115,10 @@ data/
 | `DB_TYPE` | `sqlite` | Database backend: `sqlite` or `postgres` |
 | `DB_PATH` | `$DATA_DIR/boss.db` | SQLite file path |
 | `DB_DSN` | _(required for postgres)_ | Postgres DSN (e.g. `host=... user=... dbname=... sslmode=disable`) |
-| `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
-| `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token for all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
-| `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
-| `BOSS_ALLOW_SKIP_PERMISSIONS` | `false` | Set `true` to pass `--dangerously-skip-permissions` to Claude CLI in tmux sessions |
+| `ODIS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `ODIS_API_TOKEN` | _(unset = open mode)_ | Bearer token for all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
+| `ODIS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
+| `ODIS_ALLOW_SKIP_PERMISSIONS` | `false` | Set `true` to pass `--dangerously-skip-permissions` to Claude CLI in tmux sessions |
 | `COORDINATOR_HOST` | _(all interfaces)_ | Listen interface override (e.g. `127.0.0.1`) |
 | `STALENESS_THRESHOLD` | `5m` | Duration after which an agent heartbeat is considered stale |
 | `LOG_FORMAT` | `text` | Log output format: `text` or `json` |
@@ -130,9 +130,9 @@ data/
 | `AMBIENT_WORKFLOW_BRANCH` | _(unset)_ | Git branch for the ambient workflow |
 | `AMBIENT_WORKFLOW_PATH` | _(unset)_ | Path to workflow definition file for the ambient backend |
 | `AMBIENT_SKIP_TLS_VERIFY` | `false` | Skip TLS verification for ambient API calls |
-| `COORDINATOR_EXTERNAL_URL` | _(unset)_ | External URL injected into ambient sessions as `BOSS_URL` |
-| `BOSS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Comma-separated allowlist of valid launch commands for `boss import`. Prevents arbitrary command injection via fleet YAML. |
-| `BOSS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values in fleet YAML must start with this prefix. Restricts agent working directories to a safe subtree. |
+| `COORDINATOR_EXTERNAL_URL` | _(unset)_ | External URL injected into ambient sessions as `ODIS_URL` |
+| `ODIS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Comma-separated allowlist of valid launch commands for `odis import`. Prevents arbitrary command injection via fleet YAML. |
+| `ODIS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values in fleet YAML must start with this prefix. Restricts agent working directories to a safe subtree. |
 
 ## MCP Tool Stack Composition
 
@@ -140,7 +140,7 @@ Agents can be equipped with multiple MCP servers at spawn time via `--mcp-config
 
 ```json
 {"mcpServers":{
-  "boss-mcp":     {"type":"http","url":"http://localhost:8899/mcp"},
+  "odis-mcp":     {"type":"http","url":"http://localhost:8899/mcp"},
   "boss-observe": {"type":"stdio","command":"./bin/boss-observe","args":["--boss-url","http://localhost:8899"]}
 }}
 ```
@@ -183,12 +183,12 @@ bash scripts/boss-observe.sh get-session-output agent-boss-dev-arch2 50
 ## Restart Procedure
 
 ```bash
-pkill -f '/tmp/boss serve'
+pkill -f '/tmp/odis serve'
 sleep 1
 git pull
 cd frontend && npm install && npm run build && cd ..
-go build -o /tmp/boss ./cmd/boss/
-DATA_DIR=./data nohup /tmp/boss serve > /tmp/boss.log 2>&1 &
+go build -o /tmp/odis ./cmd/boss/
+DATA_DIR=./data nohup /tmp/odis serve > /tmp/odis.log 2>&1 &
 ```
 
 Data survives restarts — SQLite DB (`DATA_DIR/boss.db`) is loaded on startup.
@@ -299,7 +299,7 @@ This calls `scripts/spawn-dev-agent.sh`, which:
 1. Starts the dev instance (`make dev-start`) if it is not already running
 2. Reads the port from `data-dev/boss.port`
 3. Launches a new tmux session with **both** MCP servers in `--mcp-config`:
-   - `boss-mcp` — production coordinator (`http://localhost:8899/mcp`) for check-in, tasks, and messages; auth header set if `BOSS_API_TOKEN` is configured
+   - `odis-mcp` — production coordinator (`http://localhost:8899/mcp`) for check-in, tasks, and messages; auth header set if `ODIS_API_TOKEN` is configured
    - `boss-dev` — local dev instance (`http://localhost:<PORT>/mcp`) for testing API changes
 4. Uses `--strict-mcp-config` so the agent sees only these two servers
 5. Wraps Claude in the standard restart loop so session loss is handled automatically
@@ -308,7 +308,7 @@ This calls `scripts/spawn-dev-agent.sh`, which:
 
 | Capability | How |
 |------------|-----|
-| Check in / post status / tasks / messages | `boss-mcp.*` tools |
+| Check in / post status / tasks / messages | `odis-mcp.*` tools |
 | Test API changes against local build | `boss-dev.*` tools |
 | Rebuild and redeploy local binary | `make dev-restart` |
 | Run Playwright e2e against dev instance | `make e2e-dev` |
@@ -348,7 +348,7 @@ make e2e-report    # open the HTML report from the last run
 
 ```bash
 # Start dev instance on a custom port (e.g. 9000):
-DATA_DIR=./data COORDINATOR_PORT=9000 /tmp/boss serve
+DATA_DIR=./data COORDINATOR_PORT=9000 /tmp/odis serve
 
 # In another terminal — run e2e without rebuilding:
 DEV_PORT=9000 make e2e-dev
@@ -361,7 +361,7 @@ tests against your live instance without rebuilding the binary.
 
 ```bash
 make e2e-screenshots          # capture key pages from http://localhost:8899
-BOSS_URL=http://localhost:9000 make e2e-screenshots   # custom URL
+ODIS_URL=http://localhost:9000 make e2e-screenshots   # custom URL
 ```
 
 This runs `e2e/scripts/screenshots.ts` and saves PNGs to `e2e/snapshots/`:

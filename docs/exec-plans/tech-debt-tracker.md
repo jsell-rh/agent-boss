@@ -1,6 +1,6 @@
 # Tech Debt Tracker
 
-Known technical debt in Agent Boss as of 2026-03-18 (updated after PRs #213–#241). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
+Known technical debt in OpenDispatch as of 2026-03-18 (updated after PRs #213–#241). Sourced from existing docs and code review. See [QUALITY.md](../QUALITY.md) for quality grades.
 
 Items are ordered by priority: **high** → **medium** → **low**.
 

@@ -9,7 +9,7 @@
 
 ## 1. Problem Statement
 
-Agent Boss currently models all agents as flat peers inside a `KnowledgeSpace`. Every agent sees every other agent. Every message is point-to-point. There is no concept of organizational hierarchy.
+OpenDispatch currently models all agents as flat peers inside a `KnowledgeSpace`. Every agent sees every other agent. Every message is point-to-point. There is no concept of organizational hierarchy.
 
 Real multi-agent systems need:
 - **Parent-child relationships** (manager → worker, orchestrator → SME)
