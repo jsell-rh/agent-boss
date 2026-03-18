@@ -506,26 +506,33 @@ async function sendInlineCompose() {
   if (!text || !recipient) return
   inlineSending.value = true
   inlineSendError.value = null
+
+  // Optimistic: inject the sent message BEFORE the API call so it is in the
+  // bucket when the SSE event arrives (the server fires SSE before returning
+  // the HTTP response, so pushing after the await causes a duplicate).
+  const optimisticId = `optimistic-${Date.now()}`
+  const optimistic: AgentMessage = {
+    id: optimisticId,
+    message: text,
+    sender: 'boss',
+    timestamp: new Date().toISOString(),
+    read: true,
+  }
+  const bucket = spaceMessages.value[recipient]
+  if (bucket) {
+    bucket.messages.push(optimistic)
+  } else {
+    spaceMessages.value[recipient] = { messages: [optimistic], has_more: false }
+  }
+  scrollThreadToBottom()
+
   try {
     await api.sendMessage(props.space.name, recipient, text, 'boss')
     inlineMessage.value = ''
-    // Optimistic: inject the sent message so it appears immediately without
-    // waiting for the SSE round-trip + API re-fetch.
-    const optimistic: AgentMessage = {
-      id: `optimistic-${Date.now()}`,
-      message: text,
-      sender: 'boss',
-      timestamp: new Date().toISOString(),
-      read: true,
-    }
-    const bucket = spaceMessages.value[recipient]
-    if (bucket) {
-      bucket.messages.push(optimistic)
-    } else {
-      spaceMessages.value[recipient] = { messages: [optimistic], has_more: false }
-    }
-    scrollThreadToBottom()
   } catch (err) {
+    // Roll back the optimistic message on failure.
+    const b = spaceMessages.value[recipient]
+    if (b) b.messages = b.messages.filter(m => m.id !== optimisticId)
     inlineSendError.value = err instanceof Error ? err.message : 'Failed to send message'
   } finally {
     inlineSending.value = false
