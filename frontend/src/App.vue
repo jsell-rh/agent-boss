@@ -139,7 +139,7 @@ let _hadActiveAgents = false
 function checkSprintComplete() {
   if (!currentSpace.value) return
   const agents = currentSpace.value.agents
-  const names = Object.keys(agents)
+  const names = Object.keys(agents ?? {})
   // Need at least 2 agents — single-agent spaces don't have sprint semantics
   if (names.length < 2) return
   const hasActive = names.some(n => agents[n]?.status === 'active')
@@ -261,7 +261,7 @@ const agentsNeedingApproval = computed<string[]>(() =>
 const effectiveHierarchy = computed<HierarchyTree | null>(() => {
   if (!currentSpace.value) return hierarchyTree.value
   const agents = currentSpace.value.agents
-  const agentNames = Object.keys(agents)
+  const agentNames = Object.keys(agents ?? {})
   if (!agentNames.some(n => agents[n]?.parent)) return hierarchyTree.value
 
   // Build children map from agent.parent fields

@@ -26,8 +26,10 @@ function normalizeSpace(space: KnowledgeSpace): KnowledgeSpace {
   if (!space.agents) return { ...space, agents: {} }
   const normalized: Record<string, import('@/types').AgentUpdate> = {}
   for (const [name, record] of Object.entries(space.agents)) {
-    const r = record as unknown as { status: import('@/types').AgentUpdate }
-    normalized[name] = r.status ?? (record as unknown as import('@/types').AgentUpdate)
+    const r = record as unknown as { status: import('@/types').AgentUpdate; config?: import('@/types').AgentConfig }
+    const status = r.status ?? (record as unknown as import('@/types').AgentUpdate)
+    // Preserve agent config (personas, work_dir, etc.) sent alongside status by the backend
+    normalized[name] = r.config ? { ...status, config: r.config } : status
   }
   return { ...space, agents: normalized }
 }

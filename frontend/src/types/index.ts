@@ -65,6 +65,8 @@ export interface AgentUpdate {
   parent?: string
   children?: string[]
   role?: string
+  // Durable config (personas, work_dir, etc.) — merged in by normalizeSpace
+  config?: AgentConfig
 }
 
 // GET /personas and GET /personas/{id}
