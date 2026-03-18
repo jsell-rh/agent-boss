@@ -1,6 +1,6 @@
 # Fleet Guide — Export, Edit, Import
 
-The `boss export` and `boss import` commands let you capture a running agent team as a portable YAML file, version-control it, and replay it into any Boss instance. The format is called a **fleet file** (or `agent-compose.yaml`).
+The `odis export` and `odis import` commands let you capture a running agent team as a portable YAML file, version-control it, and replay it into any OpenDispatch instance. The format is called a **fleet file** (or `agent-compose.yaml`).
 
 ---
 
@@ -8,14 +8,14 @@ The `boss export` and `boss import` commands let you capture a running agent tea
 
 ```bash
 # Capture the current state of a space
-boss export "My Project" --output fleet.yaml
+odis export "My Project" --output fleet.yaml
 
 # Inspect and edit the file (see sections below)
 $EDITOR fleet.yaml
 
 # Replay into the same space (or a new one)
-boss import fleet.yaml --dry-run   # preview changes
-boss import fleet.yaml             # apply
+odis import fleet.yaml --dry-run   # preview changes
+odis import fleet.yaml             # apply
 ```
 
 ---
@@ -115,10 +115,10 @@ Persona IDs are global across the server. To avoid collisions between teams, pre
 
 ```bash
 # Print fleet YAML to stdout
-boss export "OpenDispatch Dev"
+odis export "OpenDispatch Dev"
 
 # Write to file
-boss export "OpenDispatch Dev" --output fleet.yaml
+odis export "OpenDispatch Dev" --output fleet.yaml
 ```
 
 Environment:
@@ -131,25 +131,25 @@ Environment:
 
 ```bash
 # Preview what will change (no writes)
-boss import fleet.yaml --dry-run
+odis import fleet.yaml --dry-run
 
 # Apply (prompts for confirmation)
-boss import fleet.yaml
+odis import fleet.yaml
 
 # Skip confirmation
-boss import fleet.yaml --yes
+odis import fleet.yaml --yes
 
 # Override the target space
-boss import fleet.yaml --space "Staging"
+odis import fleet.yaml --space "Staging"
 
 # Fail if the space doesn't exist (don't auto-create)
-boss import fleet.yaml --no-create-space
+odis import fleet.yaml --no-create-space
 
 # Also remove agents present in the space but absent from the fleet file
-boss import fleet.yaml --prune
+odis import fleet.yaml --prune
 
 # --prune even if the agent has an active session (use with care)
-boss import fleet.yaml --prune --force
+odis import fleet.yaml --prune --force
 ```
 
 ### What import does
@@ -170,8 +170,8 @@ Import is **idempotent**: running it twice produces the same result.
 ### Clone a team into a new space
 
 ```bash
-boss export "Production" --output prod-fleet.yaml
-boss import prod-fleet.yaml --space "Staging" --yes
+odis export "Production" --output prod-fleet.yaml
+odis import prod-fleet.yaml --space "Staging" --yes
 ```
 
 ### Version-control your team
@@ -188,7 +188,7 @@ git push
 ### Reset a space to a known-good state
 
 ```bash
-boss import fleet.yaml --prune --yes
+odis import fleet.yaml --prune --yes
 ```
 
 `--prune` removes agents that aren't in the file, so you end up with exactly what the file describes.
@@ -198,7 +198,7 @@ boss import fleet.yaml --prune --yes
 Edit the persona's `prompt:` in `fleet.yaml`, then import:
 
 ```bash
-boss import fleet.yaml --yes
+odis import fleet.yaml --yes
 ```
 
 The server creates a new persona version. Existing agents using the persona keep the old version until they are restarted and re-spawned with the new ignition.
@@ -221,5 +221,5 @@ These prevent arbitrary command injection or path traversal via a malicious flee
 ## See also
 
 - [agent-compose design spec](design-docs/agent-compose.md) — full schema reference and design rationale
-- [CLAUDE.md](../CLAUDE.md) — `boss export` / `boss import` CLI reference
+- [CLAUDE.md](../CLAUDE.md) — `odis export` / `odis import` CLI reference
 - [API Reference](api-reference.md) — `GET /spaces/:space/export` endpoint
