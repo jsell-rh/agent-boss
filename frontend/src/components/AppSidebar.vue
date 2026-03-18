@@ -216,6 +216,14 @@ function spaceAttentionCount(space: SpaceSummary): number {
   return space.attention_count ?? 0
 }
 
+// Unread message count for boss in a space: current space reads live data, others use server summary.
+function spaceBossUnreadCount(space: SpaceSummary): number {
+  if (space.name === props.selectedSpace && props.currentSpace) {
+    return (props.currentSpace.agents['boss'] as any)?.unread_count ?? 0
+  }
+  return space.boss_unread_count ?? 0
+}
+
 // Count questions + blockers for a specific agent
 function agentAttentionCount(agent: { questions?: string[]; blockers?: string[] }): number {
   return (agent.questions?.length ?? 0) + (agent.blockers?.length ?? 0)
@@ -343,7 +351,18 @@ defineExpose({ openNewSpaceDialog })
                   <div class="text-xs text-muted-foreground">Last active: {{ relativeTime(space.updated_at) }}</div>
                 </TooltipContent>
               </Tooltip>
-              <Tooltip v-if="spaceAttentionCount(space) > 0">
+              <Tooltip v-if="spaceBossUnreadCount(space) > 0">
+                <TooltipTrigger as-child>
+                  <SidebarMenuBadge class="flex items-center gap-1 text-violet-500 font-semibold">
+                    <MessageSquare class="size-3" aria-hidden="true" />
+                    {{ spaceBossUnreadCount(space) }}
+                  </SidebarMenuBadge>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {{ spaceBossUnreadCount(space) }} unread message{{ spaceBossUnreadCount(space) !== 1 ? 's' : '' }} for boss
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip v-else-if="spaceAttentionCount(space) > 0">
                 <TooltipTrigger as-child>
                   <SidebarMenuBadge class="flex items-center gap-1 text-amber-500 font-semibold">
                     <AlertCircle class="size-3" aria-hidden="true" />

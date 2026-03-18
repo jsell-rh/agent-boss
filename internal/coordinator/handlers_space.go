@@ -48,30 +48,40 @@ func (s *Server) handleListSpaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type spaceSummary struct {
-		Name           string    `json:"name"`
-		AgentCount     int       `json:"agent_count"`
-		AttentionCount int       `json:"attention_count"`
-		Archive        string    `json:"archive,omitempty"`
-		CreatedAt      time.Time `json:"created_at"`
-		UpdatedAt      time.Time `json:"updated_at"`
+		Name            string    `json:"name"`
+		AgentCount      int       `json:"agent_count"`
+		AttentionCount  int       `json:"attention_count"`
+		BossUnreadCount int       `json:"boss_unread_count,omitempty"`
+		Archive         string    `json:"archive,omitempty"`
+		CreatedAt       time.Time `json:"created_at"`
+		UpdatedAt       time.Time `json:"updated_at"`
 	}
 
 	s.mu.RLock()
 	summaries := make([]spaceSummary, 0, len(s.spaces))
 	for _, ks := range s.spaces {
 		attention := 0
-		for _, rec := range ks.Agents {
+		bossUnread := 0
+		for name, rec := range ks.Agents {
 			if rec != nil && rec.Status != nil {
 				attention += len(rec.Status.Questions) + len(rec.Status.Blockers)
+				if strings.EqualFold(name, "boss") {
+					for _, m := range rec.Status.Messages {
+						if !m.Read {
+							bossUnread++
+						}
+					}
+				}
 			}
 		}
 		summaries = append(summaries, spaceSummary{
-			Name:           ks.Name,
-			AgentCount:     len(ks.Agents),
-			AttentionCount: attention,
-			Archive:        ks.Archive,
-			CreatedAt:      ks.CreatedAt,
-			UpdatedAt:      ks.UpdatedAt,
+			Name:            ks.Name,
+			AgentCount:      len(ks.Agents),
+			AttentionCount:  attention,
+			BossUnreadCount: bossUnread,
+			Archive:         ks.Archive,
+			CreatedAt:       ks.CreatedAt,
+			UpdatedAt:       ks.UpdatedAt,
 		})
 	}
 	s.mu.RUnlock()

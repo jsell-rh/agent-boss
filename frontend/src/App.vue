@@ -221,18 +221,13 @@ const showKanban = computed(() => route.name === 'kanban')
 const showPersonas = computed(() => false)
 const showSettings = computed(() => false)
 
-// Pending decision count across all agents in current space
+// Boss conversation unread count for the notification bell.
+// Message bodies are stripped from the space API response (post-PR #195),
+// so iterating messages client-side always yields 0. Read unread_count directly —
+// it is kept current by the agent_message SSE handler patch at line ~931.
 const pendingDecisionCount = computed(() => {
   if (!currentSpace.value) return 0
-  let count = 0
-  for (const agent of Object.values(currentSpace.value.agents ?? {})) {
-    const a = agent as any
-    const messages = a?.messages || a?.Messages || []
-    for (const msg of messages) {
-      if (msg.type === 'decision' && !msg.resolved) count++
-    }
-  }
-  return count
+  return (currentSpace.value.agents['boss'] as any)?.unread_count ?? 0
 })
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {

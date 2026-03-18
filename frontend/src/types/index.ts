@@ -141,6 +141,7 @@ export interface SpaceSummary {
   name: string
   agent_count: number
   attention_count: number
+  boss_unread_count?: number
   archive?: string
   created_at: string
   updated_at: string
