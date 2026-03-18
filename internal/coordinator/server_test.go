@@ -4650,6 +4650,44 @@ func TestPerAgentTokenIsolation(t *testing.T) {
 	}
 }
 
+// TestPerAgentTokenMCPAccess verifies that a per-agent token can reach the /mcp
+// endpoint (POST) without a 401. The /mcp endpoint must accept per-agent tokens
+// so agents can call MCP tools (post_status, check_messages, etc.) after spawn.
+func TestPerAgentTokenMCPAccess(t *testing.T) {
+	const wsToken = "workspace-secret-mcp"
+	srv, cleanup := mustStartServerWithToken(t, wsToken)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Seed alice via the workspace token so she exists in the DB.
+	resp := postJSONWithToken(t, base+"/spaces/sec006mcp/agent/alice", wsToken, map[string]any{
+		"status": "active", "summary": "alice: online",
+	})
+	resp.Body.Close()
+
+	// Generate alice's per-agent token.
+	aliceToken := srv.generateAgentToken("sec006mcp", "alice")
+	if aliceToken == wsToken {
+		t.Fatal("expected distinct per-agent token")
+	}
+
+	// POST to /mcp with alice's per-agent token — must not return 401.
+	// A minimal JSON-RPC ping; we don't care about the MCP response, only
+	// that auth does not reject the request.
+	body := strings.NewReader(`{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`)
+	req, _ := http.NewRequest(http.MethodPost, base+"/mcp", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+aliceToken)
+	got, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /mcp: %v", err)
+	}
+	got.Body.Close()
+	if got.StatusCode == http.StatusUnauthorized {
+		t.Errorf("per-agent token rejected at /mcp: got 401 — agents cannot call MCP tools")
+	}
+}
+
 // TestMCPCORSAllowsAuthorizationHeader verifies that the /mcp CORS preflight
 // includes Authorization in Access-Control-Allow-Headers, enabling browser-based
 // MCP clients that need to pass Bearer tokens.

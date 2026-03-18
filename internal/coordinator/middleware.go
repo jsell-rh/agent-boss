@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -164,10 +163,15 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Per-agent token: only permitted on agent-channel POST endpoints.
-		// The handler is responsible for verifying the token matches the
-		// specific agent (enforcing SEC-006 — agent channel isolation).
-		if s.repo != nil && isAgentChannelPath(r.URL.Path) {
+		// Per-agent token: permitted on agent-channel endpoints and the MCP endpoint.
+		//   - Agent-channel paths (/spaces/.../agent/... or /agent/...): the handler
+		//     calls verifyAgentToken to enforce SEC-006 channel isolation.
+		//   - MCP endpoint (/mcp, /mcp/): agents call tools (post_status, check_messages,
+		//     send_message, etc.) over the MCP transport using their per-agent token.
+		//     MCP requests POST to /mcp with the tool name + params in the body; the
+		//     coordinator cannot enforce per-agent identity at this layer without parsing
+		//     the body, so auth is accepted for any valid per-agent token on /mcp.
+		if s.repo != nil && (isAgentChannelPath(r.URL.Path) || isMCPPath(r.URL.Path)) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -181,10 +185,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 //	/spaces/{space}/agent/{name}   (multi-space)
 //	/agent/{name}                  (legacy default-space)
 func isAgentChannelPath(path string) bool {
-	if strings.Contains(path, "/agent/") {
-		return true
-	}
-	return strings.HasPrefix(path, "/agent/")
+	return strings.Contains(path, "/agent/")
+}
+
+// isMCPPath returns true when the path targets the MCP transport endpoint.
+// Agents use their per-agent token in the Authorization header when calling
+// MCP tools; the /mcp endpoint must accept these tokens.
+func isMCPPath(path string) bool {
+	return path == "/mcp" || strings.HasPrefix(path, "/mcp/")
 }
 
 // generateAgentToken mints a fresh per-agent Bearer token and persists its
@@ -204,7 +212,7 @@ func (s *Server) generateAgentToken(spaceName, agentName string) string {
 	sum := sha256.Sum256([]byte(token))
 	hash := hex.EncodeToString(sum[:])
 	if err := s.repo.SaveAgentTokenHash(spaceName, agentName, hash); err != nil {
-		// Non-fatal: fall back to shared token if DB write fails.
+		s.logEvent("warning: failed to save per-agent token hash for " + agentName + ": " + err.Error() + " — falling back to workspace token")
 		return s.apiToken
 	}
 	return token
@@ -243,8 +251,3 @@ func (s *Server) verifyAgentToken(r *http.Request, spaceName, agentName string) 
 	return hmac.Equal([]byte(presented), []byte(storedHash))
 }
 
-// tokenErrorf formats and returns an error string for auth failures.
-// Kept here to avoid scattering auth messaging across multiple files.
-func tokenErrorf(format string, args ...any) string {
-	return fmt.Sprintf(format, args...)
-}
