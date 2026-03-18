@@ -256,6 +256,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 		s.handleSpaceExport(w, r, spaceName)
 	case "restart-all":
 		s.handleRestartAll(w, r, spaceName)
+	case "watercooler":
+		s.handleWatercoolerGet(w, r, spaceName)
 	case "factory":
 		factorySub := ""
 		if len(parts) == 3 {
