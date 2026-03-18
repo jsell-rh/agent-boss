@@ -129,7 +129,7 @@ Each source is prepended to the next. If multiple personas are listed, they are 
 
 ## CLI Architecture — Import as a Client-Side Tool
 
-`boss import` is implemented entirely in the CLI. It does not call a single monolithic server endpoint. Instead, it:
+`odis import` is implemented entirely in the CLI. It does not call a single monolithic server endpoint. Instead, it:
 
 1. Reads and validates the local YAML file (size ≤ 1 MB, ≤ 100 agents)
 2. Fetches current space state from the server (`GET /spaces/:space`)
@@ -148,7 +148,7 @@ The server exposes resource primitives. The import logic (diff, ordering, confir
 
 ## Import Semantics
 
-`boss import` reconciles the YAML against the current space state. It never silently destroys data.
+`odis import` reconciles the YAML against the current space state. It never silently destroys data.
 
 | Situation | Default behavior | With `--prune` |
 |---|---|---|
@@ -173,17 +173,17 @@ If two concurrent imports race, the CLI treats a 409 conflict on agent create as
 ### Import flags
 
 ```bash
-boss import fleet.yaml                        # sync into space named in file
-boss import fleet.yaml --space "Staging"      # import into a different space
-boss import fleet.yaml --prune                # also remove agents not in YAML
-boss import fleet.yaml --dry-run              # preview full diff without applying
-boss import fleet.yaml --yes                  # skip confirmation (see CI/CD safety note)
-boss import fleet.yaml --restart-changed      # restart agents whose config changed
-boss import fleet.yaml --spawn-after-import   # spawn all agents after import completes
-boss import fleet.yaml --no-create-space      # error if space doesn't exist
+odis import fleet.yaml                        # sync into space named in file
+odis import fleet.yaml --space "Staging"      # import into a different space
+odis import fleet.yaml --prune                # also remove agents not in YAML
+odis import fleet.yaml --dry-run              # preview full diff without applying
+odis import fleet.yaml --yes                  # skip confirmation (see CI/CD safety note)
+odis import fleet.yaml --restart-changed      # restart agents whose config changed
+odis import fleet.yaml --spawn-after-import   # spawn all agents after import completes
+odis import fleet.yaml --no-create-space      # error if space doesn't exist
 ```
 
-**`--yes` CI/CD safety:** `--yes` skips all confirmation prompts. Only use with fleet.yaml files from trusted, version-controlled sources. Running `boss import --yes` against a YAML file fetched from the network without prior review is a prompt injection risk — malicious persona prompts would be applied without preview.
+**`--yes` CI/CD safety:** `--yes` skips all confirmation prompts. Only use with fleet.yaml files from trusted, version-controlled sources. Running `odis import --yes` against a YAML file fetched from the network without prior review is a prompt injection risk — malicious persona prompts would be applied without preview.
 
 **`--restart-changed` timing:** The diff is computed before applying changes. The set of "changed agents" is determined from the pre-apply diff and is not re-fetched after apply. This avoids restarting agents whose configs were concurrently modified by other users.
 
@@ -218,7 +218,7 @@ After a successful import into an empty space:
 
 ```
 Import complete. 5 agents created, 2 personas upserted. No agents are running yet.
-Run: boss spawn --all "My Project"   (or use "Spawn all" in the UI)
+Run: odis spawn --all "My Project"   (or use "Spawn all" in the UI)
 ```
 
 ---
@@ -226,8 +226,8 @@ Run: boss spawn --all "My Project"   (or use "Spawn all" in the UI)
 ## Export
 
 ```bash
-boss export "My Project"                 # YAML to stdout
-boss export "My Project" > fleet.yaml   # save to file
+odis export "My Project"                 # YAML to stdout
+odis export "My Project" > fleet.yaml   # save to file
 ```
 
 Export calls the server for current space state and serializes to YAML. The file captures all agents' current configs and the latest version of each persona they reference.
@@ -301,18 +301,18 @@ Export and import require a valid `ODIS_API_TOKEN` when the server has auth enab
 
 ```bash
 # Export current space to YAML
-boss export "OpenDispatch Dev"
-boss export "OpenDispatch Dev" > fleet.yaml
+odis export "OpenDispatch Dev"
+odis export "OpenDispatch Dev" > fleet.yaml
 
 # Import YAML into a space
-boss import fleet.yaml
-boss import fleet.yaml --space "Staging"
-boss import fleet.yaml --prune
-boss import fleet.yaml --dry-run
-boss import fleet.yaml --restart-changed
-boss import fleet.yaml --spawn-after-import
-boss import fleet.yaml --yes
-boss import fleet.yaml --no-create-space
+odis import fleet.yaml
+odis import fleet.yaml --space "Staging"
+odis import fleet.yaml --prune
+odis import fleet.yaml --dry-run
+odis import fleet.yaml --restart-changed
+odis import fleet.yaml --spawn-after-import
+odis import fleet.yaml --yes
+odis import fleet.yaml --no-create-space
 ```
 
 ---
@@ -323,8 +323,8 @@ boss import fleet.yaml --no-create-space
 Exporting without importing is a dead-end milestone — users can serialize a space but cannot use the file. Export and import ship together.
 
 - `GET /spaces/:space/export` endpoint (YAML-safe struct, no runtime fields)
-- `boss export` CLI command
-- `boss import` CLI command: parse YAML → validate → fetch current state → compute diff → topological sort → show full diff preview → apply via existing endpoints → report post-import state
+- `odis export` CLI command
+- `odis import` CLI command: parse YAML → validate → fetch current state → compute diff → topological sort → show full diff preview → apply via existing endpoints → report post-import state
 - `--dry-run`, `--yes`, `--spawn-after-import`, `--no-create-space` flags
 - Server-side guards: command allowlist, YAML bomb limits, `work_dir` validation, `repos` URL validation
 - UI: "Export fleet" button on space overview; "Import fleet" modal with full diff preview
@@ -338,4 +338,4 @@ Exporting without importing is a dead-end milestone — users can serialize a sp
 **Phase 3 — Polish**
 - `--spawn-after-import` integrated with live session tracking
 - Schema version migration path as format evolves
-- `boss import --yes` safety guardrails in CI (e.g., require `--trusted-source` flag to acknowledge the risk)
+- `odis import --yes` safety guardrails in CI (e.g., require `--trusted-source` flag to acknowledge the risk)

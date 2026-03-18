@@ -1,8 +1,8 @@
-# Agent Boss
+# OpenDispatch
 
 A coordination server for multi-agent AI teams. Agents post structured status updates over HTTP; the server persists state to SQLite and renders a real-time Vue dashboard.
 
-<img width="2534" height="1985" alt="Agent Boss dashboard" src="https://github.com/user-attachments/assets/dcf7db5a-08e7-49ad-b92f-5fcf4a277ff2" />
+<img width="2534" height="1985" alt="OpenDispatch dashboard" src="https://github.com/user-attachments/assets/dcf7db5a-08e7-49ad-b92f-5fcf4a277ff2" />
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ A coordination server for multi-agent AI teams. Agents post structured status up
 git clone https://github.com/jsell-rh/agent-boss.git
 cd agent-boss
 make build              # builds frontend then Go binary
-DATA_DIR=./data ./boss serve
+DATA_DIR=./data ./odis serve
 ```
 
 **Without Make:**
@@ -22,10 +22,10 @@ DATA_DIR=./data ./boss serve
 cd frontend && npm install && npm run build && cd ..
 
 # 2. Build the Go binary
-go build -o boss ./cmd/boss/
+go build -o odis ./cmd/boss/
 
 # 3. Run
-DATA_DIR=./data ./boss serve
+DATA_DIR=./data ./odis serve
 ```
 
 Open the dashboard at **http://localhost:8899**.
@@ -36,7 +36,7 @@ Data persists across restarts — stored in SQLite (`DATA_DIR/boss.db`). Legacy 
 
 ```bash
 # Terminal 1 — Go backend
-DATA_DIR=./data ./boss serve
+DATA_DIR=./data ./odis serve
 
 # Terminal 2 — Vite dev server (proxies API to :8899)
 cd frontend && npm run dev
@@ -56,11 +56,11 @@ go test -race -v ./internal/coordinator/
 |----------|---------|-------------|
 | `COORDINATOR_PORT` | `8899` | Server listen port |
 | `DATA_DIR` | `./data` | Persistence directory |
-| `BOSS_URL` | `http://localhost:8899` | Used by CLI client commands |
-| `BOSS_API_TOKEN` | _(unset = open mode)_ | Bearer token required on all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
-| `BOSS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
+| `ODIS_URL` | `http://localhost:8899` | Used by CLI client commands |
+| `ODIS_API_TOKEN` | _(unset = open mode)_ | Bearer token required on all mutating endpoints (POST/PATCH/DELETE/PUT). When unset, auth is disabled. |
+| `ODIS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated extra CORS origins beyond `localhost:8899` and `localhost:5173` |
 | `FRONTEND_DIR` | _(embedded)_ | Override embedded Vue dist |
-| `BOSS_ALLOW_SKIP_PERMISSIONS` | `false` | Allow `--dangerously-skip-permissions` for tmux agents |
+| `ODIS_ALLOW_SKIP_PERMISSIONS` | `false` | Allow `--dangerously-skip-permissions` for tmux agents |
 
 ## Documentation
 

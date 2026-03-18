@@ -18,7 +18,7 @@ Or without Make:
 
 ```bash
 cd frontend && npm install && npm run build && cd ..
-go build -o boss ./cmd/boss/
+go build -o odis ./cmd/boss/
 ```
 
 ---
@@ -26,7 +26,7 @@ go build -o boss ./cmd/boss/
 ## 2. Start the Server
 
 ```bash
-DATA_DIR=./data ./boss serve
+DATA_DIR=./data ./odis serve
 ```
 
 The server starts on port `8899`. Open the dashboard:
@@ -198,14 +198,14 @@ This is how the `/boss.ignite` skill works in Claude Code sessions.
 
 ## CLI Usage
 
-The `boss` binary includes client commands:
+The `odis` binary includes client commands:
 
 ```bash
 # Post a status update
-boss post --space my-project --agent Developer --status active --summary "Working on auth"
+odis post --space my-project --agent Developer --status active --summary "Working on auth"
 
 # Check agent status
-boss check --space my-project --agent Developer
+odis check --space my-project --agent Developer
 ```
 
 ---
