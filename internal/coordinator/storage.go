@@ -188,6 +188,33 @@ func (s *Server) resolveSpaceNameLocked(raw string) string {
 	return raw
 }
 
+// migrateOperatorRecords ensures every space has an "operator" record with AgentType=human,
+// and marks any phantom "boss" records as human type. Called once at startup after loadAllSpaces.
+func (s *Server) migrateOperatorRecords() {
+	now := time.Now().UTC()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ks := range s.spaces {
+		// Tag any "boss" record as human (legacy name).
+		if rec, ok := ks.Agents["boss"]; ok && rec != nil && rec.AgentType != AgentTypeHuman {
+			rec.AgentType = AgentTypeHuman
+		}
+		// Ensure operator record exists with human type.
+		if rec, ok := ks.Agents["operator"]; ok && rec != nil {
+			rec.AgentType = AgentTypeHuman
+		} else {
+			ks.Agents["operator"] = &AgentRecord{
+				AgentType: AgentTypeHuman,
+				Status: &AgentUpdate{
+					Status:    StatusIdle,
+					Summary:   "operator: human operator inbox",
+					UpdatedAt: now,
+				},
+			}
+		}
+	}
+}
+
 // getOrCreateSpaceLocked returns or creates the named space.
 // Caller MUST hold s.mu (write lock).
 func (s *Server) getOrCreateSpaceLocked(name string) *KnowledgeSpace {
@@ -196,6 +223,16 @@ func (s *Server) getOrCreateSpaceLocked(name string) *KnowledgeSpace {
 		return ks
 	}
 	ks := NewKnowledgeSpace(name)
+	// Eagerly create the human operator inbox on every new server-side space.
+	now := ks.CreatedAt
+	ks.Agents["operator"] = &AgentRecord{
+		AgentType: AgentTypeHuman,
+		Status: &AgentUpdate{
+			Status:    StatusIdle,
+			Summary:   "operator: human operator inbox",
+			UpdatedAt: now,
+		},
+	}
 	s.spaces[name] = ks
 	s.logEvent(fmt.Sprintf("created space %q", name))
 	return ks

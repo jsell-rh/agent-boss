@@ -107,6 +107,9 @@ func migrate(db *gorm.DB) error {
 		db.Migrator().DropColumn(&Agent{}, "tmux_session")
 	}
 
+	// Startup migration: mark existing boss/operator agent records as human type.
+	db.Exec(`UPDATE agents SET agent_type='human' WHERE agent_name IN ('boss','operator') AND (agent_type IS NULL OR agent_type='' OR agent_type='agent')`)
+
 	// Backfill status_changed_at for existing tasks that have a zero value.
 	// Set to the timestamp of the last "moved" event, or created_at if none exists.
 	db.Exec(`UPDATE tasks

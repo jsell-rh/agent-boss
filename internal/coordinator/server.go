@@ -256,6 +256,10 @@ func (s *Server) Start() error {
 		return fmt.Errorf("load spaces: %w", err)
 	}
 
+	// Startup migration: ensure every loaded space has an operator (human) inbox,
+	// and that any phantom "boss" records are tagged human.
+	s.migrateOperatorRecords()
+
 	// Pre-warm the ring buffer from SQLite so event history survives restarts.
 	s.loadEventRingFromDB()
 
