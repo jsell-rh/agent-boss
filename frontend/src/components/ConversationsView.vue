@@ -12,7 +12,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import AgentProfileCard from './AgentProfileCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import NewTaskDialog from './NewTaskDialog.vue'
-import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown, ChevronUp, Crown, ChevronLeft } from 'lucide-vue-next'
+import { MessageSquare, Search, X, GitBranch, ExternalLink, SendHorizontal, Plus, Check, HelpCircle, Loader2, CheckCircle2, ChevronDown, ChevronUp, ChevronLeft, UserCircle } from 'lucide-vue-next'
 import { renderMarkdown, linkTaskRefs } from '@/lib/markdown'
 import { prLink } from '@/lib/utils'
 import type { Task } from '@/types'
@@ -23,6 +23,13 @@ const props = defineProps<{
   space: KnowledgeSpace
   preselectAgent?: string
 }>()
+
+// Derive the operator name from agent_type — avoids hardcoding 'boss' string.
+// Fallback to 'operator' while the space loads.
+const operatorName = computed(() => {
+  const entry = Object.entries(props.space.agents ?? {}).find(([, a]) => a.agent_type === 'human')
+  return entry?.[0] ?? 'operator'
+})
 
 interface ConversationMessage {
   id: string
@@ -199,17 +206,17 @@ const filteredConversations = computed(() => {
   )
 })
 
-const bossConversations = computed(() =>
-  filteredConversations.value.filter(c => c.participants.includes('boss')),
+const operatorConversations = computed(() =>
+  filteredConversations.value.filter(c => c.participants.includes(operatorName.value)),
 )
 
 const agentConversations = computed(() =>
-  filteredConversations.value.filter(c => !c.participants.includes('boss')),
+  filteredConversations.value.filter(c => !c.participants.includes(operatorName.value)),
 )
 
-// Flat ordered list for keyboard navigation: boss conversations first, then agent ones
+// Flat ordered list for keyboard navigation: operator conversations first, then agent ones
 const orderedConversations = computed(() => [
-  ...bossConversations.value,
+  ...operatorConversations.value,
   ...agentConversations.value,
 ])
 
@@ -246,30 +253,30 @@ const selectedConversation = computed((): Conversation | null => {
   return null
 })
 
-// Unread tracking — only boss ↔ agent conversations can be "unread".
-// Agent-to-agent threads do not drive unread badges (boss can't act on them).
+// Unread tracking — only operator ↔ agent conversations can be "unread".
+// Agent-to-agent threads do not drive unread badges (operator can't act on them).
 const readKeys = ref(new Set<string>())
 
-function isBossConversation(conv: Conversation): boolean {
-  return conv.participants.includes('boss')
+function isOperatorConversation(conv: Conversation): boolean {
+  return conv.participants.includes(operatorName.value)
 }
 
 function unreadCount(conv: Conversation): number {
   // Agent-to-agent conversations never show unread badges
-  if (!isBossConversation(conv)) return 0
+  if (!isOperatorConversation(conv)) return 0
   if (readKeys.value.has(conv.key)) return 0
-  // Only count messages directed at boss that haven't been acknowledged on the backend
-  return conv.messages.filter(m => m.recipient === 'boss' && !m.read).length
+  // Only count messages directed at the operator that haven't been acknowledged on the backend
+  return conv.messages.filter(m => m.recipient === operatorName.value && !m.read).length
 }
 
-// ACK all unread messages to boss in a conversation so the backend persists read state.
+// ACK all unread messages to the operator in a conversation so the backend persists read state.
 // This clears the sidebar badge (which reads msg.read from live space data) and ensures
 // the conversation stays read after navigate-away + return.
-function ackBossMessages(conv: Conversation) {
-  if (!isBossConversation(conv)) return
-  const unread = conv.messages.filter(m => m.recipient === 'boss' && !m.read)
+function ackOperatorMessages(conv: Conversation) {
+  if (!isOperatorConversation(conv)) return
+  const unread = conv.messages.filter(m => m.recipient === operatorName.value && !m.read)
   for (const msg of unread) {
-    api.ackMessage(props.space.name, 'boss', msg.id, 'boss').catch(() => {})
+    api.ackMessage(props.space.name, operatorName.value, msg.id, operatorName.value).catch(() => {})
   }
 }
 
@@ -278,15 +285,15 @@ watch(selectedKey, key => {
   if (!key) return
   readKeys.value.add(key)
   const conv = conversations.value.find(c => c.key === key)
-  if (conv) ackBossMessages(conv)
+  if (conv) ackOperatorMessages(conv)
 })
 
 // Resolve the best conversation key for a given agent name:
-// prefer an existing conversation involving that agent; fall back to boss↔agent.
+// prefer an existing conversation involving that agent; fall back to operator↔agent.
 function resolveConversationKey(agent: string): string {
   const existing = conversations.value.find(c => c.participants.includes(agent))
   if (existing) return existing.key
-  return [agent, 'boss'].sort().join('\u2194')
+  return [agent, operatorName.value].sort().join('\u2194')
 }
 
 // Pre-select from preselectAgent prop (set by App.vue from router param or when starting new conv)
@@ -340,11 +347,11 @@ function getDateKey(timestamp: string): string {
   return new Date(timestamp).toDateString()
 }
 
-// Conversation display title — if boss is a participant, show just the other agent's name
+// Conversation display title — if the operator is a participant, show just the other agent's name
 function convTitle(conv: { participants: string[] }): string {
   const { participants } = conv
-  if (participants.includes('boss')) {
-    const other = participants.find(p => p !== 'boss')
+  if (participants.includes(operatorName.value)) {
+    const other = participants.find(p => p !== operatorName.value)
     return other ?? participants.join(' ↔ ')
   }
   return participants.join(' ↔ ')
@@ -424,7 +431,7 @@ function selectNewMsgAgent(agentName: string) {
     params: { space: props.space.name, conversationAgent: agentName },
   })
   // Also immediately set selectedKey so the thread shows before navigation processes
-  const sorted = [agentName, 'boss'].sort()
+  const sorted = [agentName, operatorName.value].sort()
   selectedKey.value = sorted.join('\u2194')
 }
 
@@ -486,7 +493,7 @@ watch(
     }
     // ACK any new unread messages that arrived while this conversation is open
     const conv = selectedConversation.value
-    if (conv) ackBossMessages(conv)
+    if (conv) ackOperatorMessages(conv)
   },
 )
 
@@ -496,12 +503,12 @@ const inlineSending = ref(false)
 const inlineSendError = ref<string | null>(null)
 const composeRef = ref<HTMLTextAreaElement | null>(null)
 
-// Boss can compose to the other participant (only if boss is in the conversation)
+// Operator can compose to the other participant (only if operator is in the conversation)
 const composeRecipient = computed(() => {
   if (!selectedConversation.value) return null
   const { participants } = selectedConversation.value
-  if (!participants.includes('boss')) return null
-  return participants.find(p => p !== 'boss') ?? null
+  if (!participants.includes(operatorName.value)) return null
+  return participants.find(p => p !== operatorName.value) ?? null
 })
 
 async function sendInlineCompose() {
@@ -518,7 +525,7 @@ async function sendInlineCompose() {
   const optimistic: AgentMessage = {
     id: optimisticId,
     message: text,
-    sender: 'boss',
+    sender: operatorName.value,
     timestamp: new Date().toISOString(),
     read: true,
   }
@@ -531,7 +538,7 @@ async function sendInlineCompose() {
   scrollThreadToBottom()
 
   try {
-    await api.sendMessage(props.space.name, recipient, text, 'boss')
+    await api.sendMessage(props.space.name, recipient, text, operatorName.value)
     inlineMessage.value = ''
   } catch (err) {
     // Roll back the optimistic message on failure.
@@ -575,15 +582,15 @@ async function replyToDecision(msgId: string, agentName: string) {
   decisionFeedback.value[msgId] = { ok: true, msg: '' }
   try {
     // Send the reply to the agent, passing the decision ID so the backend marks it resolved.
-    await api.sendMessage(props.space.name, agentName, text, 'boss', msgId)
+    await api.sendMessage(props.space.name, agentName, text, operatorName.value, msgId)
     decisionReplyTexts.value[msgId] = ''
     decisionFeedback.value[msgId] = { ok: true, msg: 'Reply sent' }
     setTimeout(() => { delete decisionFeedback.value[msgId] }, 3000)
     // Optimistically mark the decision resolved in the local reactive state so the embed
     // immediately flips to "Resolved" without waiting for a full space reload.
-    const bossMessages = spaceMessages.value['boss']?.messages
-    if (bossMessages) {
-      const msg = bossMessages.find(m => m.id === msgId)
+    const operatorMessages = spaceMessages.value[operatorName.value]?.messages
+    if (operatorMessages) {
+      const msg = operatorMessages.find(m => m.id === msgId)
       if (msg) {
         msg.resolved = true
         msg.resolution = text
@@ -721,13 +728,13 @@ watch(composeRecipient, async (agent) => {
         </div>
 
         <div v-else class="py-1" role="listbox" aria-label="Conversation list" tabindex="0" @keydown="handleListboxKeydown">
-          <!-- With Boss group -->
-          <div v-if="bossConversations.length > 0">
+          <!-- Operator conversations group -->
+          <div v-if="operatorConversations.length > 0">
             <div class="px-3 pt-2 pb-1 flex items-center gap-1.5">
-              <Crown class="size-3 text-amber-500" aria-hidden="true" />
-              <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">With Boss</span>
+              <UserCircle class="size-3 text-amber-500" aria-hidden="true" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Your Conversations</span>
             </div>
-            <div v-for="conv in bossConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
+            <div v-for="conv in operatorConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
             <button
               class="w-full text-left px-3 py-2.5 hover:bg-amber-500/5 transition-colors flex items-start gap-2.5 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset border-l-2"
               :class="selectedKey === conv.key ? 'bg-amber-500/8 border-l-amber-500' : 'border-l-transparent hover:border-l-amber-500/40'"
@@ -791,7 +798,7 @@ watch(composeRecipient, async (agent) => {
                       class="inline-flex items-center justify-center rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-bold min-w-[16px] h-4 px-1"
                       title="Pending decision"
                     >!</span>
-                    <!-- Unread badge (boss conversations only) -->
+                    <!-- Unread badge (operator conversations only) -->
                     <span
                       v-if="unreadCount(conv) > 0"
                       class="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold min-w-[16px] h-4 px-1"
@@ -818,7 +825,7 @@ watch(composeRecipient, async (agent) => {
           </div>
           <!-- Agent conversations group -->
           <div v-if="agentConversations.length > 0">
-            <div class="px-3 pb-1 border-t border-border/50 mt-1" :class="bossConversations.length > 0 ? 'pt-3' : 'pt-2'">
+            <div class="px-3 pb-1 border-t border-border/50 mt-1" :class="operatorConversations.length > 0 ? 'pt-3' : 'pt-2'">
               <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Agent Conversations</span>
             </div>
             <div v-for="conv in agentConversations" :key="conv.key" role="option" :aria-selected="selectedKey === conv.key">
@@ -997,7 +1004,7 @@ watch(composeRecipient, async (agent) => {
               <!-- Message row -->
               <div
                 class="flex items-start gap-2.5 mt-3 rounded-sm transition-colors"
-                :class="msg.recipient === 'boss' && !msg.read ? 'bg-primary/5 -mx-2 px-2' : ''"
+                :class="msg.recipient === operatorName && !msg.read ? 'bg-primary/5 -mx-2 px-2' : ''"
                 role="article"
                 :aria-label="`Message from ${msg.sender} to ${msg.recipient}`"
               >
@@ -1119,8 +1126,8 @@ watch(composeRecipient, async (agent) => {
                     class="bg-muted rounded-lg px-3 py-2 text-sm break-words leading-relaxed md-content"
                     v-html="renderMarkdown(linkTaskRefs(msg.message, space.name))"
                   />
-                  <!-- Read receipt — always shown for boss-sent messages -->
-                  <div v-if="msg.sender === 'boss'" class="flex items-center gap-1 mt-1">
+                  <!-- Read receipt — always shown for operator-sent messages -->
+                  <div v-if="msg.sender === operatorName" class="flex items-center gap-1 mt-1">
                     <span
                       v-if="msg.read"
                       class="flex items-center gap-0 text-xs font-medium text-primary"
@@ -1160,12 +1167,12 @@ watch(composeRecipient, async (agent) => {
           </button>
         </Transition>
 
-        <!-- Note shown when boss is not a participant (agent-to-agent thread) -->
+        <!-- Note shown when operator is not a participant (agent-to-agent thread) -->
         <div v-if="selectedConversation && !composeRecipient" class="border-t p-3 shrink-0">
-          <p class="text-xs text-muted-foreground text-center italic">Compose is only available in boss ↔ agent threads</p>
+          <p class="text-xs text-muted-foreground text-center italic">Compose is only available in operator ↔ agent threads</p>
         </div>
 
-        <!-- Inline compose box — only when boss is a participant -->
+        <!-- Inline compose box — only when operator is a participant -->
         <div v-if="composeRecipient" class="border-t p-3 shrink-0">
           <form class="flex items-end gap-2" @submit.prevent="sendInlineCompose">
             <Textarea

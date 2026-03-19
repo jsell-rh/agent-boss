@@ -313,7 +313,7 @@ function handleCardKeydown(e: KeyboardEvent, name: string) {
 defineExpose({})
 
 const sortedAgents = computed(() => {
-  return Object.entries(props.space.agents ?? {}).sort(([, a], [, b]) => {
+  return Object.entries(props.space.agents ?? {}).filter(([, a]) => a.agent_type !== 'human').sort(([, a], [, b]) => {
     // Agents needing attention first (blockers > questions), then by name
     const aAttention = (a.blockers?.length ?? 0) * 2 + (a.questions?.length ?? 0)
     const bAttention = (b.blockers?.length ?? 0) * 2 + (b.questions?.length ?? 0)
@@ -327,7 +327,7 @@ const sortedAgents = computed(() => {
   })
 })
 
-const agentCount = computed(() => Object.keys(props.space.agents ?? {}).length)
+const agentCount = computed(() => Object.values(props.space.agents ?? {}).filter(a => a.agent_type !== 'human').length)
 
 // Fleet Vibe — live emoji + label derived from agent status distribution
 const fleetVibe = computed(() => {

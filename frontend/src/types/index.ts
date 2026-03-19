@@ -67,6 +67,8 @@ export interface AgentUpdate {
   role?: string
   // Durable config (personas, work_dir, etc.) — merged in by normalizeSpace
   config?: AgentConfig
+  // Set by backend for human operator records (e.g. "operator" agent)
+  agent_type?: 'human' | 'agent'
 }
 
 // GET /personas and GET /personas/{id}
