@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,15 @@ func NewClient(baseURL, space string) *Client {
 // Returns the same client for chaining.
 func (c *Client) WithAuthToken(token string) *Client {
 	c.authToken = token
+	return c
+}
+
+// WithInsecureTLS disables TLS certificate verification for connections to
+// servers with self-signed certificates. Returns the same client for chaining.
+func (c *Client) WithInsecureTLS() *Client {
+	c.httpClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec — user-requested via --insecure flag
+	}
 	return c
 }
 

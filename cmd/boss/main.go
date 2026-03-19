@@ -14,49 +14,72 @@ import (
 	"github.com/ambient/platform/components/boss/internal/coordinator"
 )
 
+// insecureTLS is set by the --insecure global flag. When true, the CLI
+// skips TLS certificate verification for all client commands.
+var insecureTLS bool
+
 func main() {
-	if len(os.Args) < 2 {
+	// Parse global flags (--insecure) before the subcommand.
+	// Strip them from os.Args so subcommand flag sets don't choke.
+	args := stripGlobalFlags(os.Args[1:])
+
+	if len(args) < 1 {
 		printUsage()
 		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "serve":
-		cmdServe(os.Args[2:])
+		cmdServe(args[1:])
 	case "post":
-		cmdPost(os.Args[2:])
+		cmdPost(args[1:])
 	case "get":
-		cmdGet(os.Args[2:])
+		cmdGet(args[1:])
 	case "spaces":
-		cmdSpaces(os.Args[2:])
+		cmdSpaces(args[1:])
 	case "delete":
-		cmdDelete(os.Args[2:])
+		cmdDelete(args[1:])
 	case "ignite":
-		cmdIgnite(os.Args[2:])
+		cmdIgnite(args[1:])
 	case "broadcast":
-		cmdBroadcast(os.Args[2:])
+		cmdBroadcast(args[1:])
 	case "attach":
-		cmdAttach(os.Args[2:])
+		cmdAttach(args[1:])
 	case "init":
-		cmdInit(os.Args[2:])
+		cmdInit(args[1:])
 	case "export":
-		cmdExport(os.Args[2:])
+		cmdExport(args[1:])
 	case "import":
-		cmdImport(os.Args[2:])
+		cmdImport(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "boss: unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "boss: unknown command %q\n\n", args[0])
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+// stripGlobalFlags extracts global flags (--insecure) from the argument list,
+// sets the corresponding package-level variables, and returns the remaining args.
+func stripGlobalFlags(args []string) []string {
+	var remaining []string
+	for _, arg := range args {
+		switch arg {
+		case "--insecure", "-insecure":
+			insecureTLS = true
+		default:
+			remaining = append(remaining, arg)
+		}
+	}
+	return remaining
 }
 
 func printUsage() {
 	fmt.Fprint(os.Stderr, `boss — multi-agent coordination bus
 
 Usage:
-  boss <command> [flags]
+  boss [--insecure] <command> [flags]
 
 Server Commands:
   serve         Start the coordinator HTTP server
@@ -72,6 +95,9 @@ Client Commands:
   broadcast     Send a boss.check broadcast to all agents in a space
   export        Export a space as an agent-compose.yaml fleet file
   import        Import an agent-compose.yaml fleet file into a space
+
+Global Flags:
+  --insecure    Skip TLS certificate verification (for self-signed certs)
 
 Use "boss <command> --help" for more information about a command.
 
@@ -98,6 +124,9 @@ func newClient(space string) *coordinator.Client {
 	c := coordinator.NewClient(serverURL(), space)
 	if token := os.Getenv("BOSS_API_TOKEN"); token != "" {
 		c.WithAuthToken(token)
+	}
+	if insecureTLS {
+		c.WithInsecureTLS()
 	}
 	return c
 }
