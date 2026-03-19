@@ -27,7 +27,7 @@ test.describe('UI: Deep Link Navigation', () => {
     const task = await api.postJSON<{ id: string }>(
       `/spaces/${space}/tasks`,
       { title: 'Deep Link Target Task' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban?task=${task.id}`)
@@ -42,7 +42,7 @@ test.describe('UI: Deep Link Navigation', () => {
     const task = await api.postJSON<{ id: string }>(
       `/spaces/${space}/tasks`,
       { title: 'Highlighted Card Task' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban?task=${task.id}`)

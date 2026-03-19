@@ -25,7 +25,7 @@ test.describe('API: Read Receipts', () => {
     await api.post(
       `/spaces/${space}/agent/ReadBot/message`,
       { message: 'You have unread mail' },
-      'boss',
+      'operator',
     )
 
     const msgs = await api.getJSON<{
@@ -48,7 +48,7 @@ test.describe('API: Read Receipts', () => {
     const sentResp = await api.post(
       `/spaces/${space}/agent/AckBot/message`,
       { message: 'Please ack me' },
-      'boss',
+      'operator',
     )
     const sent = await sentResp.json() as { messageId: string }
     const msgId = sent.messageId
@@ -92,7 +92,7 @@ test.describe('API: Read Receipts', () => {
     const sentResp = await api.post(
       `/spaces/${space}/agent/VictimBot/message`,
       { message: 'Private message' },
-      'boss',
+      'operator',
     )
     const sent = await sentResp.json() as { messageId: string }
     const msgId = sent.messageId
@@ -137,7 +137,7 @@ test.describe('API: Read Receipts', () => {
       const r = await api.post(
         `/spaces/${space}/agent/MultiMsgBot/message`,
         { message: `Message ${i}` },
-        'boss',
+        'operator',
       )
       const body = await r.json() as { messageId: string }
       ids.push(body.messageId)
@@ -175,7 +175,7 @@ test.describe('API: Read Receipts', () => {
     await api.post(
       `/spaces/${space}/agent/CursorReadBot/message`,
       { message: 'First' },
-      'boss',
+      'operator',
     )
     const first = await api.getJSON<{ cursor: string; messages: { id: string; read?: boolean }[] }>(
       `/spaces/${space}/agent/CursorReadBot/messages`,
@@ -193,7 +193,7 @@ test.describe('API: Read Receipts', () => {
     await api.post(
       `/spaces/${space}/agent/CursorReadBot/message`,
       { message: 'Second' },
-      'boss',
+      'operator',
     )
 
     // Fetch only new messages via cursor
@@ -215,7 +215,7 @@ test.describe('API: Read Receipts', () => {
     const r = await api.post(
       `/spaces/${space}/agent/HeaderBot/message`,
       { message: 'Need header' },
-      'boss',
+      'operator',
     )
     const body = await r.json() as { messageId: string }
 
@@ -236,7 +236,7 @@ test.describe('API: Read Receipts', () => {
     const r = await api.post(
       `/spaces/${space}/agent/PersistReadBot/message`,
       { message: 'Persist my read state' },
-      'boss',
+      'operator',
     )
     const body = await r.json() as { messageId: string }
     const msgId = body.messageId
@@ -268,7 +268,7 @@ test.describe('API: Read Receipts', () => {
     await api.postJSON(
       `/spaces/${space}/tasks`,
       { title: 'Auto-read task', assigned_to: 'NotifBot' },
-      'boss',
+      'operator',
     )
 
     // Post a status update — server should auto-mark notifications as read
@@ -298,7 +298,7 @@ test.describe('API: Read Receipts', () => {
     const r = await api.post(
       `/spaces/${space}/agent/IdBot/message`,
       { message: 'Check my ID' },
-      'boss',
+      'operator',
     )
     const sent = await r.json() as { messageId: string }
 

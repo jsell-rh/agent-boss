@@ -52,7 +52,7 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     await api.post(
       `/spaces/${space}/agent/TapBot/message`,
       { message: 'Tap to open this thread' },
-      'boss',
+      'operator',
     )
 
     await page.setViewportSize(MOBILE_VIEWPORT)
@@ -85,7 +85,7 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     await api.post(
       `/spaces/${space}/agent/BackBot/message`,
       { message: 'Back button test' },
-      'boss',
+      'operator',
     )
 
     await page.setViewportSize(MOBILE_VIEWPORT)
@@ -125,7 +125,7 @@ test.describe('UI: ConversationsView mobile single-column', () => {
     await api.post(
       `/spaces/${space}/agent/DesktopBot/message`,
       { message: 'Desktop test' },
-      'boss',
+      'operator',
     )
 
     // Desktop viewport

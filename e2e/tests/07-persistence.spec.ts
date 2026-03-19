@@ -48,35 +48,35 @@ test.describe('Persistence: Data Survives Restart', () => {
     const task1 = await api.postJSON<{ id: string }>(
       `/spaces/${PERSIST_SPACE}/tasks`,
       { title: 'Persistent Task', description: 'Must survive restart', priority: 'urgent' },
-      'boss',
+      'operator',
     )
 
     // Move task to in_progress
     await api.postJSON(
       `/spaces/${PERSIST_SPACE}/tasks/${task1.id}/move`,
       { status: 'in_progress', reason: 'pre-restart' },
-      'boss',
+      'operator',
     )
 
     // Add comment
     await api.postJSON(
       `/spaces/${PERSIST_SPACE}/tasks/${task1.id}/comment`,
       { body: 'Comment before restart' },
-      'boss',
+      'operator',
     )
 
     // Create a second task
     await api.postJSON(
       `/spaces/${PERSIST_SPACE}/tasks`,
       { title: 'Second Persistent Task', assigned_to: 'PersistedAgent' },
-      'boss',
+      'operator',
     )
 
     // Send a message
     await api.post(
       `/spaces/${PERSIST_SPACE}/agent/PersistedAgent/message`,
       { message: 'Message sent before restart' },
-      'boss',
+      'operator',
     )
 
     // Update contracts

@@ -28,9 +28,9 @@ test.describe('UI: Kanban Board', () => {
     const task = await api.postJSON<{ id: string }>(
       `/spaces/${space}/tasks`,
       { title: 'Kanban Test Task', priority: 'high' },
-      'boss',
+      'operator',
     )
-    await api.postJSON(`/spaces/${space}/tasks/${task.id}/move`, { status: 'in_progress' }, 'boss')
+    await api.postJSON(`/spaces/${space}/tasks/${task.id}/move`, { status: 'in_progress' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
     await page.waitForTimeout(1500)
@@ -40,14 +40,14 @@ test.describe('UI: Kanban Board', () => {
 
   test('kanban shows tasks across all status columns', async ({ page, space, api }) => {
     // Create tasks in different statuses
-    const t1 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Backlog Item' }, 'boss')
-    const t2 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'In Progress Item' }, 'boss')
-    const t3 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Review Item' }, 'boss')
-    const t4 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Done Item' }, 'boss')
+    const t1 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Backlog Item' }, 'operator')
+    const t2 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'In Progress Item' }, 'operator')
+    const t3 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Review Item' }, 'operator')
+    const t4 = await api.postJSON<{ id: string }>(`/spaces/${space}/tasks`, { title: 'Done Item' }, 'operator')
 
-    await api.postJSON(`/spaces/${space}/tasks/${t2.id}/move`, { status: 'in_progress' }, 'boss')
-    await api.postJSON(`/spaces/${space}/tasks/${t3.id}/move`, { status: 'review' }, 'boss')
-    await api.postJSON(`/spaces/${space}/tasks/${t4.id}/move`, { status: 'done' }, 'boss')
+    await api.postJSON(`/spaces/${space}/tasks/${t2.id}/move`, { status: 'in_progress' }, 'operator')
+    await api.postJSON(`/spaces/${space}/tasks/${t3.id}/move`, { status: 'review' }, 'operator')
+    await api.postJSON(`/spaces/${space}/tasks/${t4.id}/move`, { status: 'done' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
     await page.waitForTimeout(1500)
@@ -62,7 +62,7 @@ test.describe('UI: Kanban Board', () => {
     const task = await api.postJSON<{ id: string }>(
       `/spaces/${space}/tasks`,
       { title: 'Clickable Task', description: 'Click me to see details' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
@@ -81,7 +81,7 @@ test.describe('UI: Kanban Board', () => {
     await api.postJSON(
       `/spaces/${space}/tasks`,
       { title: 'Urgent Priority Task', priority: 'urgent' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
@@ -97,7 +97,7 @@ test.describe('UI: Kanban Board', () => {
     await api.postJSON(
       `/spaces/${space}/tasks`,
       { title: 'Assigned Task', assigned_to: 'DevAgent' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/kanban`)
@@ -112,7 +112,7 @@ test.describe('UI: Kanban Board', () => {
     const task = await api.postJSON<{ id: string }>(
       `/spaces/${space}/tasks`,
       { title: 'Deep Link Task' },
-      'boss',
+      'operator',
     )
 
     // Navigate directly to kanban with task deep link

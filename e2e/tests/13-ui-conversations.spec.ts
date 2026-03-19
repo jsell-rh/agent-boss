@@ -51,8 +51,8 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'ConvBot2: in conversation' },
       'ConvBot2',
     )
-    await api.post(`/spaces/${space}/agent/ConvBot1/message`, { message: 'Hello ConvBot1!' }, 'boss')
-    await api.post(`/spaces/${space}/agent/ConvBot2/message`, { message: 'Hello ConvBot2!' }, 'boss')
+    await api.post(`/spaces/${space}/agent/ConvBot1/message`, { message: 'Hello ConvBot1!' }, 'operator')
+    await api.post(`/spaces/${space}/agent/ConvBot2/message`, { message: 'Hello ConvBot2!' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
@@ -67,7 +67,7 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'ParticipantBot' },
       'ParticipantBot',
     )
-    await api.post(`/spaces/${space}/agent/ParticipantBot/message`, { message: 'Hi' }, 'boss')
+    await api.post(`/spaces/${space}/agent/ParticipantBot/message`, { message: 'Hi' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
@@ -88,8 +88,8 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'BetaBot' },
       'BetaBot',
     )
-    await api.post(`/spaces/${space}/agent/AlphaBot/message`, { message: 'Alpha msg' }, 'boss')
-    await api.post(`/spaces/${space}/agent/BetaBot/message`, { message: 'Beta msg' }, 'boss')
+    await api.post(`/spaces/${space}/agent/AlphaBot/message`, { message: 'Alpha msg' }, 'operator')
+    await api.post(`/spaces/${space}/agent/BetaBot/message`, { message: 'Beta msg' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
@@ -120,7 +120,7 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'FilterBot' },
       'FilterBot',
     )
-    await api.post(`/spaces/${space}/agent/FilterBot/message`, { message: 'Hi' }, 'boss')
+    await api.post(`/spaces/${space}/agent/FilterBot/message`, { message: 'Hi' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)
@@ -197,7 +197,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/ThreadAgent/message`,
       { message: 'Thread message content' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
@@ -220,7 +220,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/DirectConvBot/message`,
       { message: 'Direct URL message' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/DirectConvBot`)
@@ -239,8 +239,8 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'CountBot' },
       'CountBot',
     )
-    await api.post(`/spaces/${space}/agent/CountBot/message`, { message: 'Msg one' }, 'boss')
-    await api.post(`/spaces/${space}/agent/CountBot/message`, { message: 'Msg two' }, 'boss')
+    await api.post(`/spaces/${space}/agent/CountBot/message`, { message: 'Msg one' }, 'operator')
+    await api.post(`/spaces/${space}/agent/CountBot/message`, { message: 'Msg two' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/CountBot`)
     await page.waitForTimeout(1500)
@@ -258,7 +258,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/SenderBot/message`,
       { message: 'hello-from-boss-unique-msg' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/SenderBot`)
@@ -269,7 +269,7 @@ test.describe('UI: Conversations View', () => {
       .first()
       .isVisible()
       .catch(() => false)
-    const hasSender = await page.getByText('boss').first().isVisible().catch(() => false)
+    const hasSender = await page.getByText('operator').first().isVisible().catch(() => false)
 
     await expect(page.locator('#app')).toBeVisible()
     if (!hasMsg && !hasSender) {
@@ -398,7 +398,7 @@ test.describe('UI: Conversations View', () => {
       'DeliveredBot',
     )
     // Boss sends message — not yet acked, so read=false
-    await api.post(`/spaces/${space}/agent/DeliveredBot/message`, { message: 'Unread message' }, 'boss')
+    await api.post(`/spaces/${space}/agent/DeliveredBot/message`, { message: 'Unread message' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/DeliveredBot`)
     await page.waitForTimeout(1500)
@@ -421,7 +421,7 @@ test.describe('UI: Conversations View', () => {
     const sentResp = await api.post(
       `/spaces/${space}/agent/ReadReceiptBot/message`,
       { message: 'Please read me' },
-      'boss',
+      'operator',
     )
     const sent = (await sentResp.json()) as { messageId: string }
     const msgId = sent.messageId
@@ -457,12 +457,12 @@ test.describe('UI: Conversations View', () => {
       'BadgeBot2',
     )
     // Boss sends message to BadgeBot1 (unread)
-    await api.post(`/spaces/${space}/agent/BadgeBot1/message`, { message: 'Unread 1' }, 'boss')
-    await api.post(`/spaces/${space}/agent/BadgeBot1/message`, { message: 'Unread 2' }, 'boss')
+    await api.post(`/spaces/${space}/agent/BadgeBot1/message`, { message: 'Unread 1' }, 'operator')
+    await api.post(`/spaces/${space}/agent/BadgeBot1/message`, { message: 'Unread 2' }, 'operator')
     // Boss sends message to BadgeBot2 (will be auto-selected, clearing its badge)
     // Send BadgeBot2 message slightly later so it appears first in the list
     await new Promise(r => setTimeout(r, 50))
-    await api.post(`/spaces/${space}/agent/BadgeBot2/message`, { message: 'Different conv' }, 'boss')
+    await api.post(`/spaces/${space}/agent/BadgeBot2/message`, { message: 'Different conv' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(2000)
@@ -494,7 +494,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/ClearBadgeBot/message`,
       { message: 'Unread message' },
-      'boss',
+      'operator',
     )
 
     // Navigate to the conversations page
@@ -529,7 +529,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/UrgentBot/message`,
       { message: 'URGENT: attention needed!', priority: 'urgent' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
@@ -552,7 +552,7 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/DirectiveBot/message`,
       { message: 'This is a directive.', priority: 'directive' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
@@ -572,12 +572,12 @@ test.describe('UI: Conversations View', () => {
     await api.post(
       `/spaces/${space}/agent/OrderBot/message`,
       { message: 'First chronological message' },
-      'boss',
+      'operator',
     )
     await api.post(
       `/spaces/${space}/agent/OrderBot/message`,
       { message: 'Second chronological message' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/OrderBot`)
@@ -608,7 +608,7 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'DayBot' },
       'DayBot',
     )
-    await api.post(`/spaces/${space}/agent/DayBot/message`, { message: 'Today message' }, 'boss')
+    await api.post(`/spaces/${space}/agent/DayBot/message`, { message: 'Today message' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/DayBot`)
     await page.waitForTimeout(1500)
@@ -625,7 +625,7 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'AriaBot' },
       'AriaBot',
     )
-    await api.post(`/spaces/${space}/agent/AriaBot/message`, { message: 'ARIA test' }, 'boss')
+    await api.post(`/spaces/${space}/agent/AriaBot/message`, { message: 'ARIA test' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations/AriaBot`)
     await page.waitForTimeout(1500)
@@ -641,7 +641,7 @@ test.describe('UI: Conversations View', () => {
       { status: 'active', summary: 'ListboxBot' },
       'ListboxBot',
     )
-    await api.post(`/spaces/${space}/agent/ListboxBot/message`, { message: 'Hello' }, 'boss')
+    await api.post(`/spaces/${space}/agent/ListboxBot/message`, { message: 'Hello' }, 'operator')
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/conversations`)
     await page.waitForTimeout(1500)

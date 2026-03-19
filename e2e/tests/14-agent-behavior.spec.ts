@@ -44,7 +44,7 @@ test.describe('Agent Behavior: Full Lifecycle', () => {
     const msgR = await api.post(
       `/spaces/${space}/agent/LifecycleBot/message`,
       { message: 'LifecycleBot: your task is TASK-999: Write tests', priority: 'directive' },
-      'boss',
+      'operator',
     )
     const msgBody = await msgR.json() as { status: string; messageId: string }
     expect(msgBody.status).toBe('delivered')
@@ -95,7 +95,7 @@ test.describe('Agent Behavior: Full Lifecycle', () => {
     await api.post(
       `/spaces/${space}/agent/LifecycleBot/message`,
       { message: 'Yes, include performance tests too.' },
-      'boss',
+      'operator',
     )
 
     // Step 9: Agent fetches only new messages via cursor

@@ -106,7 +106,7 @@ test.describe('UI: Agent Detail View', () => {
     await api.post(
       `/spaces/${space}/agent/ThreadBot/message`,
       { message: 'Check this out ThreadBot!' },
-      'boss',
+      'operator',
     )
 
     await page.goto(`${BASE}/${encodeURIComponent(space)}/ThreadBot`)
