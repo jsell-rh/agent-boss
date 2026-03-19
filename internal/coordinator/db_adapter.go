@@ -118,7 +118,7 @@ func (s *Server) persistSpaceToDB(ks *KnowledgeSpace) {
 			continue
 		}
 		au := rec.Status
-		s.upsertAgentToDB(ks.Name, agentName, au, rec.Config)
+		s.upsertAgentToDB(ks.Name, agentName, au, rec.Config, rec.AgentType)
 		for i := range au.Messages {
 			s.saveMessageToDB(ks.Name, agentName, &au.Messages[i])
 		}
@@ -139,11 +139,11 @@ func (s *Server) persistSpaceToDB(ks *KnowledgeSpace) {
 
 // ---- Incremental write helpers ----------------------------------------------
 
-func (s *Server) upsertAgentToDB(spaceName, agentName string, au *AgentUpdate, cfg *AgentConfig) {
+func (s *Server) upsertAgentToDB(spaceName, agentName string, au *AgentUpdate, cfg *AgentConfig, agentType string) {
 	if s.repo == nil {
 		return
 	}
-	dbAgent := coordinatorAgentToDB(spaceName, agentName, au)
+	dbAgent := coordinatorAgentToDB(spaceName, agentName, au, agentType)
 	if cfg != nil {
 		dbAgent.Config = marshalRaw(cfg)
 	}
@@ -320,11 +320,12 @@ func (s *Server) loadSnapshotsFromRepo(spaceName, agentFilter string, since *tim
 
 // ---- coordinator → db conversions ------------------------------------------
 
-func coordinatorAgentToDB(spaceName, agentName string, a *AgentUpdate) *bossdb.Agent {
+func coordinatorAgentToDB(spaceName, agentName string, a *AgentUpdate, agentType string) *bossdb.Agent {
 	agent := &bossdb.Agent{
 		SpaceName:      spaceName,
 		AgentName:      agentName,
 		Status:         string(a.Status),
+		AgentType:      agentType,
 		Summary:        a.Summary,
 		Branch:         a.Branch,
 		Worktree:       a.Worktree,
@@ -517,7 +518,8 @@ func marshalRaw(v any) string {
 // dbAgentToRecord converts a db Agent to an AgentRecord (including Config).
 func dbAgentToRecord(a *bossdb.Agent) *AgentRecord {
 	rec := &AgentRecord{
-		Status: dbAgentToUpdate(a),
+		Status:    dbAgentToUpdate(a),
+		AgentType: a.AgentType,
 	}
 	if a.Config != "" && a.Config != "null" {
 		var cfg AgentConfig

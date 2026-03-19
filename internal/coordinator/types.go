@@ -294,9 +294,15 @@ type AgentConfig struct {
 // AgentRecord wraps an agent's runtime status and its durable config.
 // This is the canonical storage unit in KnowledgeSpace.Agents.
 type AgentRecord struct {
-	Config *AgentConfig `json:"config,omitempty"`
-	Status *AgentUpdate `json:"status"`
+	Config    *AgentConfig `json:"config,omitempty"`
+	Status    *AgentUpdate `json:"status"`
+	AgentType string       `json:"agent_type,omitempty"` // "agent" (default) | "human"
 }
+
+const (
+	AgentTypeAgent = "agent"
+	AgentTypeHuman = "human"
+)
 
 // agentRecordFromUpdate creates an AgentRecord from a bare AgentUpdate (migration helper).
 func agentRecordFromUpdate(u *AgentUpdate) *AgentRecord {
@@ -603,9 +609,12 @@ func BuildHierarchyTree(ks *KnowledgeSpace) *HierarchyTree {
 		Nodes: make(map[string]*HierarchyNode),
 	}
 
-	// Build all nodes
+	// Build all nodes (exclude human-type records — operator inbox is not part of agent hierarchy)
 	for name, rec := range ks.Agents {
 		if rec == nil || rec.Status == nil {
+			continue
+		}
+		if rec.AgentType == AgentTypeHuman {
 			continue
 		}
 		ag := rec.Status

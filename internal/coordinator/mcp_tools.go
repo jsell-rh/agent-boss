@@ -208,12 +208,14 @@ func (s *Server) addToolPostStatus(srv *mcp.Server) {
 		s.refreshProtocol(ks)
 		spaceSnap := *ks
 		var agentCfg *AgentConfig
+		var agentType string
 		if rec, ok := ks.Agents[canonical]; ok && rec != nil {
 			agentCfg = rec.Config
+			agentType = rec.AgentType
 		}
 		s.mu.Unlock()
 
-		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg)
+		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg, agentType)
 		s.upsertSpaceToDB(&spaceSnap)
 		for _, t := range linkedTasks {
 			s.upsertTaskToDB(spaceName, t)
@@ -976,47 +978,50 @@ func (s *Server) deliverDecisionMessage(spaceName, agentName, question string) A
 
 	s.mu.Lock()
 	ks := s.getOrCreateSpaceLocked(spaceName)
-	// Deliver to "boss" agent's inbox so it appears in boss conversations.
-	boss := ks.agentStatus("boss")
-	if boss == nil {
-		boss = &AgentUpdate{
+	// Deliver to "operator" agent's inbox so it appears in operator conversations.
+	operator := ks.agentStatus("operator")
+	if operator == nil {
+		operator = &AgentUpdate{
 			Status:    StatusIdle,
-			Summary:   "boss: operator",
+			Summary:   "operator: human operator inbox",
 			Messages:  []AgentMessage{},
 			UpdatedAt: time.Now().UTC(),
 		}
-		ks.setAgentStatus("boss", boss)
+		ks.setAgentStatus("operator", operator)
+		if rec, ok := ks.Agents["operator"]; ok && rec != nil {
+			rec.AgentType = AgentTypeHuman
+		}
 	}
-	if boss.Messages == nil {
-		boss.Messages = []AgentMessage{}
+	if operator.Messages == nil {
+		operator.Messages = []AgentMessage{}
 	}
-	boss.Messages = append(boss.Messages, msg)
+	operator.Messages = append(operator.Messages, msg)
 
 	notif := AgentNotification{
-		ID:        fmt.Sprintf("boss-%d", time.Now().UnixNano()),
+		ID:        fmt.Sprintf("operator-%d", time.Now().UnixNano()),
 		Type:      NotifTypeMessage,
 		Title:     fmt.Sprintf("Decision needed from %s", agentName),
 		Body:      truncateLine(question, 120),
 		From:      agentName,
 		Timestamp: time.Now().UTC(),
 	}
-	boss.Notifications = append(boss.Notifications, notif)
-	pruneNotifications(boss)
+	operator.Notifications = append(operator.Notifications, notif)
+	pruneNotifications(operator)
 
 	ks.UpdatedAt = time.Now().UTC()
 	s.saveSpace(ks)
 	s.mu.Unlock()
 
-	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgDelivered, Space: spaceName, Agent: "boss",
+	s.emit(DomainEvent{Level: LevelInfo, EventType: EventMsgDelivered, Space: spaceName, Agent: "operator",
 		Msg:    fmt.Sprintf("decision request from %s", agentName),
 		Fields: map[string]string{"sender": agentName, "type": "decision"}})
-	s.journal.Append(spaceName, EventMessageSent, "boss", &msg)
+	s.journal.Append(spaceName, EventMessageSent, "operator", &msg)
 
 	sseData, _ := json.Marshal(map[string]any{
-		"space": spaceName, "agent": "boss", "sender": agentName,
+		"space": spaceName, "agent": "operator", "sender": agentName,
 		"message": question, "type": "decision",
 	})
-	s.broadcastSSE(spaceName, "boss", "agent_message", string(sseData))
+	s.broadcastSSE(spaceName, "operator", "agent_message", string(sseData))
 
 	return msg
 }

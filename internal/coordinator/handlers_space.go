@@ -321,8 +321,9 @@ type agentStatusPublic struct {
 // agentRecordPublic is the public JSON representation of an AgentRecord.
 // It pairs the durable config with the stripped status (no message bodies).
 type agentRecordPublic struct {
-	Config *AgentConfig       `json:"config,omitempty"`
-	Status *agentStatusPublic `json:"status"`
+	Config    *AgentConfig       `json:"config,omitempty"`
+	Status    *agentStatusPublic `json:"status"`
+	AgentType string             `json:"agent_type,omitempty"` // "agent" (default) | "human"
 }
 
 // spacePublic is the JSON shape for GET /spaces/{space}/.
@@ -383,7 +384,7 @@ func buildSpacePublic(ks *KnowledgeSpace) spacePublic {
 		if rec == nil {
 			continue
 		}
-		pr := &agentRecordPublic{Config: rec.Config, Status: agentUpdateToPublic(rec.Status)}
+		pr := &agentRecordPublic{Config: rec.Config, Status: agentUpdateToPublic(rec.Status), AgentType: rec.AgentType}
 		agents[name] = pr
 	}
 	return spacePublic{

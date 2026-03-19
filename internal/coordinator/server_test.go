@@ -510,8 +510,8 @@ func TestMultipleAgentsInOneSpace(t *testing.T) {
 	}
 	var agents map[string]*AgentUpdate
 	json.Unmarshal([]byte(body), &agents)
-	if len(agents) != 5 {
-		t.Errorf("expected 5 agents, got %d", len(agents))
+	if len(agents) != 6 { // 5 test agents + operator inbox
+		t.Errorf("expected 6 agents, got %d", len(agents))
 	}
 }
 
@@ -704,8 +704,8 @@ func TestSpaceJSONViaAcceptHeader(t *testing.T) {
 	if ks.Name != "json-test" {
 		t.Errorf("name = %q, want %q", ks.Name, "json-test")
 	}
-	if len(ks.Agents) != 1 {
-		t.Errorf("expected 1 agent, got %d", len(ks.Agents))
+	if len(ks.Agents) != 2 { // "api" test agent + "operator" inbox
+		t.Errorf("expected 2 agents, got %d", len(ks.Agents))
 	}
 	agent, ok := ks.agentStatusOk("api")
 	if !ok {
@@ -4712,5 +4712,141 @@ func TestMCPCORSAllowsAuthorizationHeader(t *testing.T) {
 	allowed := resp.Header.Get("Access-Control-Allow-Headers")
 	if !strings.Contains(strings.ToLower(allowed), "authorization") {
 		t.Errorf("CORS preflight: Authorization not in Access-Control-Allow-Headers: %q", allowed)
+	}
+}
+
+// --- TASK-133: Human operator as first-class citizen ---
+
+func TestOperatorInboxExistsOnSpaceCreate(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create a space by posting an agent status update.
+	resp := postJSON(t, base+"/spaces/op-space/agent/workerA", AgentUpdate{Status: StatusActive, Summary: "working"})
+	resp.Body.Close()
+
+	// Fetch space agents JSON and verify operator inbox is present.
+	code, body := getBody(t, base+"/spaces/op-space/api/agents")
+	if code != http.StatusOK {
+		t.Fatalf("GET agents: want 200, got %d", code)
+	}
+	var agentsMap map[string]agentRecordPublic
+	if err := json.Unmarshal([]byte(body), &agentsMap); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rec, ok := agentsMap["operator"]
+	if !ok {
+		t.Fatal("operator agent not found in space")
+	}
+	if rec.AgentType != AgentTypeHuman {
+		t.Errorf("operator agent_type = %q, want %q", rec.AgentType, AgentTypeHuman)
+	}
+}
+
+func TestOperatorPost409(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Posting a status update as "operator" should return 409.
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/test409/agent/operator", strings.NewReader(`{"status":"active","summary":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "operator")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST operator: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("POST operator: want 409 Conflict, got %d", resp.StatusCode)
+	}
+}
+
+func TestBossMessageRewrittenToOperator(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create sender agent.
+	r := postJSON(t, base+"/spaces/rewrite-space/agent/sender", AgentUpdate{Status: StatusActive, Summary: "ready"})
+	r.Body.Close()
+
+	// Send message to "boss" — should be rewritten to "operator".
+	req, _ := http.NewRequest(http.MethodPost, base+"/spaces/rewrite-space/agent/boss/message",
+		strings.NewReader(`{"message":"hello operator","priority":"info"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Name", "sender")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("send to boss: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("send to boss: want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	// Verify the message landed in "operator" inbox.
+	code, msgBody := getBody(t, base+"/spaces/rewrite-space/agent/operator/messages")
+	if code != http.StatusOK {
+		t.Fatalf("GET operator messages: want 200, got %d", code)
+	}
+	if !strings.Contains(msgBody, "hello operator") {
+		t.Errorf("operator inbox does not contain message: %s", msgBody)
+	}
+}
+
+func TestOperatorAgentTypeExposedInAPI(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	// Create a space.
+	r := postJSON(t, base+"/spaces/type-space/agent/worker", AgentUpdate{Status: StatusActive, Summary: "ok"})
+	r.Body.Close()
+
+	// Fetch the agents JSON endpoint.
+	code, body := getBody(t, base+"/spaces/type-space/api/agents")
+	if code != http.StatusOK {
+		t.Fatalf("GET agents: want 200, got %d", code)
+	}
+	var agents map[string]agentRecordPublic
+	if err := json.Unmarshal([]byte(body), &agents); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	op, ok := agents["operator"]
+	if !ok {
+		t.Fatal("operator not in agents map")
+	}
+	if op.AgentType != AgentTypeHuman {
+		t.Errorf("operator agent_type = %q, want %q", op.AgentType, AgentTypeHuman)
+	}
+	// Regular agent should not have AgentTypeHuman.
+	w, ok := agents["worker"]
+	if !ok {
+		t.Fatal("worker not in agents map")
+	}
+	if w.AgentType == AgentTypeHuman {
+		t.Errorf("worker agent_type should not be human, got %q", w.AgentType)
+	}
+}
+
+func TestOperatorExcludedFromHierarchy(t *testing.T) {
+	srv, cleanup := mustStartServer(t)
+	defer cleanup()
+	base := serverBaseURL(srv)
+
+	r := postJSON(t, base+"/spaces/hier-space/agent/agent1", AgentUpdate{Status: StatusActive, Summary: "ok"})
+	r.Body.Close()
+
+	tree := getHierarchy(t, base, "hier-space")
+	for _, root := range tree.Roots {
+		if root == "operator" {
+			t.Errorf("operator should not appear in hierarchy roots: %v", tree.Roots)
+		}
+	}
+	if _, ok := tree.Nodes["operator"]; ok {
+		t.Errorf("operator should not appear in hierarchy nodes")
 	}
 }

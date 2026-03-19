@@ -59,6 +59,8 @@ func (s *Server) checkStaleness() {
 		changed := false
 		for name, rec := range ks.Agents {
 			if rec == nil || rec.Status == nil { continue }
+			// Human operator inbox never goes stale.
+			if rec.AgentType == AgentTypeHuman { continue }
 			agent := rec.Status
 			// Only mark active/blocked agents as stale — done/idle are expected to be quiet.
 			if agent.Status == StatusDone || agent.Status == StatusIdle {
@@ -88,6 +90,7 @@ func (s *Server) checkStaleness() {
 		// Record a periodic snapshot for all agents so history captures liveness ticks.
 		for name, rec := range ks.Agents {
 			if rec == nil || rec.Status == nil { continue }
+			if rec.AgentType == AgentTypeHuman { continue } // operator inbox doesn't need snapshots
 			agent := rec.Status
 			snap := snapshotFromAgent(spaceName, name, agent)
 			if err := s.appendSnapshot(snap); err != nil {

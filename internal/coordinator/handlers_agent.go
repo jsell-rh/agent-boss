@@ -96,6 +96,12 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 			return
 		}
 
+		// "operator" is the human operator inbox — agents cannot post to it as a status update.
+		if strings.EqualFold(agentName, "operator") {
+			writeJSONError(w, `"operator" is reserved for the human operator inbox`, http.StatusConflict)
+			return
+		}
+
 		// Children is server-managed — zero any agent-supplied value before processing.
 		incomingParent := update.Parent
 		incomingRole := update.Role
@@ -191,14 +197,16 @@ func (s *Server) handleSpaceAgent(w http.ResponseWriter, r *http.Request, spaceN
 		// upsertSpaceToDB only needs these stable fields.
 		spaceSnap := *ks // shallow copy of value — Name/SharedContracts/Archive/NextTaskSeq/timestamps
 		var agentCfg *AgentConfig
+		var agentType string
 		if rec, ok := ks.Agents[canonical]; ok && rec != nil {
 			agentCfg = rec.Config
+			agentType = rec.AgentType
 		}
 		s.mu.Unlock()
 
 		// Persist only the changed agent and space metadata outside the lock.
 		// This replaces persistSpaceToDB which iterated every agent and task.
-		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg)
+		s.upsertAgentToDB(spaceName, canonical, &update, agentCfg, agentType)
 		s.upsertSpaceToDB(&spaceSnap)
 		for _, t := range linkedTasks {
 			s.upsertTaskToDB(spaceName, t)
@@ -363,6 +371,11 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 		s.mu.Lock()
 		s.spaces[spaceName] = ks
 		s.mu.Unlock()
+	}
+
+	// Unconditional server-side rewrite: "boss" is a legacy alias for the human operator inbox.
+	if strings.EqualFold(agentName, "boss") {
+		agentName = "operator"
 	}
 
 	// Determine recipients based on scope query parameter.
@@ -1611,7 +1624,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 			s.logEvent(fmt.Sprintf("[%s/%s] create: ignite send failed: %v", spaceName, agentNameForIgnite, err))
 		}
 		if initialMsg != "" {
-			s.deliverInternalMessage(spaceName, agentNameForIgnite, "boss", initialMsg)
+			s.deliverInternalMessage(spaceName, agentNameForIgnite, "operator", initialMsg)
 		}
 	}()
 

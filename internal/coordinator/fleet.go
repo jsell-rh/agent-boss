@@ -93,10 +93,13 @@ func (s *Server) handleSpaceExport(w http.ResponseWriter, r *http.Request, space
 		}
 	}
 
-	// Build agent map.
+	// Build agent map (exclude human-type records like operator inbox).
 	fleetAgents := make(map[string]FleetAgent, len(ks.Agents))
 	for name, rec := range ks.Agents {
 		if rec == nil {
+			continue
+		}
+		if rec.AgentType == AgentTypeHuman {
 			continue
 		}
 		cfg := rec.Config
