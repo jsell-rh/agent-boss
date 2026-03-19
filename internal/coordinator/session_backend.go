@@ -120,6 +120,7 @@ type TmuxCreateOpts struct {
 	MCPServerName        string // MCP server name (e.g. "boss-mcp", "boss-mcp-8889"); defaults to "boss-mcp"
 	AgentToken           string // bearer token embedded inline in --mcp-config JSON for MCP auth; never written to ~/.claude.json
 	AllowSkipPermissions bool   // if true, append --dangerously-skip-permissions to command
+	Model                string // model override e.g. "sonnet", "opus", "claude-sonnet-4-6"
 }
 
 // AmbientCreateOpts holds Ambient-specific session creation options.

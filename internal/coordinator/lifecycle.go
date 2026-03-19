@@ -562,14 +562,16 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 	if exists {
 		oldSession = agent.SessionID
 	}
-	// Load AgentConfig to restore cwd, command, and initial_prompt on restart.
+	// Load AgentConfig to restore cwd, command, model, and initial_prompt on restart.
 	var restartWorkDir string
 	var restartInitialPrompt string
 	var restartCommand string
+	var restartModel string
 	if cfg := ks.agentConfig(canonical); cfg != nil {
 		restartWorkDir = cfg.WorkDir
 		restartInitialPrompt = cfg.InitialPrompt
 		restartCommand = cfg.Command
+		restartModel = cfg.Model
 	}
 	s.mu.RUnlock()
 
@@ -621,6 +623,7 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 			BackendOpts: AmbientCreateOpts{
 				DisplayName: canonical,
 				SpaceName:   spaceName,
+				Model:       restartModel,
 				EnvVars: func() map[string]string {
 					if s.apiToken == "" {
 						return nil
@@ -643,6 +646,7 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 				MCPServerName:        s.mcpServerName(),
 				AgentToken:           s.generateAgentToken(spaceName, canonical),
 				AllowSkipPermissions: s.allowSkipPermissions,
+				Model:                restartModel,
 			},
 		}
 	}
@@ -839,19 +843,21 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 			cancel()
 			time.Sleep(1 * time.Second)
 
-			// Determine work dir and command from stored config
+			// Determine work dir, model, and command from stored config
 			workDir := ""
 			command := "claude"
 			if s.allowSkipPermissions {
 				command = "claude --dangerously-skip-permissions"
 			}
 			initialPrompt := ""
+			model := ""
 			if cfg != nil {
 				workDir = cfg.WorkDir
 				if cfg.Command != "" {
 					command = cfg.Command
 				}
 				initialPrompt = cfg.InitialPrompt
+				model = cfg.Model
 			}
 
 			// Create new session
@@ -868,6 +874,7 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 					MCPServerName:        s.mcpServerName(),
 					AgentToken:           s.generateAgentToken(spaceName, t.name),
 					AllowSkipPermissions: s.allowSkipPermissions,
+					Model:                model,
 				},
 			}
 			sessionID, err := backend.CreateSession(context.Background(), createOpts)

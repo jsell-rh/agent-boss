@@ -50,6 +50,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	var mcpServerName string
 	var agentToken string
 	var allowSkipPermissions bool
+	var model string
 
 	if tmuxOpts, ok := opts.BackendOpts.(TmuxCreateOpts); ok {
 		if tmuxOpts.Width > 0 {
@@ -63,6 +64,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		mcpServerName = tmuxOpts.MCPServerName
 		agentToken = tmuxOpts.AgentToken
 		allowSkipPermissions = tmuxOpts.AllowSkipPermissions
+		model = tmuxOpts.Model
 	}
 	if mcpServerName == "" {
 		mcpServerName = "boss-mcp"
@@ -71,6 +73,11 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 	// Append --dangerously-skip-permissions when global toggle is on.
 	if allowSkipPermissions && !strings.Contains(command, "--dangerously-skip-permissions") {
 		command += " --dangerously-skip-permissions"
+	}
+
+	// Append --model if a model override is specified.
+	if model != "" {
+		command += " --model " + shellQuote(model)
 	}
 
 	// Preflight: verify work_dir exists before creating the tmux session.

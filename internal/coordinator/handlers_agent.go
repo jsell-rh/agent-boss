@@ -1476,6 +1476,7 @@ type createAgentRequest struct {
 	Parent         string `json:"parent,omitempty"`
 	Role           string `json:"role,omitempty"`
 	InitialMessage string `json:"initial_message,omitempty"` // one-time message sent to agent after ignite
+	Model string `json:"model,omitempty"` // model override e.g. "sonnet", "opus", "claude-sonnet-4-6"
 	// Ambient-specific fields
 	Repos []SessionRepo `json:"repos,omitempty"`
 	Task  string        `json:"task,omitempty"` // initial prompt for ambient sessions
@@ -1520,6 +1521,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				DisplayName: req.Name,
 				Repos:       req.Repos,
 				SpaceName:   spaceName,
+				Model:       req.Model,
 				EnvVars: func() map[string]string {
 					if s.apiToken == "" {
 						return nil
@@ -1545,6 +1547,7 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 				MCPServerName:        s.mcpServerName(),
 				AgentToken:           s.generateAgentToken(spaceName, req.Name),
 				AllowSkipPermissions: s.allowSkipPermissions,
+				Model:                req.Model,
 			},
 		}
 	}
@@ -1577,14 +1580,19 @@ func (s *Server) handleCreateAgents(w http.ResponseWriter, r *http.Request, spac
 	if req.Role != "" && agent.Role == "" {
 		agent.Role = req.Role
 	}
-	// Persist work_dir (and any future create-time config) to AgentConfig so it
+	// Persist work_dir, model (and any future create-time config) to AgentConfig so it
 	// is visible in the agent detail view and survives restarts.
-	if req.WorkDir != "" {
+	if req.WorkDir != "" || req.Model != "" {
 		cfg := ks.agentConfig(canonical)
 		if cfg == nil {
 			cfg = &AgentConfig{}
 		}
-		cfg.WorkDir = req.WorkDir
+		if req.WorkDir != "" {
+			cfg.WorkDir = req.WorkDir
+		}
+		if req.Model != "" {
+			cfg.Model = req.Model
+		}
 		ks.setAgentConfig(canonical, cfg)
 	}
 	if err := s.saveSpace(ks); err != nil {
