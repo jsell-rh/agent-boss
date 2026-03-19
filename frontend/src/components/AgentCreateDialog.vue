@@ -27,6 +27,7 @@ const emit = defineEmits<{
 
 const agentName = ref('')
 const workDir = ref('')
+const model = ref('')
 const reposText = ref('')
 const taskPrompt = ref('')
 const initialMessage = ref('')
@@ -53,6 +54,7 @@ function togglePersona(id: string) {
 function reset() {
   agentName.value = ''
   workDir.value = ''
+  model.value = ''
   reposText.value = ''
   taskPrompt.value = ''
   initialMessage.value = ''
@@ -93,6 +95,7 @@ async function submit() {
     await api.createAgent(props.space, {
       name,
       work_dir: isTmux.value ? (workDir.value.trim() || undefined) : undefined,
+      model: model.value.trim() || undefined,
       backend: backend.value,
       repos: repos && repos.length > 0 ? repos : undefined,
       task,
@@ -186,6 +189,28 @@ async function submit() {
           <p class="text-xs text-muted-foreground">
             The agent's tmux session will <code>cd</code> to this directory before starting.
           </p>
+        </div>
+
+        <!-- Model override (optional) -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Model (optional)
+          </label>
+          <Input
+            v-model="model"
+            list="agent-model-options"
+            placeholder="Default (leave blank to use server default)"
+            autocomplete="off"
+            class="font-mono text-sm"
+          />
+          <datalist id="agent-model-options">
+            <option value="sonnet" />
+            <option value="opus" />
+            <option value="haiku" />
+            <option value="claude-sonnet-4-6" />
+            <option value="claude-opus-4-6" />
+            <option value="claude-haiku-4-5-20251001" />
+          </datalist>
         </div>
 
         <!-- Initial Prompt (ambient only) -->

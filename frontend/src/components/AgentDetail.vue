@@ -1165,7 +1165,11 @@ watch(() => props.agentName, () => {
             <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Initial Prompt</span>
             <p class="text-xs bg-muted/50 px-2 py-1 rounded whitespace-pre-wrap font-mono">{{ agentConfig.initial_prompt }}</p>
           </div>
-          <p v-if="!agentConfig?.work_dir && !agentConfig?.initial_prompt" class="text-xs text-muted-foreground italic">
+          <div v-if="agentConfig?.model" class="flex flex-col gap-0.5">
+            <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Model</span>
+            <code class="text-xs bg-muted/50 px-2 py-1 rounded font-mono">{{ agentConfig.model }}</code>
+          </div>
+          <p v-if="!agentConfig?.work_dir && !agentConfig?.initial_prompt && !agentConfig?.model" class="text-xs text-muted-foreground italic">
             No config saved — click Edit to set working directory or initial prompt.
           </p>
         </div>
