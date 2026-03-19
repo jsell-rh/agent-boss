@@ -336,11 +336,11 @@ func (s *Server) addToolCheckMessages(srv *mcp.Server) {
 func (s *Server) addToolSendMessage(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "send_message",
-		Description: "Send a message to another agent for coordination or escalation.",
+		Description: "Send a message to another agent for coordination or escalation. Use to='operator' to send a message to the human operator (legacy alias: 'boss').",
 		InputSchema: jsonSchema([]string{"space", "from", "to", "message"}, map[string]map[string]any{
 			"space":    prop("string", "The workspace name"),
 			"from":     prop("string", "Your agent name (the sender)"),
-			"to":       prop("string", "Target agent name, or 'parent' to message your parent agent"),
+			"to":       prop("string", "Target agent name, 'parent' to message your parent agent, or 'operator' to reach the human operator (legacy alias: 'boss')"),
 			"message":  prop("string", "The message content"),
 			"priority": prop("string", "Message priority: info (default), directive, or urgent"),
 		}),

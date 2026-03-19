@@ -278,6 +278,24 @@ grep '@agent-name\|@mention\|mention' internal/coordinator/protocol.md
 
 ---
 
+### Check 8 — Operator naming is consistent (no phantom "boss" agent)
+
+After any sprint touching messaging, `request_decision`, or operator infrastructure, verify that:
+
+1. `internal/coordinator/protocol.md` Rule 6 says `send_message(to: "operator")` (not "boss agent") for human input.
+2. `send_message` tool description in `mcp_tools.go` mentions `'operator'` as the target for the human operator.
+3. No agent-facing docs instruct agents to `send_message(to="boss")` — that alias still works but `"operator"` is canonical.
+
+```bash
+grep -n '"boss"' internal/coordinator/protocol.md | grep -v 'boss://'
+grep -n "to.*boss\|boss.*operator" internal/coordinator/mcp_tools.go
+```
+
+**Pass:** protocol.md instructs `send_message(to: "operator")` and mcp_tools.go mentions `'operator'` as the human operator target.
+**Fail:** Update protocol.md Rule 6 and the `to` parameter description in `addToolSendMessage`.
+
+---
+
 ### Drift found → action matrix
 
 | Drift type | Action |

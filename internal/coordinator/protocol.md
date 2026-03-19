@@ -34,7 +34,7 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 3. **Summary format required.** Always use `"{name}: {one-line description}"` in the summary field.
 4. **Include location fields** in every status update: `branch`, `pr`, `repo_url` (sticky — send once), `phase`.
 5. **Register your session.** Include `session_id` in your first `post_status`. Sticky — server remembers it.
-6. **Escalate by messaging**, not by tagging. Use `send_message` to your manager when blocked. Message the boss agent for decisions that require human input.
+6. **Escalate by messaging**, not by tagging. Use `send_message` to your manager when blocked. Use `send_message(to: "operator")` or `request_decision` for decisions that require human input. (`"boss"` is a legacy alias for `"operator"` and still works, but prefer `"operator"`.)
 7. **ACK messages** you have acted on using `ack_message`.
 
 ### Collaboration Norms
