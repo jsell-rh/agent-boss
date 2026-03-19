@@ -43,18 +43,25 @@ type FleetPersona struct {
 	Prompt      string `yaml:"prompt"`
 }
 
+// FleetRepo is a git repository reference in the fleet file.
+type FleetRepo struct {
+	URL    string `yaml:"url"`
+	Branch string `yaml:"branch,omitempty"`
+}
+
 // FleetAgent is one agent's config entry in the fleet file.
 type FleetAgent struct {
-	Role          string   `yaml:"role,omitempty"`
-	Description   string   `yaml:"description,omitempty"`
-	Parent        string   `yaml:"parent,omitempty"`
-	Personas      []string `yaml:"personas,omitempty"`
-	WorkDir       string   `yaml:"work_dir,omitempty"`
-	Backend       string   `yaml:"backend"`    // always explicit for round-trip fidelity
-	Command       string   `yaml:"command"`    // always explicit
-	InitialPrompt string   `yaml:"initial_prompt,omitempty"`
-	RepoURL       string   `yaml:"repo_url,omitempty"` // userinfo stripped on export
-	Model         string   `yaml:"model,omitempty"`
+	Role          string      `yaml:"role,omitempty"`
+	Description   string      `yaml:"description,omitempty"`
+	Parent        string      `yaml:"parent,omitempty"`
+	Personas      []string    `yaml:"personas,omitempty"`
+	WorkDir       string      `yaml:"work_dir,omitempty"`
+	Backend       string      `yaml:"backend"`    // always explicit for round-trip fidelity
+	Command       string      `yaml:"command"`    // always explicit
+	InitialPrompt string      `yaml:"initial_prompt,omitempty"`
+	RepoURL       string      `yaml:"repo_url,omitempty"` // userinfo stripped on export
+	Repos         []FleetRepo `yaml:"repos,omitempty"`    // git repos for ambient sessions
+	Model         string      `yaml:"model,omitempty"`
 }
 
 // ─── Export handler ───────────────────────────────────────────────────────────
@@ -117,6 +124,19 @@ func (s *Server) handleSpaceExport(w http.ResponseWriter, r *http.Request, space
 			}
 		}
 
+		// Convert SessionRepo → FleetRepo (strip userinfo from each URL).
+		var fleetRepos []FleetRepo
+		for _, sr := range cfg.Repos {
+			repoU := sr.URL
+			if repoU != "" {
+				if u, err := url.Parse(repoU); err == nil {
+					u.User = nil
+					repoU = u.String()
+				}
+			}
+			fleetRepos = append(fleetRepos, FleetRepo{URL: repoU, Branch: sr.Branch})
+		}
+
 		// Determine role/parent from runtime status if not in config.
 		role := ""
 		parent := ""
@@ -144,6 +164,7 @@ func (s *Server) handleSpaceExport(w http.ResponseWriter, r *http.Request, space
 			Command:       command,
 			InitialPrompt: cfg.InitialPrompt,
 			RepoURL:       repoURL,
+			Repos:         fleetRepos,
 			Model:         cfg.Model,
 		}
 	}

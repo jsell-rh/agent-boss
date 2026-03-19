@@ -84,6 +84,82 @@ func TestHandleSpaceExport(t *testing.T) {
 	}
 }
 
+func TestHandleSpaceExportRepos(t *testing.T) {
+	srv, stop := mustStartServer(t)
+	defer stop()
+	base := serverBaseURL(srv)
+
+	space := "export-repos-test"
+	agent := "ambient-worker"
+
+	postJSON(t, fmt.Sprintf("%s/spaces/%s/agent/%s", base, space, agent), &AgentUpdate{
+		Status:  StatusActive,
+		Summary: "working",
+	})
+
+	srv.mu.Lock()
+	ks := srv.spaces[space]
+	if ks.Agents[agent] == nil {
+		ks.Agents[agent] = &AgentRecord{}
+	}
+	ks.Agents[agent].Config = &AgentConfig{
+		Backend: "ambient",
+		Command: "claude",
+		Repos: []SessionRepo{
+			{URL: "https://user:token@gitea.example.com/org/repo-a.git", Branch: "main"},
+			{URL: "https://gitea.example.com/org/repo-b.git"},
+		},
+	}
+	srv.mu.Unlock()
+
+	resp, err := http.Get(fmt.Sprintf("%s/spaces/%s/export", base, space))
+	if err != nil {
+		t.Fatalf("export GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("export: want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var ff FleetFile
+	if err := yaml.Unmarshal(body, &ff); err != nil {
+		t.Fatalf("export: unmarshal YAML: %v", err)
+	}
+
+	agentEntry, ok := ff.Agents[agent]
+	if !ok {
+		t.Fatalf("export: agent %q missing from output", agent)
+	}
+	if len(agentEntry.Repos) != 2 {
+		t.Fatalf("export: want 2 repos, got %d", len(agentEntry.Repos))
+	}
+	// Credentials must be stripped from repo URLs.
+	if strings.Contains(agentEntry.Repos[0].URL, "token") {
+		t.Errorf("export: repos[0] URL still contains credentials: %q", agentEntry.Repos[0].URL)
+	}
+	if agentEntry.Repos[0].URL != "https://gitea.example.com/org/repo-a.git" {
+		t.Errorf("export: repos[0] URL: want https://gitea.example.com/org/repo-a.git, got %q", agentEntry.Repos[0].URL)
+	}
+	if agentEntry.Repos[0].Branch != "main" {
+		t.Errorf("export: repos[0] branch: want main, got %q", agentEntry.Repos[0].Branch)
+	}
+	if agentEntry.Repos[1].URL != "https://gitea.example.com/org/repo-b.git" {
+		t.Errorf("export: repos[1] URL: want https://gitea.example.com/org/repo-b.git, got %q", agentEntry.Repos[1].URL)
+	}
+
+	// Round-trip: ParseAndValidateFleetFile must accept the exported YAML with repos.
+	ff2, err := ParseAndValidateFleetFile(body)
+	if err != nil {
+		t.Fatalf("round-trip: parse exported YAML with repos: %v", err)
+	}
+	if len(ff2.Agents[agent].Repos) != 2 {
+		t.Errorf("round-trip: want 2 repos after parse, got %d", len(ff2.Agents[agent].Repos))
+	}
+}
+
 func TestHandleSpaceExportNotFound(t *testing.T) {
 	srv, stop := mustStartServer(t)
 	defer stop()
@@ -743,5 +819,32 @@ agents:
 	relDir := "version: \"1\"\nspace:\n  name: \"X\"\nagents:\n  a:\n    backend: tmux\n    command: claude\n    work_dir: relative/path\n"
 	if _, err := ParseAndValidateFleetFile([]byte(relDir)); err == nil {
 		t.Error("relative work_dir: want error, got nil")
+	}
+
+	// Fleet file with repos list.
+	withRepos := `version: "1"
+space:
+  name: "RepoTest"
+agents:
+  worker:
+    backend: ambient
+    command: claude
+    repos:
+      - url: "https://gitea.example.com/org/repo-a.git"
+        branch: main
+      - url: "https://gitea.example.com/org/repo-b.git"
+`
+	ffRepos, err := ParseAndValidateFleetFile([]byte(withRepos))
+	if err != nil {
+		t.Fatalf("fleet with repos: %v", err)
+	}
+	if len(ffRepos.Agents["worker"].Repos) != 2 {
+		t.Errorf("want 2 repos, got %d", len(ffRepos.Agents["worker"].Repos))
+	}
+	if ffRepos.Agents["worker"].Repos[0].Branch != "main" {
+		t.Errorf("repos[0] branch: want main, got %q", ffRepos.Agents["worker"].Repos[0].Branch)
+	}
+	if ffRepos.Agents["worker"].Repos[1].Branch != "" {
+		t.Errorf("repos[1] branch: want empty, got %q", ffRepos.Agents["worker"].Repos[1].Branch)
 	}
 }

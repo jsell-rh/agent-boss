@@ -431,12 +431,18 @@ func fleetApply(client *coordinator.Client, ff *coordinator.FleetFile, spaceName
 		for _, pid := range fa.Personas {
 			personaRefs = append(personaRefs, coordinator.PersonaRef{ID: pid})
 		}
+		// Convert FleetRepo → SessionRepo.
+		sessionRepos := make([]coordinator.SessionRepo, 0, len(fa.Repos))
+		for _, fr := range fa.Repos {
+			sessionRepos = append(sessionRepos, coordinator.SessionRepo{URL: fr.URL, Branch: fr.Branch})
+		}
 		cfg := &coordinator.AgentConfig{
 			WorkDir:       fa.WorkDir,
 			InitialPrompt: fa.InitialPrompt,
 			Backend:       fa.Backend,
 			Command:       fa.Command,
 			RepoURL:       fa.RepoURL,
+			Repos:         sessionRepos,
 			Model:         fa.Model,
 			Personas:      personaRefs,
 		}
@@ -469,10 +475,26 @@ func fleetAgentConfigDiff(cfg *coordinator.AgentConfig, fa coordinator.FleetAgen
 	if fa.RepoURL != "" && cfg.RepoURL != fa.RepoURL {
 		diffs = append(diffs, "repo_url")
 	}
+	if len(fa.Repos) > 0 && !reposEqual(cfg.Repos, fa.Repos) {
+		diffs = append(diffs, "repos")
+	}
 	if fa.Model != "" && cfg.Model != fa.Model {
 		diffs = append(diffs, "model")
 	}
 	return diffs
+}
+
+// reposEqual returns true if the stored SessionRepo list matches the fleet FleetRepo list.
+func reposEqual(stored []coordinator.SessionRepo, fleet []coordinator.FleetRepo) bool {
+	if len(stored) != len(fleet) {
+		return false
+	}
+	for i := range stored {
+		if stored[i].URL != fleet[i].URL || stored[i].Branch != fleet[i].Branch {
+			return false
+		}
+	}
+	return true
 }
 
 // printPromptDiff prints a line-by-line diff of two prompt strings.
