@@ -101,13 +101,30 @@ Persona IDs are global across the server. To avoid collisions between teams, pre
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `role` | string | yes | `manager` or `worker` |
-| `description` | string | no | Short role description |
-| `parent` | string | no | Name of parent agent (must exist in same fleet file or space) |
-| `personas` | list | no | Persona IDs to apply |
-| `work_dir` | string | no | Working directory for tmux sessions |
-| `backend` | string | no | `tmux` (default) or `ambient` |
-| `initial_prompt` | string | no | Ignition prompt sent on spawn |
+| `role` | string | no | Display label: `manager`, `worker`, `sme`, etc. |
+| `description` | string | no | Short role description. Not injected into prompts. |
+| `parent` | string | no | Name of parent agent (must exist in same fleet file or space). Cycles are rejected. |
+| `personas` | list | no | Ordered persona IDs to inject between `shared_contracts` and `initial_prompt`. |
+| `backend` | string | no | `tmux` (default, local session) or `ambient` (remote ACP container). |
+| `command` | string | no | Launch command (default: `claude`). Must be in `ODIS_COMMAND_ALLOWLIST`. |
+| `initial_prompt` | string | no | Agent-specific instructions sent on spawn. Max 64 KB. |
+| `model` | string | no | Model override (e.g. `sonnet`, `opus`, `claude-sonnet-4-6`). |
+| `work_dir` | string | no | (tmux) Absolute working directory. No `..` components. Must start with `ODIS_WORK_DIR_PREFIX` if set. |
+| `repo_url` | string | no | (tmux) Primary git remote URL for UI display. Credentials stripped on export. |
+| `repos` | list | no | (ambient) Git repos to clone into the session. See repo object below. |
+
+**Repo object** (each entry in `repos`):
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `url` | string | yes | HTTPS git URL. `http://` and `file://` rejected. Must not resolve to private/loopback addresses. |
+| `branch` | string | no | Branch to check out. Defaults to the repo's default branch. |
+
+**Instruction composition order** — at spawn time, instructions combine as:
+
+```
+shared_contracts  →  persona prompt(s)  →  initial_prompt
+```
 
 ---
 
@@ -150,6 +167,9 @@ odis import fleet.yaml --prune
 
 # --prune even if the agent has an active session (use with care)
 odis import fleet.yaml --prune --force
+
+# Restart agents whose config changed after applying
+odis import fleet.yaml --restart-changed
 ```
 
 ### What import does
@@ -205,9 +225,17 @@ The server creates a new persona version. Existing agents using the persona keep
 
 ---
 
-## Security constraints
+## Validation and security
 
-Two environment variables restrict what the import command accepts:
+### File limits
+
+| Constraint | Limit |
+|------------|-------|
+| Total file size | 1 MB |
+| Maximum agents | 100 |
+| Per-field size (`shared_contracts`, persona `prompt`, `initial_prompt`) | 64 KB each |
+
+### Security constraints
 
 | Variable | Default | Effect |
 |----------|---------|--------|
