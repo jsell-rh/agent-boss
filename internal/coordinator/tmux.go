@@ -147,47 +147,57 @@ func parseApprovalFromLines(lines []string) ApprovalInfo {
 	if promptIdx < 0 {
 		return ApprovalInfo{}
 	}
-	hasNumberedChoice := false
+	// Find the first numbered choice line after the prompt.
+	choiceIdx := -1
 	for i := promptIdx + 1; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
 		inner := strings.TrimSpace(strings.ReplaceAll(trimmed, "│", ""))
 		if strings.HasPrefix(inner, "1.") || strings.HasPrefix(inner, ") 1.") || strings.HasPrefix(inner, "❯") ||
 			strings.Contains(inner, "1. Yes") {
-			hasNumberedChoice = true
+			choiceIdx = i
 			break
 		}
 	}
-	if !hasNumberedChoice {
+	if choiceIdx < 0 {
 		return ApprovalInfo{}
 	}
 	var toolName string
 	var contentLines []string
 	toolKeywords := []string{"Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "NotebookEdit", "Task"}
-	for _, l := range lines[:promptIdx] {
-		trimmed := strings.TrimSpace(l)
-		// Strip box-drawing borders (old-style dialog) or plain spaces (new-style).
-		inner := strings.TrimSpace(strings.ReplaceAll(trimmed, "│", ""))
-		if inner == "" {
-			continue
-		}
-		// Skip box corners/edges
-		if strings.HasPrefix(inner, "╭") || strings.HasPrefix(inner, "╰") || strings.HasPrefix(inner, "─") {
-			continue
-		}
-		// Skip meta lines like "This command requires approval"
-		if strings.Contains(inner, "requires approval") {
-			continue
-		}
-		// Try to extract tool name from this line
-		for _, kw := range toolKeywords {
-			if strings.HasPrefix(inner, kw+" ") || inner == kw || strings.HasPrefix(inner, kw+"(") {
-				toolName = kw
-				break
+	// extractSpan collects content lines from src, setting toolName on the first keyword match.
+	extractSpan := func(src []string) {
+		for _, l := range src {
+			trimmed := strings.TrimSpace(l)
+			// Strip box-drawing borders (old-style dialog) or plain spaces (new-style).
+			inner := strings.TrimSpace(strings.ReplaceAll(trimmed, "│", ""))
+			if inner == "" {
+				continue
 			}
+			// Skip box corners/edges
+			if strings.HasPrefix(inner, "╭") || strings.HasPrefix(inner, "╰") || strings.HasPrefix(inner, "─") {
+				continue
+			}
+			// Skip meta lines like "This command requires approval"
+			if strings.Contains(inner, "requires approval") {
+				continue
+			}
+			// Try to extract tool name from this line
+			if toolName == "" {
+				for _, kw := range toolKeywords {
+					if strings.HasPrefix(inner, kw+" ") || inner == kw || strings.HasPrefix(inner, kw+"(") {
+						toolName = kw
+						break
+					}
+				}
+			}
+			contentLines = append(contentLines, inner)
 		}
-		contentLines = append(contentLines, inner)
 	}
-	prompt := strings.Join(contentLines, " | ")
+	// Old-style: command shown before "Do you want..."
+	extractSpan(lines[:promptIdx])
+	// New-style (Claude Code 2.x+): command shown after "Do you want..." but before choices.
+	extractSpan(lines[promptIdx+1 : choiceIdx])
+	prompt := strings.Join(contentLines, "\n")
 	if len(prompt) > 2000 {
 		prompt = prompt[:1997] + "..."
 	}

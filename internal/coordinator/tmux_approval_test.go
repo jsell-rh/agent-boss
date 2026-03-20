@@ -50,6 +50,26 @@ func TestParseApprovalFromLines_TrustFolder(t *testing.T) {
 	}
 }
 
+func TestParseApprovalFromLines_NewStyleCommandAfterPrompt(t *testing.T) {
+	// Claude Code 2.x format: command appears after "Do you want..." but before choices.
+	lines := []string{
+		"  Do you want to run this command?",
+		"  Bash(cd /tmp && ls -la)",
+		"❯ 1. Yes",
+		"  2. No",
+	}
+	info := parseApprovalFromLines(lines)
+	if !info.NeedsApproval {
+		t.Fatal("expected NeedsApproval=true for new-style prompt")
+	}
+	if info.ToolName != "Bash" {
+		t.Errorf("expected ToolName=Bash, got %q", info.ToolName)
+	}
+	if info.PromptText == "" {
+		t.Error("expected PromptText to be non-empty")
+	}
+}
+
 func TestParseApprovalFromLines_NoPrompt(t *testing.T) {
 	lines := []string{
 		"● Bash(ls -la /tmp)",

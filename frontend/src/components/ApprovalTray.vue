@@ -78,12 +78,10 @@ function agentToolInfo(name: string): { toolName: string; promptText: string } {
               <p class="text-xs text-muted-foreground mt-0.5">
                 Requesting: <span class="font-mono text-foreground">{{ agentToolInfo(agentName).toolName }}</span>
               </p>
-              <p
+              <pre
                 v-if="agentToolInfo(agentName).promptText"
-                class="text-xs text-muted-foreground mt-1 font-mono bg-muted rounded px-1.5 py-1 break-all"
-              >
-                {{ agentToolInfo(agentName).promptText }}
-              </p>
+                class="text-xs text-muted-foreground mt-1 font-mono bg-muted rounded px-1.5 py-1 whitespace-pre-wrap break-all max-h-32 overflow-y-auto"
+              >{{ agentToolInfo(agentName).promptText }}</pre>
             </div>
           </div>
           <div class="flex gap-2">
