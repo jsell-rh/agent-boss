@@ -121,7 +121,7 @@ async function confirmMoveTask() {
   pendingStatus.value = null
   pendingReason.value = ''
   try {
-    const updated = await api.moveTask(props.space.name, props.task.id, status, 'boss', reason || undefined)
+    const updated = await api.moveTask(props.space.name, props.task.id, status, 'operator', reason || undefined)
     emit('task-updated', updated)
   } finally {
     saving.value = false

@@ -72,7 +72,7 @@ function onMouseEnter(e: MouseEvent) {
     visible.value = true
   }, 350)
   // Idea E — Hover-to-Greet: play voice after 1.2s hover (once per hover, not boss)
-  if (soundEnabled.value && props.agentName !== 'boss' && !_greetedOnCurrentHover) {
+  if (soundEnabled.value && props.agentName !== 'boss' && props.agentName !== 'operator' && !_greetedOnCurrentHover) {
     greetTimer = setTimeout(() => {
       _greetedOnCurrentHover = true
       previewAgentVoice(props.agentName)
@@ -194,14 +194,14 @@ onUnmounted(() => {
         @mouseleave="onCardMouseLeave"
       >
         <!-- Boss special card -->
-        <template v-if="agentName === 'boss'">
+        <template v-if="agentName === 'boss' || agentName === 'operator'">
           <div class="p-4 pb-3 flex items-start gap-3">
             <div class="shrink-0 mt-0.5 size-10 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
               <Crown class="size-5 text-amber-500" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="font-semibold text-sm leading-tight">boss</span>
+                <span class="font-semibold text-sm leading-tight">{{ agentName }}</span>
                 <Badge variant="outline" class="text-[10px] h-4 px-1 border-amber-500/40 text-amber-600 dark:text-amber-400">Human Operator</Badge>
               </div>
               <p class="text-xs text-muted-foreground mt-0.5">Project owner — gives orders, reviews PRs, manages the team</p>

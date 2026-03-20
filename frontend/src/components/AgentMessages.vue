@@ -133,7 +133,7 @@ const enrichedMessages = computed((): MessageEntry[] => {
       lastDateKey = dateKey
     }
 
-    const isBoss = msg.sender === 'boss'
+    const isBoss = msg.sender === 'boss' || msg.sender === 'operator'
     const prevMsg = sorted[i - 1]
     const nextMsg = sorted[i + 1]
     const prevSame =

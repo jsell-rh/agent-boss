@@ -184,7 +184,7 @@ const settingsDrawerOpen = ref(false)
 const showHelpOverlay = ref(false)
 const showMessageDialog = ref(false)
 const kbMessageText = ref('')
-const kbMessageSender = ref('boss')
+const kbMessageSender = ref('operator')
 const kbMessageSending = ref(false)
 const savedFocusEl = ref<HTMLElement | null>(null)
 
@@ -227,7 +227,8 @@ const showSettings = computed(() => false)
 // it is kept current by the agent_message SSE handler patch at line ~931.
 const pendingDecisionCount = computed(() => {
   if (!currentSpace.value) return 0
-  return (currentSpace.value.agents['boss'] as any)?.unread_count ?? 0
+  const operatorAgent = Object.values(currentSpace.value.agents).find((a: any) => a.agent_type === 'human')
+  return (operatorAgent as any)?.unread_count ?? (currentSpace.value.agents['operator'] as any)?.unread_count ?? (currentSpace.value.agents['boss'] as any)?.unread_count ?? 0
 })
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {
@@ -694,7 +695,7 @@ async function handleBroadcastSingleAgent(agentName: string) {
 async function handleSendMessageToAgent(agentName: string, text: string) {
   if (!selectedSpace.value) return
   try {
-    await api.sendMessage(selectedSpace.value, agentName, text, 'boss')
+    await api.sendMessage(selectedSpace.value, agentName, text, 'operator')
     await loadSpace(selectedSpace.value)
     showStatus(`Message sent to ${agentName}`)
   } catch (err) {
@@ -921,12 +922,14 @@ function setupSSE() {
     //
     // For the sidebar unread badge: patch boss.unread_count in-place so the
     // badge updates immediately without a full space fetch.
-    if (data.agent === 'boss' && currentSpace.value?.agents?.['boss'] && currentSpace.value.name === data.space) {
-      const bossAgent = currentSpace.value.agents['boss']
-      bossAgent.unread_count = (bossAgent.unread_count ?? 0) + 1
+    if ((data.agent === 'boss' || data.agent === 'operator') && currentSpace.value?.agents?.[data.agent] && currentSpace.value.name === data.space) {
+      const operatorAgentEntry = currentSpace.value.agents[data.agent]
+      if (operatorAgentEntry) {
+        operatorAgentEntry.unread_count = (operatorAgentEntry.unread_count ?? 0) + 1
+      }
     }
-    // Notify boss when a message is directed to them
-    if (data.agent === 'boss') {
+    // Notify operator when a message is directed to them
+    if (data.agent === 'boss' || data.agent === 'operator') {
       notifyBossMessage(data.sender, data.space)
       showStatus(`📩 New message from ${data.sender}`)
     }
@@ -946,11 +949,11 @@ function setupSSE() {
       if (mentionFound) {
         // Grammar: ping + sender identity (50ms gap) + recipient identity (40ms, 50% softer)
         playMentionPing(data.sender, firstMentionedAgent)
-      } else if (data.sender && data.agent !== 'boss' && currentSpace.value.agents[data.sender]) {
+      } else if (data.sender && data.agent !== 'operator' && data.agent !== 'boss' && currentSpace.value.agents[data.sender]) {
         // Regular agent→agent message: noise-burst + sender identity voice
         playAgentMessage(data.sender)
       }
-    } else if (data.sender && data.agent !== 'boss' && currentSpace.value?.agents[data.sender]) {
+    } else if (data.sender && data.agent !== 'operator' && data.agent !== 'boss' && currentSpace.value?.agents[data.sender]) {
       playAgentMessage(data.sender)
     }
     pushLog('agent_message', `[${data.agent}] message from ${data.sender}`)
@@ -1124,7 +1127,7 @@ function handleKeydown(e: KeyboardEvent) {
     if (!selectedAgent.value) return
     e.preventDefault()
     kbMessageText.value = ''
-    kbMessageSender.value = 'boss'
+    kbMessageSender.value = 'operator'
     savedFocusEl.value = document.activeElement as HTMLElement | null
     showMessageDialog.value = true
     return
@@ -1135,7 +1138,7 @@ async function handleKbSendMessage() {
   if (!kbMessageText.value.trim() || !selectedAgent.value || !selectedSpace.value) return
   kbMessageSending.value = true
   try {
-    await handleSendMessage(kbMessageText.value.trim(), kbMessageSender.value || 'boss')
+    await handleSendMessage(kbMessageText.value.trim(), kbMessageSender.value || 'operator')
     showMessageDialog.value = false
     kbMessageText.value = ''
   } finally {
@@ -1552,7 +1555,7 @@ onUnmounted(() => {
               id="kb-sender"
               v-model="kbMessageSender"
               type="text"
-              placeholder="boss"
+              placeholder="operator"
             />
           </div>
           <div class="space-y-1">

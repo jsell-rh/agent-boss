@@ -216,10 +216,12 @@ function spaceAttentionCount(space: SpaceSummary): number {
   return space.attention_count ?? 0
 }
 
-// Unread message count for boss in a space: current space reads live data, others use server summary.
+// Unread message count for operator in a space: current space reads live data, others use server summary.
 function spaceBossUnreadCount(space: SpaceSummary): number {
   if (space.name === props.selectedSpace && props.currentSpace) {
-    return (props.currentSpace.agents['boss'] as any)?.unread_count ?? 0
+    const agents = props.currentSpace.agents
+    const operatorAgent = Object.values(agents).find((a: any) => a.agent_type === 'human')
+    return (operatorAgent as any)?.unread_count ?? (agents['operator'] as any)?.unread_count ?? (agents['boss'] as any)?.unread_count ?? 0
   }
   return space.boss_unread_count ?? 0
 }
@@ -245,19 +247,20 @@ function statusLabel(status: string): string {
   return display ? display.label : status
 }
 
-// Count unread messages directed at the boss across all boss↔agent conversations.
-// Messages in any agent's inbox where sender is an agent (not boss) and recipient is boss,
-// plus any messages in the 'boss' agent's own inbox that are unread.
-const bossUnreadCount = computed(() => {
+// Count unread messages directed at the operator across all operator↔agent conversations.
+const operatorUnreadCount = computed(() => {
   if (!props.currentSpace) return 0
   // Post-PR #195 the space response strips message bodies but includes unread_count.
   // Fall back to iterating messages for older server payloads that still embed them.
-  const bossAgent = props.currentSpace.agents['boss']
-  if (!bossAgent) return 0
-  if (typeof bossAgent.unread_count === 'number') return bossAgent.unread_count
+  const agents = props.currentSpace.agents
+  const operatorAgent = Object.values(agents).find((a: any) => a.agent_type === 'human') ?? agents['operator'] ?? agents['boss']
+  if (!operatorAgent) return 0
+  if (typeof operatorAgent.unread_count === 'number') return operatorAgent.unread_count
   // Legacy fallback: count unread messages from the embedded messages array
-  return (bossAgent.messages ?? []).filter(m => !m.read).length
+  return (operatorAgent.messages ?? []).filter((m: any) => !m.read).length
 })
+// Keep bossUnreadCount as alias for backwards compat with template references
+const bossUnreadCount = operatorUnreadCount
 
 // ── Typing indicator ───────────────────────────────────────────────────────
 // Show 3-dot bounce when an agent posted an update within the last 10 seconds.
@@ -359,7 +362,7 @@ defineExpose({ openNewSpaceDialog })
                   </SidebarMenuBadge>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {{ spaceBossUnreadCount(space) }} unread message{{ spaceBossUnreadCount(space) !== 1 ? 's' : '' }} for boss
+                  {{ spaceBossUnreadCount(space) }} unread message{{ spaceBossUnreadCount(space) !== 1 ? 's' : '' }} for operator
                 </TooltipContent>
               </Tooltip>
               <Tooltip v-else-if="spaceAttentionCount(space) > 0">
@@ -508,7 +511,7 @@ defineExpose({ openNewSpaceDialog })
                   <span
                     v-if="bossUnreadCount > 0"
                     class="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none min-w-[14px] h-3.5 px-0.5"
-                    :title="`${bossUnreadCount} unread message${bossUnreadCount !== 1 ? 's' : ''} for boss`"
+                    :title="`${bossUnreadCount} unread message${bossUnreadCount !== 1 ? 's' : ''} for operator`"
                   >{{ bossUnreadCount }}</span>
                 </div>
                 <span>Conversations</span>

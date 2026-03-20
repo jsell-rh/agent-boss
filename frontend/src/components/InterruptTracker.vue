@@ -225,7 +225,7 @@ async function handleReply(item: Interrupt) {
   acting.value[item.id] = true
   actionFeedback.value[item.id] = { ok: true, msg: '' }
   try {
-    await api.sendMessage(props.spaceName, item.agent, text, 'boss')
+    await api.sendMessage(props.spaceName, item.agent, text, 'operator')
     // Resolve the decision interrupt after replying
     await api.resolveInterrupt(props.spaceName, item.id, text)
     replyTexts.value[item.id] = ''

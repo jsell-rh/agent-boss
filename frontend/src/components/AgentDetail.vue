@@ -176,7 +176,7 @@ const attentionSectionClass = computed(() => {
 const attachCopied = ref(false)
 
 function copyAttachCommand() {
-  const cmd = `boss attach --space "${props.spaceName}" --agent ${props.agentName}`
+  const cmd = `odis attach --space "${props.spaceName}" --agent ${props.agentName}`
   navigator.clipboard.writeText(cmd).then(() => {
     attachCopied.value = true
     setTimeout(() => { attachCopied.value = false }, 2000)
@@ -602,7 +602,7 @@ watch(() => props.agentName, () => {
                   variant="ghost"
                   class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
                   :class="attachCopied ? 'text-green-500 hover:text-green-500' : ''"
-                  aria-label="Copy boss attach command"
+                  aria-label="Copy odis attach command"
                   @click="copyAttachCommand"
                 >
                   <CheckCircle2 v-if="attachCopied" class="size-3.5" />
@@ -611,7 +611,7 @@ watch(() => props.agentName, () => {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                Copy: <code class="text-xs">boss attach --space "{{ spaceName }}" --agent {{ agentName }}</code>
+                Copy: <code class="text-xs">odis attach --space "{{ spaceName }}" --agent {{ agentName }}</code>
               </TooltipContent>
             </Tooltip>
 
@@ -1290,7 +1290,7 @@ watch(() => props.agentName, () => {
                 Boss ↔ {{ agentName }} Messages
               </h2>
             </TooltipTrigger>
-            <TooltipContent>Direct channel between you (boss) and {{ agentName }}. Messages sent here go directly to the agent's inbox.</TooltipContent>
+            <TooltipContent>Direct channel between you (operator) and {{ agentName }}. Messages sent here go directly to the agent's inbox.</TooltipContent>
           </Tooltip>
           <Badge v-if="agentMessages.length" variant="secondary" class="h-4 min-w-4 px-1 text-[10px] font-semibold tabular-nums">
             {{ agentMessages.length }}
@@ -1301,7 +1301,7 @@ watch(() => props.agentName, () => {
             :messages="agentMessages"
             :agent-name="agentName"
             class="min-h-0 flex-1"
-            @send-message="(text: string) => emit('send-message', text, 'boss')"
+            @send-message="(text: string) => emit('send-message', text, 'operator')"
           />
         </div>
       </section>

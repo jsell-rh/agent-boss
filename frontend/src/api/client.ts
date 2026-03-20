@@ -475,7 +475,7 @@ class ApiClient {
     labels?: string[]
     parent_task?: string
     due_at?: string
-  }, actor = 'boss'): Promise<Task> {
+  }, actor = 'operator'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks`,
       {
@@ -492,7 +492,7 @@ class ApiClient {
     )
   }
 
-  updateTask(space: string, id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'assigned_to' | 'labels' | 'linked_branch' | 'linked_pr'>> & { due_at?: string | null }, actor = 'boss'): Promise<Task> {
+  updateTask(space: string, id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'assigned_to' | 'labels' | 'linked_branch' | 'linked_pr'>> & { due_at?: string | null }, actor = 'operator'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
       {
@@ -503,14 +503,14 @@ class ApiClient {
     )
   }
 
-  deleteTask(space: string, id: string, actor = 'boss'): Promise<void> {
+  deleteTask(space: string, id: string, actor = 'operator'): Promise<void> {
     return this.requestVoid(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}`,
       { method: 'DELETE', headers: { 'X-Agent-Name': actor } },
     )
   }
 
-  moveTask(space: string, id: string, status: TaskStatus, actor = 'boss', reason?: string): Promise<Task> {
+  moveTask(space: string, id: string, status: TaskStatus, actor = 'operator', reason?: string): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/move`,
       {
@@ -521,7 +521,7 @@ class ApiClient {
     )
   }
 
-  assignTask(space: string, id: string, assignedTo: string, actor = 'boss', reason?: string): Promise<Task> {
+  assignTask(space: string, id: string, assignedTo: string, actor = 'operator', reason?: string): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/assign`,
       {
@@ -532,7 +532,7 @@ class ApiClient {
     )
   }
 
-  addTaskComment(space: string, id: string, body: string, actor = 'boss'): Promise<Task> {
+  addTaskComment(space: string, id: string, body: string, actor = 'operator'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(id)}/comment`,
       {
@@ -549,7 +549,7 @@ class ApiClient {
     priority?: TaskPriority
     assigned_to?: string
     labels?: string[]
-  }, actor = 'boss'): Promise<Task> {
+  }, actor = 'operator'): Promise<Task> {
     return this.request<Task>(
       `/spaces/${encodeURIComponent(space)}/tasks/${encodeURIComponent(parentId)}/subtasks`,
       {
