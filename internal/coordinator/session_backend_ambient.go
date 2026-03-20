@@ -339,7 +339,9 @@ func (b *AmbientSessionBackend) IsIdle(sessionID string) bool {
 	defer cancel()
 
 	status, _ := b.GetStatus(ctx, sessionID)
-	return status == SessionStatusIdle
+	// Ambient sessions are always ready to accept input via /agui/run when
+	// running, so treat "running" as idle for nudge delivery purposes.
+	return status == SessionStatusIdle || status == SessionStatusRunning
 }
 
 // CaptureOutput fetches session transcript via the backend /export endpoint.

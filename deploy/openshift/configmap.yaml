@@ -11,7 +11,7 @@ data:
   AMBIENT_API_URL: https://backend-route-ambient-code.apps.okd1.timslab
   AMBIENT_PROJECT: agent-boss-ambient
   AMBIENT_SKIP_TLS_VERIFY: "true"
-  AMBIENT_WORKFLOW_URL: https://github.com/tiwillia/jsell-agent-boss
-  AMBIENT_WORKFLOW_BRANCH: worktree-feature/sessionInterface-ambient
+  AMBIENT_WORKFLOW_URL: https://github.com/jsell-rh/agent-boss
+  AMBIENT_WORKFLOW_BRANCH: main
   AMBIENT_WORKFLOW_PATH: ambient-workflow
   COORDINATOR_EXTERNAL_URL: https://jsell-agent-boss.apps.okd1.timslab

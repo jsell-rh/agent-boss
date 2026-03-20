@@ -2,10 +2,7 @@
   "mcpServers": {
     "boss-mcp": {
       "type": "http",
-      "url": "${BOSS_URL}/mcp",
-      "headers": {
-        "Authorization": "Bearer ${BOSS_API_TOKEN}"
-      }
+      "url": "${ODIS_URL}/mcp"
     }
   }
 }

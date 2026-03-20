@@ -325,15 +325,23 @@ func TestAmbientGetStatus404(t *testing.T) {
 func TestAmbientIsIdle(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(testSessionsPath+"/s1", func(w http.ResponseWriter, r *http.Request) {
-		// Running phase -> SessionStatusRunning (no longer idle without /runs)
 		json.NewEncoder(w).Encode(backendCR("s1", "Running", "", nil))
+	})
+	mux.HandleFunc(testSessionsPath+"/s2", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(backendCR("s2", "Pending", "", nil))
 	})
 	b, ts := newTestAmbientBackend(t, mux)
 	defer ts.Close()
 
-	// Without /runs endpoint, running sessions are not considered idle.
-	if b.IsIdle("s1") {
-		t.Fatal("expected not idle for running session")
+	// Running ambient sessions are always ready to accept input via /agui/run,
+	// so IsIdle returns true to enable nudge delivery.
+	if !b.IsIdle("s1") {
+		t.Fatal("expected idle for running ambient session")
+	}
+
+	// Pending sessions are not idle.
+	if b.IsIdle("s2") {
+		t.Fatal("expected not idle for pending session")
 	}
 }
 
