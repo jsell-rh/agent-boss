@@ -641,6 +641,8 @@ func (s *Server) restartAgentService(spaceName, agentName string, req spawnReque
 			SessionID: newSession,
 			Command:   command,
 			BackendOpts: TmuxCreateOpts{
+				// Width/Height intentionally omitted — session_backend_tmux.go applies
+				// the same 220×50 defaults as the spawn path when these are zero.
 				WorkDir:              restartWorkDir,
 				MCPServerURL:         s.localURL(),
 				MCPServerName:        s.mcpServerName(),
@@ -869,6 +871,8 @@ func (s *Server) handleRestartAll(w http.ResponseWriter, r *http.Request, spaceN
 				SessionID: newSession,
 				Command:   command,
 				BackendOpts: TmuxCreateOpts{
+					// Width/Height intentionally omitted — session_backend_tmux.go applies
+					// the same 220×50 defaults as the spawn path when these are zero.
 					WorkDir:              workDir,
 					MCPServerURL:         s.localURL(),
 					MCPServerName:        s.mcpServerName(),
