@@ -75,6 +75,7 @@ func (r *Repository) UpsertAgent(a *Agent) error {
 			"documents", "next_steps", "free_text", "session_id", "backend_type", "repo_url",
 			"parent", "children", "role", "inferred_status", "stale",
 			"registration", "last_heartbeat", "heartbeat_stale", "updated_at",
+			"config", "agent_type", "mood",
 		}),
 	}).Create(a).Error
 }

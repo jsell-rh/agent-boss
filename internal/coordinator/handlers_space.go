@@ -180,6 +180,8 @@ func (s *Server) handleSpaceRoute(w http.ResponseWriter, r *http.Request) {
 				s.handleAgentConfig(w, r, spaceName, agentName)
 			case "duplicate":
 				s.handleAgentDuplicate(w, r, spaceName, agentName)
+			case "documents":
+				s.handleAgentDocumentsList(w, r, spaceName, agentName)
 			default:
 				// Handle document path: /spaces/{space}/agent/{agent}/{slug}
 				s.handleAgentDocument(w, r, spaceName, agentName, action)
@@ -368,7 +370,7 @@ func agentUpdateToPublic(st *AgentUpdate) *agentStatusPublic {
 		Worktree: st.Worktree, PR: st.PR, Phase: st.Phase, Mood: st.Mood,
 		TestCount: st.TestCount, Items: st.Items, Sections: st.Sections,
 		Questions: st.Questions, Blockers: st.Blockers, NextSteps: st.NextSteps,
-		FreeText: st.FreeText, Documents: st.Documents, SessionID: st.SessionID,
+		FreeText: st.FreeText, SessionID: st.SessionID,
 		BackendType: st.BackendType, RepoURL: st.RepoURL, UpdatedAt: st.UpdatedAt,
 		Parent: st.Parent, Children: st.Children, Role: st.Role,
 		InferredStatus: st.InferredStatus, Stale: st.Stale,

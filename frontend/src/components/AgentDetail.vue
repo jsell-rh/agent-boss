@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentUpdate, AgentMessage, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task, AgentConfig, Persona } from '@/types'
+import type { AgentUpdate, AgentMessage, AgentDocument, SessionAgentStatus, SessionDisplayState, IntrospectResponse, Task, AgentConfig, Persona } from '@/types'
 import { SESSION_STATUS_DISPLAY, getSessionDisplayState } from '@/types'
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
@@ -434,6 +434,13 @@ watch(() => props.agentName, () => {
   configEditMode.value = false
   loadPersonaData()
 })
+
+const agentDocuments = ref<AgentDocument[]>([])
+async function loadAgentDocuments() {
+  agentDocuments.value = await api.fetchAgentDocuments(props.spaceName, props.agentName)
+}
+onMounted(loadAgentDocuments)
+watch(() => props.agentName, loadAgentDocuments)
 </script>
 
 <template>
@@ -1109,11 +1116,11 @@ watch(() => props.agentName, () => {
       </section>
 
       <!-- Documents -->
-      <section v-if="agent.documents?.length" aria-label="Agent documents">
+      <section v-if="agentDocuments.length" aria-label="Agent documents">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Documents</h2>
         <nav class="space-y-1" aria-label="Document links">
           <a
-            v-for="doc in agent.documents"
+            v-for="doc in agentDocuments"
             :key="doc.slug"
             :href="`/spaces/${spaceName}/agent/${agentName}/${doc.slug}`"
             target="_blank"

@@ -15,6 +15,7 @@ import type {
   Persona,
   PersonaVersion,
   PersonaAgentInfo,
+  AgentDocument,
 } from '@/types'
 
 /**
@@ -199,6 +200,12 @@ class ApiClient {
   fetchAgent(space: string, agent: string): Promise<AgentUpdate> {
     return this.request<AgentUpdate>(
       `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}`,
+    )
+  }
+
+  fetchAgentDocuments(space: string, agent: string): Promise<AgentDocument[]> {
+    return this.request<AgentDocument[]>(
+      `/spaces/${encodeURIComponent(space)}/agent/${encodeURIComponent(agent)}/documents`,
     )
   }
 

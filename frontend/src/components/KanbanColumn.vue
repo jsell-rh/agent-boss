@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { Task, TaskStatus } from '@/types'
 import { TASK_STATUS_LABELS } from '@/types'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import TaskCard from './TaskCard.vue'
-import { LayoutList, Plus } from 'lucide-vue-next'
+import { LayoutList, Plus, ChevronDown, ChevronUp } from 'lucide-vue-next'
+
+const DONE_COLLAPSE_THRESHOLD = 8
 
 const props = defineProps<{
   status: TaskStatus
@@ -12,12 +14,33 @@ const props = defineProps<{
   draggingTaskId?: string | null
 }>()
 
-// For each top-level task in this column, look up its subtasks from allTasks.
+// Collapse done column by default when it has many tasks to avoid 700+ DOM nodes.
+const doneExpanded = ref(false)
+const visibleTasks = computed(() => {
+  if (props.status !== 'done' || doneExpanded.value || props.tasks.length <= DONE_COLLAPSE_THRESHOLD) {
+    return props.tasks
+  }
+  return props.tasks.slice(0, DONE_COLLAPSE_THRESHOLD)
+})
+const hiddenDoneCount = computed(() =>
+  props.status === 'done' && !doneExpanded.value ? Math.max(0, props.tasks.length - DONE_COLLAPSE_THRESHOLD) : 0
+)
+
+// Memoized subtask lookup — avoids allocating a new array on every render pass.
+const subtaskMap = computed((): Map<string, Task[]> => {
+  const map = new Map<string, Task[]>()
+  if (!props.allTasks) return map
+  for (const task of props.tasks) {
+    if (!task.subtasks?.length) continue
+    const subs = task.subtasks
+      .map(id => props.allTasks!.find(t => t.id === id))
+      .filter((t): t is Task => t !== undefined)
+    if (subs.length) map.set(task.id, subs)
+  }
+  return map
+})
 function subtasksOf(task: Task): Task[] {
-  if (!props.allTasks || !task.subtasks?.length) return []
-  return task.subtasks
-    .map(id => props.allTasks!.find(t => t.id === id))
-    .filter((t): t is Task => t !== undefined)
+  return subtaskMap.value.get(task.id) ?? []
 }
 
 const emit = defineEmits<{
@@ -91,7 +114,7 @@ const statusHeaderClass: Record<TaskStatus, string> = {
     <!-- Cards -->
     <div class="flex flex-col gap-2 p-2 flex-1 min-h-24 overflow-y-auto">
       <TransitionGroup name="kanban-card" tag="div" class="flex flex-col gap-2">
-        <div v-for="task in tasks" :key="task.id" class="flex flex-col gap-1">
+        <div v-for="task in visibleTasks" :key="task.id" class="flex flex-col gap-1">
           <TaskCard
             :task="task"
             :dragging="draggingTaskId === task.id"
@@ -112,6 +135,16 @@ const statusHeaderClass: Record<TaskStatus, string> = {
           </div>
         </div>
       </TransitionGroup>
+      <!-- Done column expand/collapse toggle -->
+      <button
+        v-if="hiddenDoneCount > 0 || (status === 'done' && doneExpanded && tasks.length > DONE_COLLAPSE_THRESHOLD)"
+        class="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+        @click="doneExpanded = !doneExpanded"
+      >
+        <ChevronDown v-if="!doneExpanded" class="size-3" />
+        <ChevronUp v-else class="size-3" />
+        {{ doneExpanded ? 'Show fewer' : `Show ${hiddenDoneCount} more` }}
+      </button>
       <div
         v-if="tasks.length === 0"
         class="flex-1 flex flex-col items-center justify-center py-8 text-center gap-2 cursor-pointer select-none rounded-md hover:bg-muted/60 transition-colors"
