@@ -449,7 +449,7 @@ watch(() => props.agentName, loadAgentDocuments)
       <!-- Header -->
       <div class="flex items-start justify-between gap-4 flex-wrap">
         <div class="space-y-1">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 flex-wrap">
             <AgentAvatar :name="agentName" :size="36" />
             <h1 class="text-2xl font-semibold tracking-tight">{{ agentName }}</h1>
             <StatusBadge :status="agent.status" />
@@ -549,7 +549,7 @@ watch(() => props.agentName, loadAgentDocuments)
         <!-- Action buttons: two rows for clarity -->
         <div class="flex flex-col items-end gap-2 shrink-0">
           <!-- Row 1: Primary actions -->
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <Tooltip>
               <TooltipTrigger as-child>
                 <Button
@@ -587,7 +587,7 @@ watch(() => props.agentName, loadAgentDocuments)
           </div>
 
           <!-- Row 2: Session / lifecycle controls -->
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <!-- Terminal status -->
             <Tooltip>
               <TooltipTrigger as-child>
@@ -623,7 +623,7 @@ watch(() => props.agentName, loadAgentDocuments)
             </Tooltip>
 
             <!-- Lifecycle actions grouped -->
-            <div class="flex items-center rounded-md border border-border bg-muted/20 p-0.5 gap-0.5">
+            <div class="flex items-center flex-wrap rounded-md border border-border bg-muted/20 p-0.5 gap-0.5">
               <Tooltip>
                 <TooltipTrigger as-child>
                   <Button
