@@ -16,7 +16,7 @@ install-hooks:
 
 build:
 	cd frontend && npm install && npm run build
-	CGO_ENABLED=0 go build -o boss ./cmd/boss/
+	CGO_ENABLED=0 go build -o odis ./cmd/boss/
 
 install:
 	cd frontend && npm install && npm run build
@@ -46,7 +46,7 @@ rollout: build-image push-image
 # Set DEV_PORT explicitly or let make auto-detect the first free port >= 9000.
 
 DEV_DATA   := ./data-dev
-DEV_BIN    := $(DEV_DATA)/boss
+DEV_BIN    := $(DEV_DATA)/odis
 DEV_LOG    := $(DEV_DATA)/boss.log
 DEV_PID    := $(DEV_DATA)/boss.pid
 DEV_PORT_F := $(DEV_DATA)/boss.port
