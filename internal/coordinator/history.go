@@ -12,7 +12,12 @@ import (
 )
 
 // snapKey is the cache key for write-deduplication.
-type snapKey struct{ status AgentStatus; stale bool }
+// All three fields must be tracked: a change in any one triggers a new snapshot row.
+type snapKey struct {
+	status         AgentStatus
+	inferredStatus string
+	stale          bool
+}
 
 // spaceHistoryPath returns the path to the NDJSON history file for a space.
 func (s *Server) spaceHistoryPath(spaceName string) string {
@@ -27,7 +32,7 @@ func (s *Server) spaceHistoryPath(spaceName string) string {
 func (s *Server) appendSnapshot(snapshot StatusSnapshot) error {
 	// Skip write if status+stale is unchanged (most agent heartbeats are idle→idle).
 	cacheKey := snapshot.Space + "/" + snapshot.AgentName
-	newVal := snapKey{status: snapshot.Status, stale: snapshot.Stale}
+	newVal := snapKey{status: snapshot.Status, inferredStatus: snapshot.InferredStatus, stale: snapshot.Stale}
 	if prev, ok := s.snapCache.Load(cacheKey); ok && prev.(snapKey) == newVal {
 		return nil
 	}
