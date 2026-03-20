@@ -524,6 +524,35 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 	}
 }
 
+// handleAgentDocumentsList serves GET /spaces/{space}/agent/{name}/documents.
+// Returns the agent's document list on-demand so the default space GET can omit
+// the Documents[] array (which can be 20KB+ per agent across 5+ agents).
+func (s *Server) handleAgentDocumentsList(w http.ResponseWriter, r *http.Request, spaceName, agentName string) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ks, ok := s.getSpace(spaceName)
+	if !ok {
+		writeJSONError(w, fmt.Sprintf("space %q not found", spaceName), http.StatusNotFound)
+		return
+	}
+	s.mu.RLock()
+	canonical := resolveAgentName(ks, agentName)
+	agent, exists := ks.agentStatusOk(canonical)
+	s.mu.RUnlock()
+	if !exists {
+		writeJSONError(w, fmt.Sprintf("agent %q not found", agentName), http.StatusNotFound)
+		return
+	}
+	docs := agent.Documents
+	if docs == nil {
+		docs = []AgentDocument{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(docs)
+}
+
 func (s *Server) handleAgentDocument(w http.ResponseWriter, r *http.Request, spaceName, agentName, documentSlug string) {
 	agentName = strings.TrimRight(agentName, "/")
 
