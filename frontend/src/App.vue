@@ -870,7 +870,9 @@ function setupSSE() {
       next.delete(data.agent)
       spawnedAgents.value = next
     }, 600)
-    // Schedule a full reload to pick up the real agent record from the backend
+    // Fast reload picks up config (work_dir, model) — backend persists before broadcasting.
+    // Second reload at 2s catches session_id / backend-type once tmux finishes starting.
+    scheduleSpaceReload(data.space, 300)
     scheduleSpaceReload(data.space, 2000)
     scheduleSpacesReload(500)
     playAgentSpawn(data.agent)
