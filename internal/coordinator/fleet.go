@@ -246,8 +246,9 @@ func ValidateFleetCommand(cmd string) error {
 }
 
 const (
-	fleetMaxBytes  = 1 << 20  // 1 MB
-	fleetMaxAgents = 100
+	fleetMaxBytes     = 1 << 20      // 1 MB total file size
+	fleetMaxAgents    = 100
+	fleetMaxFieldBytes = 64 * 1024   // 64 KB per prompt field
 )
 
 // ValidateFleetSize checks file size and agent count against server limits.
@@ -258,6 +259,27 @@ func ValidateFleetSize(data []byte, agentCount int) error {
 	}
 	if agentCount > fleetMaxAgents {
 		return fmt.Errorf("fleet file exceeds 100-agent limit (%d agents)", agentCount)
+	}
+	return nil
+}
+
+// ValidateFleetFieldSizes checks that individual prompt fields do not exceed
+// the 64 KB per-field cap. Oversized prompts are a persona-injection risk:
+// a malicious fleet file could use --yes to silently apply large, attacker-
+// controlled instructions to every agent in the space.
+func ValidateFleetFieldSizes(ff *FleetFile) error {
+	if len(ff.Space.SharedContracts) > fleetMaxFieldBytes {
+		return fmt.Errorf("space.shared_contracts exceeds 64 KB limit (%d bytes)", len(ff.Space.SharedContracts))
+	}
+	for id, p := range ff.Personas {
+		if len(p.Prompt) > fleetMaxFieldBytes {
+			return fmt.Errorf("persona %q: prompt exceeds 64 KB limit (%d bytes)", id, len(p.Prompt))
+		}
+	}
+	for name, a := range ff.Agents {
+		if len(a.InitialPrompt) > fleetMaxFieldBytes {
+			return fmt.Errorf("agent %q: initial_prompt exceeds 64 KB limit (%d bytes)", name, len(a.InitialPrompt))
+		}
 	}
 	return nil
 }
@@ -414,6 +436,10 @@ func ParseAndValidateFleetFile(data []byte) (*FleetFile, error) {
 	}
 
 	if err := ValidateFleetSize(data, len(ff.Agents)); err != nil {
+		return nil, err
+	}
+
+	if err := ValidateFleetFieldSizes(&ff); err != nil {
 		return nil, err
 	}
 

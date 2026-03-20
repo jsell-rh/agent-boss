@@ -167,6 +167,13 @@ Environment:
 		changedAgents = fleetComputeChangedAgents(client, ff, order)
 	}
 
+	// Always warn when shared_contracts is set — it injects into every agent.
+	if ff.Space.SharedContracts != "" {
+		fmt.Println("WARNING: shared_contracts is set — will be injected into ALL agents in this space.")
+		fmt.Println("         Review the content before proceeding.")
+		fmt.Println()
+	}
+
 	if !*yes {
 		fmt.Printf("Import fleet into space %q?\n", targetSpace)
 		fmt.Printf("  %d persona(s)  %d agent(s)  order: %s\n",
@@ -220,6 +227,15 @@ Environment:
 // When prune is true it also lists agents in the space that would be deleted.
 func fleetDryRun(client *coordinator.Client, ff *coordinator.FleetFile, spaceName string, order []string, prune bool) {
 	fmt.Printf("=== dry-run: import into %q ===\n\n", spaceName)
+
+	// Prominent warning: shared_contracts is injected into every agent's ignition prompt.
+	if ff.Space.SharedContracts != "" {
+		fmt.Println("  ⚠  HIGH IMPACT — shared_contracts is set.")
+		fmt.Println("     This content will be injected into EVERY agent's ignition prompt.")
+		fmt.Println("     Review it carefully before applying.")
+		fmt.Println()
+	}
+
 	anyChange := false
 
 	if len(ff.Personas) > 0 {
