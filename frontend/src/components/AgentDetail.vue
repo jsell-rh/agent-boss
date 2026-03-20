@@ -1209,9 +1209,7 @@ watch(() => props.agentName, () => {
               <p v-if="tmuxStatus.tool_name" class="text-xs text-muted-foreground font-text mb-0.5">
                 Tool: <span class="font-mono">{{ tmuxStatus.tool_name }}</span>
               </p>
-              <p v-if="tmuxStatus.prompt_text" class="text-xs text-muted-foreground font-text mb-3 line-clamp-3">
-                {{ tmuxStatus.prompt_text }}
-              </p>
+              <pre v-if="tmuxStatus.prompt_text" class="text-xs text-muted-foreground font-mono mb-3 whitespace-pre-wrap break-all max-h-40 overflow-y-auto bg-muted/50 rounded px-1.5 py-1">{{ tmuxStatus.prompt_text }}</pre>
               <div class="flex gap-2">
                 <Tooltip>
                   <TooltipTrigger as-child>
