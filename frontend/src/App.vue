@@ -228,7 +228,7 @@ const showSettings = computed(() => false)
 const pendingDecisionCount = computed(() => {
   if (!currentSpace.value) return 0
   const operatorAgent = Object.values(currentSpace.value.agents).find((a: any) => a.agent_type === 'human')
-  return (operatorAgent as any)?.unread_count ?? (currentSpace.value.agents['operator'] as any)?.unread_count ?? (currentSpace.value.agents['boss'] as any)?.unread_count ?? 0
+  return (operatorAgent as any)?.unread_count ?? (currentSpace.value.agents['operator'] as any)?.unread_count ?? 0
 })
 
 const selectedAgentData = computed<AgentUpdate | null>(() => {
@@ -708,7 +708,7 @@ async function handleReplyToQuestion(agentName: string, questionIndex: number, q
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
-    await api.sendMessage(selectedSpace.value, agentName, `Re: ${questionText}\n\n${replyText}`, 'Boss')
+    await api.sendMessage(selectedSpace.value, agentName, `Re: ${questionText}\n\n${replyText}`, 'operator')
     // 2. Dismiss the question
     await api.dismissItem(selectedSpace.value, agentName, questionIndex, 'question')
     // 3. Nudge the agent to trigger a check-in so they read the message
@@ -729,7 +729,7 @@ async function handleReplyToBlocker(agentName: string, blockerIndex: number, blo
   if (!selectedSpace.value) return
   try {
     // 1. Send as persistent message so agent sees it on next check-in
-    await api.sendMessage(selectedSpace.value, agentName, `Re: [Blocker] ${blockerText}\n\n${replyText}`, 'Boss')
+    await api.sendMessage(selectedSpace.value, agentName, `Re: [Blocker] ${blockerText}\n\n${replyText}`, 'operator')
     // 2. Dismiss the blocker
     await api.dismissItem(selectedSpace.value, agentName, blockerIndex, 'blocker')
     // 3. Nudge the agent to trigger a check-in so they read the message

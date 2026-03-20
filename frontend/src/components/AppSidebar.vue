@@ -221,7 +221,7 @@ function spaceBossUnreadCount(space: SpaceSummary): number {
   if (space.name === props.selectedSpace && props.currentSpace) {
     const agents = props.currentSpace.agents
     const operatorAgent = Object.values(agents).find((a: any) => a.agent_type === 'human')
-    return (operatorAgent as any)?.unread_count ?? (agents['operator'] as any)?.unread_count ?? (agents['boss'] as any)?.unread_count ?? 0
+    return (operatorAgent as any)?.unread_count ?? (agents['operator'] as any)?.unread_count ?? 0
   }
   return space.boss_unread_count ?? 0
 }
@@ -253,7 +253,7 @@ const operatorUnreadCount = computed(() => {
   // Post-PR #195 the space response strips message bodies but includes unread_count.
   // Fall back to iterating messages for older server payloads that still embed them.
   const agents = props.currentSpace.agents
-  const operatorAgent = Object.values(agents).find((a: any) => a.agent_type === 'human') ?? agents['operator'] ?? agents['boss']
+  const operatorAgent = Object.values(agents).find((a: any) => a.agent_type === 'human') ?? agents['operator']
   if (!operatorAgent) return 0
   if (typeof operatorAgent.unread_count === 'number') return operatorAgent.unread_count
   // Legacy fallback: count unread messages from the embedded messages array
@@ -309,7 +309,7 @@ defineExpose({ openNewSpaceDialog })
       </div>
       <div class="flex items-center gap-1.5 mt-1 text-xs text-amber-600 dark:text-amber-400">
         <Crown class="size-3 shrink-0" aria-hidden="true" />
-        <span class="font-medium">You (Boss)</span>
+        <span class="font-medium">You (Operator)</span>
       </div>
     </SidebarHeader>
 

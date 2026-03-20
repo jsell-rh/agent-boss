@@ -1292,7 +1292,7 @@ watch(() => props.agentName, loadAgentDocuments)
           <Tooltip>
             <TooltipTrigger as-child>
               <h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-default">
-                Boss ↔ {{ agentName }} Messages
+                Operator ↔ {{ agentName }} Messages
               </h2>
             </TooltipTrigger>
             <TooltipContent>Direct channel between you (operator) and {{ agentName }}. Messages sent here go directly to the agent's inbox.</TooltipContent>
