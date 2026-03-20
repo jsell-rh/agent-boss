@@ -102,8 +102,8 @@ func (Agent) TableName() string { return "agents" }
 // AgentMessage represents a message delivered to an agent.
 type AgentMessage struct {
 	ID        string    `gorm:"primarykey"`
-	SpaceName string    `gorm:"index;not null"`
-	AgentName string    `gorm:"index;not null"`
+	SpaceName string    `gorm:"not null;index:idx_msg_space_agent,priority:1"`
+	AgentName string    `gorm:"not null;index:idx_msg_space_agent,priority:2"`
 	Message   string    `gorm:"type:text;not null"`
 	Sender    string    `gorm:"not null"`
 	Priority  string    `gorm:"default:'info'"`
@@ -117,8 +117,8 @@ func (AgentMessage) TableName() string { return "agent_messages" }
 // AgentNotification represents a typed notification for an agent.
 type AgentNotification struct {
 	ID        string    `gorm:"primarykey"`
-	SpaceName string    `gorm:"index;not null"`
-	AgentName string    `gorm:"index;not null"`
+	SpaceName string    `gorm:"not null;index:idx_notif_space_agent,priority:1"`
+	AgentName string    `gorm:"not null;index:idx_notif_space_agent,priority:2"`
 	Type      string    `gorm:"not null"`
 	Title     string    `gorm:"not null"`
 	Body      string    `gorm:"type:text"`
@@ -135,12 +135,12 @@ func (AgentNotification) TableName() string { return "agent_notifications" }
 // primary key (space_name, id) prevents cross-space collisions in the DB.
 type Task struct {
 	ID        string `gorm:"primaryKey;not null"`
-	SpaceName string `gorm:"primaryKey;not null;index"`
+	SpaceName string `gorm:"primaryKey;not null;index:idx_task_space_status,priority:1;index:idx_task_space_assigned,priority:1"`
 	Title        string    `gorm:"not null"`
 	Description  string    `gorm:"type:text"`
-	Status       string    `gorm:"not null;default:'backlog'"`
+	Status       string    `gorm:"not null;default:'backlog';index:idx_task_space_status,priority:2"`
 	Priority     string    `gorm:"default:'medium'"`
-	AssignedTo   string
+	AssignedTo   string    `gorm:"index:idx_task_space_assigned,priority:2"`
 	CreatedBy    string    `gorm:"not null"`
 	Labels       string    `gorm:"type:text"` // JSON array
 	ParentTask   string    `gorm:"index"`
@@ -183,12 +183,12 @@ func (TaskEvent) TableName() string { return "task_events" }
 // StatusSnapshot records a point-in-time agent status for history/Gantt.
 type StatusSnapshot struct {
 	ID             uint      `gorm:"primarykey;autoIncrement"`
-	AgentName      string    `gorm:"index;not null"`
-	SpaceName      string    `gorm:"index;not null"`
+	AgentName      string    `gorm:"not null;index:idx_snap_space_agent_ts,priority:2"`
+	SpaceName      string    `gorm:"not null;index:idx_snap_space_agent_ts,priority:1"`
 	Status         string    `gorm:"not null"`
 	InferredStatus string
 	Stale          bool
-	Timestamp      time.Time `gorm:"index"`
+	Timestamp      time.Time `gorm:"index:idx_snap_space_agent_ts,priority:3"`
 }
 
 func (StatusSnapshot) TableName() string { return "status_snapshots" }
