@@ -51,9 +51,15 @@ interface Conversation {
   lastMessageAt: string
 }
 
+// Module-level TTL cache — survives ConversationsView unmount/remount (tab switches).
+// Eliminates the 300-500 KB re-fetch that happened on every Conversations tab visit.
+type MessageBucket = { messages: import('@/types').AgentMessage[]; has_more: boolean }
+const _msgCache: Record<string, { data: Record<string, MessageBucket>; fetchedAt: number }> = {}
+const MSG_CACHE_TTL = 60_000 // 60 s
+
 // Messages fetched from /spaces/:space/messages — decoupled from the space JSON
 // (which no longer embeds message histories after the perf fix in PR #195).
-const spaceMessages = ref<Record<string, { messages: import('@/types').AgentMessage[]; has_more: boolean }>>({})
+const spaceMessages = ref<Record<string, MessageBucket>>({})
 const messagesLoading = ref(false)
 const loadingEarlier = ref(false)
 // Tracks whether any agent in the current conversation has more messages to load.
@@ -68,12 +74,21 @@ const MESSAGE_LIMIT = 50
 let _loadMessagesCtrl: AbortController | null = null
 
 async function loadSpaceMessages() {
+  const spaceName = props.space.name
+  // Serve from cache if fresh — avoids re-fetch on tab switch back to Conversations.
+  const cached = _msgCache[spaceName]
+  if (cached && Date.now() - cached.fetchedAt < MSG_CACHE_TTL) {
+    spaceMessages.value = cached.data
+    return
+  }
   _loadMessagesCtrl?.abort()
   _loadMessagesCtrl = new AbortController()
   const { signal } = _loadMessagesCtrl
   messagesLoading.value = true
   try {
-    spaceMessages.value = await api.fetchSpaceMessages(props.space.name, { limit: MESSAGE_LIMIT, signal })
+    const data = await api.fetchSpaceMessages(spaceName, { limit: MESSAGE_LIMIT, signal })
+    spaceMessages.value = data
+    _msgCache[spaceName] = { data, fetchedAt: Date.now() }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') return  // superseded by newer request
     // non-fatal: falls back to agentData.messages (empty after PR #195)
