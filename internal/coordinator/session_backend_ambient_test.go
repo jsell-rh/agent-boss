@@ -143,14 +143,14 @@ func TestAmbientCreateSession(t *testing.T) {
 		if !ok {
 			t.Error("missing labels")
 		} else {
-			if labels["managed-by"] != "agent-boss" {
+			if labels["managed-by"] != "odispatch" {
 				t.Errorf("unexpected managed-by label: %v", labels["managed-by"])
 			}
-			if labels["boss-agent"] != "test-agent" {
-				t.Errorf("unexpected boss-agent label: %v", labels["boss-agent"])
+			if labels["odis-agent"] != "test-agent" {
+				t.Errorf("unexpected odis-agent label: %v", labels["odis-agent"])
 			}
-			if labels["boss-space"] != "test-space" {
-				t.Errorf("unexpected boss-space label: %v", labels["boss-space"])
+			if labels["odis-space"] != "test-space" {
+				t.Errorf("unexpected odis-space label: %v", labels["odis-space"])
 			}
 		}
 
@@ -545,9 +545,9 @@ func TestAmbientDiscoverSessions(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(backendSessionList{Items: []backendSessionCR{
-			backendCR("s1", "Running", "agent-a", map[string]string{"boss-agent": "agent-a", "managed-by": "agent-boss"}),
-			backendCR("s2", "Completed", "agent-b", map[string]string{"boss-agent": "agent-b"}),
-			backendCR("s3", "Pending", "agent-c", map[string]string{"boss-agent": "agent-c"}),
+			backendCR("s1", "Running", "agent-a", map[string]string{"odis-agent": "agent-a", "managed-by": "odispatch"}),
+			backendCR("s2", "Completed", "agent-b", map[string]string{"odis-agent": "agent-b"}),
+			backendCR("s3", "Pending", "agent-c", map[string]string{"boss-agent": "agent-c"}), // legacy label
 			backendCR("s4", "Running", "", nil),
 		}})
 	})
@@ -574,7 +574,7 @@ func TestAmbientDiscoverSessions(t *testing.T) {
 func TestAmbientDiscoverSessionsFallbackDisplayName(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(testSessionsPath, func(w http.ResponseWriter, r *http.Request) {
-		// Session without boss-agent label but with displayName.
+		// Session without odis-agent label but with displayName.
 		json.NewEncoder(w).Encode(backendSessionList{Items: []backendSessionCR{
 			backendCR("s1", "Running", "agent-x", nil),
 		}})

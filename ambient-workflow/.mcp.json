@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "boss-mcp": {
+    "odis-mcp": {
       "type": "http",
       "url": "${ODIS_URL}/mcp"
     }

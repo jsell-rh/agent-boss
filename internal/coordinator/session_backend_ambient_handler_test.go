@@ -244,14 +244,14 @@ func TestHandlerAmbientSpawn(t *testing.T) {
 	if !ok {
 		t.Fatalf("session %q not found in mock", sessionID)
 	}
-	if cr.Metadata.Labels["managed-by"] != "agent-boss" {
-		t.Errorf("expected managed-by=agent-boss, got %q", cr.Metadata.Labels["managed-by"])
+	if cr.Metadata.Labels["managed-by"] != "odispatch" {
+		t.Errorf("expected managed-by=odispatch, got %q", cr.Metadata.Labels["managed-by"])
 	}
-	if cr.Metadata.Labels["boss-agent"] != "worker1" {
-		t.Errorf("expected boss-agent=worker1, got %q", cr.Metadata.Labels["boss-agent"])
+	if cr.Metadata.Labels["odis-agent"] != "worker1" {
+		t.Errorf("expected odis-agent=worker1, got %q", cr.Metadata.Labels["odis-agent"])
 	}
-	if cr.Metadata.Labels["boss-space"] != "e2e" {
-		t.Errorf("expected boss-space=e2e, got %q", cr.Metadata.Labels["boss-space"])
+	if cr.Metadata.Labels["odis-space"] != "e2e" {
+		t.Errorf("expected odis-space=e2e, got %q", cr.Metadata.Labels["odis-space"])
 	}
 	if cr.Spec.DisplayName != "worker1" {
 		t.Errorf("expected displayName=worker1, got %q", cr.Spec.DisplayName)
@@ -354,8 +354,8 @@ func TestHandlerAmbientSpawnLabelSanitization(t *testing.T) {
 	if !ok {
 		t.Fatalf("session %q not found in mock", sessionID)
 	}
-	if cr.Metadata.Labels["boss-space"] != "has-spaces" {
-		t.Errorf("expected boss-space=has-spaces, got %q", cr.Metadata.Labels["boss-space"])
+	if cr.Metadata.Labels["odis-space"] != "has-spaces" {
+		t.Errorf("expected odis-space=has-spaces, got %q", cr.Metadata.Labels["odis-space"])
 	}
 }
 
@@ -614,10 +614,10 @@ func TestHandlerAmbientAutoDiscover(t *testing.T) {
 		"summary": "orphan1: working",
 	})
 
-	// Inject a session into the mock with boss-agent=orphan1 label.
+	// Inject a session into the mock with odis-agent=orphan1 label.
 	mock.mu.Lock()
 	mock.sessions["discovered-sess"] = backendCR("discovered-sess", "Running", "orphan1",
-		map[string]string{"boss-agent": "orphan1", "managed-by": "agent-boss"})
+		map[string]string{"odis-agent": "orphan1", "managed-by": "odispatch"})
 	mock.mu.Unlock()
 
 	// GET session-status triggers AutoDiscoverAll.

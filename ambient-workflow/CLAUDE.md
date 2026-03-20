@@ -1,4 +1,4 @@
-# Agent Boss — ACP Session Safety Rules
+# OpenDispatch — ACP Session Safety Rules
 
 - Do NOT commit directly to `main` — work on feature branches
 - Do NOT include secrets, tokens, or credentials in status updates or messages

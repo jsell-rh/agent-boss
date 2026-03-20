@@ -67,7 +67,7 @@ func (b *TmuxSessionBackend) CreateSession(ctx context.Context, opts SessionCrea
 		model = tmuxOpts.Model
 	}
 	if mcpServerName == "" {
-		mcpServerName = "boss-mcp"
+		mcpServerName = "odis-mcp"
 	}
 
 	// Append --dangerously-skip-permissions when global toggle is on.

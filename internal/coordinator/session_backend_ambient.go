@@ -48,7 +48,7 @@ type AmbientBackendConfig struct {
 	WorkflowURL        string // Git URL of workflow repo
 	WorkflowBranch     string // Branch (optional, defaults to main)
 	WorkflowPath       string // Path within repo to workflow dir
-	CoordinatorExternalURL string // e.g. "https://jsell-agent-boss.apps.okd1.timslab"
+	CoordinatorExternalURL string // e.g. "https://odispatch.apps.example.com"
 }
 
 // NewAmbientSessionBackend creates an AmbientSessionBackend from the given config.
@@ -169,12 +169,12 @@ func (b *AmbientSessionBackend) CreateSession(ctx context.Context, opts SessionC
 			wf = ao.Workflow
 		}
 		// Labels for session discovery and ownership tracking.
-		labels := map[string]string{"managed-by": "agent-boss"}
+		labels := map[string]string{"managed-by": "odispatch"}
 		if ao.SpaceName != "" {
-			labels["boss-space"] = sanitizeLabelValue(ao.SpaceName)
+			labels["odis-space"] = sanitizeLabelValue(ao.SpaceName)
 		}
 		if ao.DisplayName != "" {
-			labels["boss-agent"] = sanitizeLabelValue(ao.DisplayName)
+			labels["odis-agent"] = sanitizeLabelValue(ao.DisplayName)
 		}
 		body["labels"] = labels
 	} else if opts.SessionID != "" {
@@ -473,7 +473,11 @@ func (b *AmbientSessionBackend) DiscoverSessions() (map[string]string, error) {
 		}
 		// Prefer label-based matching, fall back to spec.displayName.
 		// Sessions without either are unmanaged and skipped.
-		name := cr.Metadata.Labels["boss-agent"]
+		// Check new label first, fall back to legacy label for backward compat.
+		name := cr.Metadata.Labels["odis-agent"]
+		if name == "" {
+			name = cr.Metadata.Labels["boss-agent"]
+		}
 		if name == "" {
 			name = cr.Spec.DisplayName
 		}

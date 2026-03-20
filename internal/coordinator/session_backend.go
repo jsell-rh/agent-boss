@@ -117,7 +117,7 @@ type TmuxCreateOpts struct {
 	Width                int    // terminal width (default 220)
 	Height               int    // terminal height (default 50)
 	MCPServerURL         string // if set, run "claude mcp add" before launching
-	MCPServerName        string // MCP server name (e.g. "boss-mcp", "boss-mcp-8889"); defaults to "boss-mcp"
+	MCPServerName        string // MCP server name (e.g. "odis-mcp", "odis-mcp-8889"); defaults to "odis-mcp"
 	AgentToken           string // bearer token embedded inline in --mcp-config JSON for MCP auth; never written to ~/.claude.json
 	AllowSkipPermissions bool   // if true, append --dangerously-skip-permissions to command
 	Model                string // model override e.g. "sonnet", "opus", "claude-sonnet-4-6"

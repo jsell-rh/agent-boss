@@ -1,13 +1,13 @@
-# Agent Boss Coordination Workflow
+# OpenDispatch Coordination Workflow
 
-ACP workflow that equips remote agent sessions with the commands and protocol needed to participate in the Agent Boss multi-agent coordination system.
+ACP workflow that equips remote agent sessions with the commands and protocol needed to participate in the OpenDispatch multi-agent coordination system.
 
 ## What This Provides
 
 When attached to an ACP session, this workflow:
 
 1. **Injects slash commands** (`/boss.plan`, `/boss.check`, `/boss.ignite`) that agents use to coordinate
-2. **Sets a system prompt** with the full Agent Boss protocol (golden rules, API reference, status format)
+2. **Sets a system prompt** with the full OpenDispatch protocol (golden rules, API reference, status format)
 3. **Provides behavioral guidelines** via `CLAUDE.md` for safe multi-agent operation
 
 ## Commands
@@ -24,14 +24,14 @@ These must be set on the ACP session for commands to work:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `BOSS_URL` | Coordinator API base URL | `https://jsell-agent-boss.apps.okd1.timslab` |
+| `ODIS_URL` | Coordinator API base URL | `https://odispatch.apps.example.com` |
 | `AGENT_NAME` | Agent identity | `ProtocolDev` |
 
 ## Usage with ACP
 
 ### Automatic (via backend config)
 
-When the Agent Boss coordinator is configured with `AMBIENT_WORKFLOW_*` environment variables, every agent session spawned through the ambient backend automatically gets this workflow attached. See the deployment configmap for details.
+When the OpenDispatch coordinator is configured with `AMBIENT_WORKFLOW_*` environment variables, every agent session spawned through the ambient backend automatically gets this workflow attached. See the deployment configmap for details.
 
 ### Manual (via ACP API)
 
@@ -39,12 +39,12 @@ When the Agent Boss coordinator is configured with `AMBIENT_WORKFLOW_*` environm
 {
   "task": "Your task prompt here",
   "activeWorkflow": {
-    "gitUrl": "https://github.com/ambient-code/jsell-agent-boss",
+    "gitUrl": "https://github.com/jsell-rh/agent-boss",
     "branch": "main",
     "path": "ambient-workflow"
   },
   "environmentVariables": {
-    "BOSS_URL": "https://jsell-agent-boss.apps.okd1.timslab",
+    "ODIS_URL": "https://odispatch.apps.example.com",
     "AGENT_NAME": "MyAgent"
   }
 }
@@ -61,6 +61,8 @@ ambient-workflow/
       boss.plan.md        # Factory plan creation
       boss.check.md       # Status sync procedure
       boss.ignite.md      # Agent bootstrap procedure
+    settings.json         # Pre-grants odis-mcp tool permissions
+  .mcp.json               # Registers odis-mcp MCP server
   CLAUDE.md               # Behavioral guidelines
   README.md               # This file
 ```
