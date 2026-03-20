@@ -214,11 +214,12 @@ func (b *AmbientSessionBackend) CreateSession(ctx context.Context, opts SessionC
 		}
 	}
 
-	// The Node.js MCP HTTP transport rejects self-signed certs by default.
 	// When TLS verification is skipped for the ambient backend, propagate
-	// this to runner pods so the SDK can connect to the coordinator.
+	// this to runner pods so the SDK can connect to the coordinator and
+	// the init container can clone repos from hosts with self-signed certs.
 	if b.skipTLSVerify {
 		envVars["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+		envVars["GIT_SSL_NO_VERIFY"] = "true"
 	}
 
 	if len(envVars) > 0 {
