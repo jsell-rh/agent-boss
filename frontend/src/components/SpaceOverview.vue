@@ -365,7 +365,7 @@ const showChecklist = computed(
 )
 const hasAgent = computed(() => agentCount.value > 0)
 const hasAgentWithWorkDir = computed(() =>
-  Object.values(props.space.agents ?? {}).some((a) => (a as any).work_dir)
+  Object.values(props.space.agents ?? {}).some((a) => (a as any).config?.work_dir)
 )
 const hasSpawnedSession = computed(() =>
   Object.values(props.space.agents ?? {}).some((a) => (a as any).session_id)
