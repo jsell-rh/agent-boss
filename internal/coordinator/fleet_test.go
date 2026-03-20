@@ -848,3 +848,48 @@ agents:
 		t.Errorf("repos[1] branch: want empty, got %q", ffRepos.Agents["worker"].Repos[1].Branch)
 	}
 }
+
+func TestValidateFleetFieldSizes(t *testing.T) {
+	big := strings.Repeat("x", fleetMaxFieldBytes+1)
+
+	// shared_contracts over limit.
+	ff := &FleetFile{Space: FleetSpace{SharedContracts: big}}
+	if err := ValidateFleetFieldSizes(ff); err == nil {
+		t.Error("oversized shared_contracts: want error, got nil")
+	}
+
+	// persona prompt over limit.
+	ff = &FleetFile{
+		Personas: map[string]FleetPersona{
+			"p1": {Name: "P1", Prompt: big},
+		},
+	}
+	if err := ValidateFleetFieldSizes(ff); err == nil {
+		t.Error("oversized persona prompt: want error, got nil")
+	}
+
+	// agent initial_prompt over limit.
+	ff = &FleetFile{
+		Agents: map[string]FleetAgent{
+			"a1": {Backend: "tmux", Command: "claude", InitialPrompt: big},
+		},
+	}
+	if err := ValidateFleetFieldSizes(ff); err == nil {
+		t.Error("oversized agent initial_prompt: want error, got nil")
+	}
+
+	// All fields at exactly the limit must pass.
+	atLimit := strings.Repeat("y", fleetMaxFieldBytes)
+	ff = &FleetFile{
+		Space: FleetSpace{SharedContracts: atLimit},
+		Personas: map[string]FleetPersona{
+			"p1": {Name: "P1", Prompt: atLimit},
+		},
+		Agents: map[string]FleetAgent{
+			"a1": {Backend: "tmux", Command: "claude", InitialPrompt: atLimit},
+		},
+	}
+	if err := ValidateFleetFieldSizes(ff); err != nil {
+		t.Errorf("at-limit fields should pass: %v", err)
+	}
+}
