@@ -179,6 +179,12 @@ const canInterrupt = computed(() => {
   return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
 })
 
+const canSendMessage = computed(() => {
+  // Can send messages when session exists and is not offline
+  // Messages sent when no session exists won't be delivered
+  return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
+})
+
 const hasQuestions = computed(() => (props.agent.questions?.length ?? 0) > 0)
 const hasBlockers = computed(() => (props.agent.blockers?.length ?? 0) > 0)
 const hasSections = computed(() => (props.agent.sections?.length ?? 0) > 0)
@@ -1330,6 +1336,7 @@ watch(() => props.agentName, loadAgentDocuments)
           <AgentMessages
             :messages="agentMessages"
             :agent-name="agentName"
+            :session-active="canSendMessage"
             class="min-h-0 flex-1"
             @send-message="(text: string) => emit('send-message', text, 'operator')"
           />
