@@ -754,7 +754,7 @@ func (s *Server) handleAgentIntrospect(w http.ResponseWriter, r *http.Request, s
 		Agent:         canonical,
 		Space:         spaceName,
 		SessionID:     sessionName,
-		TmuxAvailable: !isNonSessionAgent(agent) && backend.Available(),
+		TmuxAvailable: !isNonSessionAgent(agent),
 		Lines:         []string{},
 		CapturedAt:    time.Now().UTC(),
 	}
