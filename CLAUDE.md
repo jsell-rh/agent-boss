@@ -40,7 +40,7 @@ DATA_DIR=./data /tmp/odis serve
 cd frontend && npm run dev
 ```
 
-The Vite dev server proxies `/spaces`, `/events`, `/api`, `/raw`, and `/agent` to the Go backend. Open `http://localhost:5173` for the Vue app with hot-reload.
+The Vite dev server proxies `/spaces`, `/events`, `/api`, `/raw`, `/agent`, `/personas`, `/mcp`, and `/settings` to the Go backend. Open `http://localhost:5173` for the Vue app with hot-reload.
 
 To override the embedded frontend at runtime (e.g. for testing a fresh build):
 
@@ -134,6 +134,8 @@ data/
 | `ODIS_COMMAND_ALLOWLIST` | `claude,claude-dev` | Comma-separated allowlist of valid launch commands for `odis import`. Prevents arbitrary command injection via fleet YAML. |
 | `ODIS_WORK_DIR_PREFIX` | _(unset)_ | If set, all `work_dir` values in fleet YAML must start with this prefix. Restricts agent working directories to a safe subtree. |
 
+**Backward compatibility:** The server accepts legacy `BOSS_*` environment variables (`BOSS_URL`, `BOSS_API_TOKEN`, `BOSS_ALLOW_SKIP_PERMISSIONS`) and falls back to them if the corresponding `ODIS_*` variables are not set.
+
 ## MCP Tool Stack Composition
 
 Agents can be equipped with multiple MCP servers at spawn time via `--mcp-config`. The recommended tool stack for a dev instance:
@@ -144,6 +146,8 @@ Agents can be equipped with multiple MCP servers at spawn time via `--mcp-config
   "boss-observe": {"type":"stdio","command":"./bin/boss-observe","args":["--boss-url","http://localhost:8899"]}
 }}
 ```
+
+**Note:** The MCP server is named `odis-mcp` to align with the OpenDispatch rebrand. The `boss-observe` tool retains its legacy name and `--boss-url` flag for backward compatibility.
 
 Build `boss-observe` first:
 
@@ -168,16 +172,16 @@ When `boss-observe` is not registered in the current session, use the curl wrapp
 
 ```bash
 # Quick overview of all agents in a space
-bash scripts/boss-observe.sh check-all "Agent Boss Dev"
+bash scripts/boss-observe.sh check-all "My Space"
 
 # Get a specific agent's status + tmux output
-bash scripts/boss-observe.sh get-agent-status "Agent Boss Dev" arch2
+bash scripts/boss-observe.sh get-agent-status "My Space" worker1
 
 # Tail recent events
-bash scripts/boss-observe.sh get-recent-events "Agent Boss Dev" 20 agent_updated
+bash scripts/boss-observe.sh get-recent-events "My Space" 20 agent_updated
 
 # See what an agent's tmux pane is showing
-bash scripts/boss-observe.sh get-session-output agent-boss-dev-arch2 50
+bash scripts/boss-observe.sh get-session-output my-space-worker1 50
 ```
 
 ## Restart Procedure
@@ -263,10 +267,10 @@ bash scripts/dev-setup.sh
 This builds the boss binary and prints the MCP registration command:
 
 ```
-claude mcp add boss-dev --transport http http://localhost:<PORT>/mcp
+claude mcp add odis-dev --transport http http://localhost:<PORT>/mcp
 ```
 
-Register it once in your claude session to get `boss-dev` MCP tools pointed at your local instance.
+Register it once in your claude session to get `odis-dev` MCP tools pointed at your local instance.
 
 ### Daily workflow
 
@@ -291,7 +295,7 @@ Agents that need a focused worker to iterate on a specific change can spawn a su
 ```bash
 make dev-spawn AGENT=<name> SPACE=<space>
 # e.g.
-make dev-spawn AGENT=worker1 SPACE="Agent Boss Dev"
+make dev-spawn AGENT=worker1 SPACE="My Space"
 ```
 
 This calls `scripts/spawn-dev-agent.sh`, which:
@@ -300,7 +304,7 @@ This calls `scripts/spawn-dev-agent.sh`, which:
 2. Reads the port from `data-dev/boss.port`
 3. Launches a new tmux session with **both** MCP servers in `--mcp-config`:
    - `odis-mcp` — production coordinator (`http://localhost:8899/mcp`) for check-in, tasks, and messages; auth header set if `ODIS_API_TOKEN` is configured
-   - `boss-dev` — local dev instance (`http://localhost:<PORT>/mcp`) for testing API changes
+   - `odis-dev` — local dev instance (`http://localhost:<PORT>/mcp`) for testing API changes
 4. Uses `--strict-mcp-config` so the agent sees only these two servers
 5. Wraps Claude in the standard restart loop so session loss is handled automatically
 
@@ -309,7 +313,7 @@ This calls `scripts/spawn-dev-agent.sh`, which:
 | Capability | How |
 |------------|-----|
 | Check in / post status / tasks / messages | `odis-mcp.*` tools |
-| Test API changes against local build | `boss-dev.*` tools |
+| Test API changes against local build | `odis-dev.*` tools |
 | Rebuild and redeploy local binary | `make dev-restart` |
 | Run Playwright e2e against dev instance | `make e2e-dev` |
 | Observe running sessions | `boss-observe.*` tools (if registered) |
@@ -318,7 +322,7 @@ The dev instance is isolated (`data-dev/boss.db`), so the sub-agent can freely c
 
 ### What you can observe
 
-Once started, use the `boss-dev` MCP tools (or `http://localhost:<PORT>`) to:
+Once started, use the `odis-dev` MCP tools (or `http://localhost:<PORT>`) to:
 - Create spaces, post agent updates, create/move tasks
 - Verify new API behavior against your branch's code
 - Inspect logs via `make dev-status` or `tail -f data-dev/boss.log`
