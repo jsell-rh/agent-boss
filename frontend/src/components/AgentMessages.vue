@@ -13,6 +13,7 @@ import { renderMarkdown } from '@/lib/markdown'
 const props = defineProps<{
   messages: AgentMessage[]
   agentName: string
+  sessionActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -310,24 +311,42 @@ const enrichedMessages = computed((): MessageEntry[] => {
     </div>
 
     <!-- Input area -->
-    <div class="border-t p-3 flex gap-2">
-      <label for="message-input" class="sr-only">Send a message to {{ agentName }}</label>
-      <Textarea
-        id="message-input"
-        v-model="messageText"
-        :placeholder="`Message ${agentName}… (Enter to send, Shift+Enter for newline)`"
-        class="flex-1 font-text min-h-[38px] max-h-[120px] resize-none"
-        rows="1"
-        @keydown="handleKeydown"
-      />
-      <Button
-        size="sm"
-        :disabled="!messageText.trim()"
-        :aria-label="`Send message to ${agentName}`"
-        @click="send"
-      >
-        <SendHorizontal class="size-4" /> Send
-      </Button>
+    <div class="border-t">
+      <div v-if="sessionActive === false" class="px-3 pt-2 pb-1">
+        <div class="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5 flex items-center gap-1.5">
+          <svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>{{ agentName }} has no active session — messages won't be delivered</span>
+        </div>
+      </div>
+      <div class="p-3 flex gap-2">
+        <label for="message-input" class="sr-only">Send a message to {{ agentName }}</label>
+        <Textarea
+          id="message-input"
+          v-model="messageText"
+          :placeholder="`Message ${agentName}… (Enter to send, Shift+Enter for newline)`"
+          :disabled="sessionActive === false"
+          class="flex-1 font-text min-h-[38px] max-h-[120px] resize-none"
+          rows="1"
+          @keydown="handleKeydown"
+        />
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              size="sm"
+              :disabled="!messageText.trim() || !sessionActive"
+              :aria-label="`Send message to ${agentName}`"
+              @click="send"
+            >
+              <SendHorizontal class="size-4" /> Send
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent v-if="!sessionActive">
+            Cannot send: {{ agentName }} has no active session. Messages won't be delivered.
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   </div>
 </template>

@@ -22,7 +22,14 @@ import {
 } from '@/components/ui/alert-dialog'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save, Volume2 } from 'lucide-vue-next'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Bell, Trash2, ShieldCheck, Terminal, ChevronRight, X, HelpCircle, AlertTriangle, MessageSquareReply, Play, Square, RotateCcw, Loader2, CheckCircle2, XCircle, Radio, MessageSquare, ListTodo, OctagonX, Pencil, Copy, Save, Volume2, MoreVertical } from 'lucide-vue-next'
 import { previewAgentVoice, soundEnabled } from '@/composables/useNotifications'
 import StatusBadge from './StatusBadge.vue'
 import AgentMessages from './AgentMessages.vue'
@@ -149,6 +156,33 @@ const tmuxLabelClass = computed(() => {
     default:
       return 'border-border text-muted-foreground'
   }
+})
+
+// Action availability based on session state
+const canSpawn = computed(() => {
+  // Can spawn when no session exists or session is offline
+  return tmuxState.value === 'no-session' || tmuxState.value === 'offline'
+})
+
+const canStop = computed(() => {
+  // Can stop when session exists (not no-session or offline)
+  return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
+})
+
+const canRestart = computed(() => {
+  // Can restart when session exists
+  return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
+})
+
+const canInterrupt = computed(() => {
+  // Can interrupt when session exists (especially when running)
+  return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
+})
+
+const canSendMessage = computed(() => {
+  // Can send messages when session exists and is not offline
+  // Messages sent when no session exists won't be delivered
+  return tmuxState.value !== 'no-session' && tmuxState.value !== 'offline'
 })
 
 const hasQuestions = computed(() => (props.agent.questions?.length ?? 0) > 0)
@@ -565,14 +599,6 @@ watch(() => props.agentName, loadAgentDocuments)
             </Tooltip>
             <Tooltip>
               <TooltipTrigger as-child>
-                <Button variant="outline" size="sm" class="h-8 px-3 text-xs gap-1.5" @click="emit('broadcast')">
-                  <Bell class="size-3.5" /> Nudge
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Nudge this agent with the latest space state</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger as-child>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -622,67 +648,72 @@ watch(() => props.agentName, loadAgentDocuments)
               </TooltipContent>
             </Tooltip>
 
-            <!-- Lifecycle actions grouped -->
-            <div class="flex items-center flex-wrap rounded-md border border-border bg-muted/20 p-0.5 gap-0.5">
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
-                    :disabled="lifecycleLoading !== null"
-                    @click="handleSpawn"
-                  >
-                    <Loader2 v-if="lifecycleLoading === 'spawn'" class="size-3 animate-spin" />
-                    <Play v-else class="size-3" />
-                    Spawn
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Create tmux session and launch agent</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1"
-                    :disabled="lifecycleLoading !== null"
-                    @click="handleRestart"
-                  >
-                    <Loader2 v-if="lifecycleLoading === 'restart'" class="size-3 animate-spin" />
-                    <RotateCcw v-else class="size-3" />
-                    Restart
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Kill existing session and spawn a new one</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost" size="sm"
-                    class="h-7 px-2 text-xs gap-1 text-amber-600/70 hover:text-amber-600 hover:bg-amber-500/10"
-                    :disabled="lifecycleLoading !== null"
-                    @click="handleInterrupt"
-                  >
-                    <Loader2 v-if="lifecycleLoading === 'interrupt'" class="size-3 animate-spin" />
-                    <OctagonX v-else class="size-3" />
-                    Interrupt
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Send Escape to the agent (interrupt current task)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost" size="sm"
-                    class="h-7 px-2 text-xs gap-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                    :disabled="lifecycleLoading !== null"
-                    @click="stopConfirmOpen = true"
-                  >
-                    <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3 animate-spin" />
-                    <Square v-else class="size-3" />
-                    Kill
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Kill the agent's tmux session</TooltipContent>
-              </Tooltip>
-            </div>
+            <!-- Lifecycle actions dropdown menu -->
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-7 px-2 text-xs gap-1"
+                  :disabled="lifecycleLoading !== null"
+                >
+                  <MoreVertical class="size-3.5" />
+                  Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  :disabled="!canSpawn || lifecycleLoading !== null"
+                  @click="handleSpawn"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'spawn'" class="size-3.5 mr-2 animate-spin" />
+                  <Play v-else class="size-3.5 mr-2" />
+                  Spawn
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  :disabled="!canRestart || lifecycleLoading !== null"
+                  @click="handleRestart"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'restart'" class="size-3.5 mr-2 animate-spin" />
+                  <RotateCcw v-else class="size-3.5 mr-2" />
+                  Restart
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  :disabled="!canStop || lifecycleLoading !== null"
+                  @click="stopConfirmOpen = true"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'stop'" class="size-3.5 mr-2 animate-spin" />
+                  <Square v-else class="size-3.5 mr-2" />
+                  Kill
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  :disabled="lifecycleLoading !== null"
+                  @click="emit('broadcast')"
+                >
+                  <Bell class="size-3.5 mr-2" />
+                  Nudge
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <!-- Prominent interrupt button -->
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  class="h-7 px-3 text-xs gap-1.5"
+                  :disabled="!canInterrupt || lifecycleLoading !== null"
+                  @click="handleInterrupt"
+                >
+                  <Loader2 v-if="lifecycleLoading === 'interrupt'" class="size-3 animate-spin" />
+                  <OctagonX v-else class="size-3" />
+                  Interrupt
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Send Escape to the agent (interrupt current task)</TooltipContent>
+            </Tooltip>
 
             <!-- Inspect toggle -->
             <Tooltip>
@@ -1305,6 +1336,7 @@ watch(() => props.agentName, loadAgentDocuments)
           <AgentMessages
             :messages="agentMessages"
             :agent-name="agentName"
+            :session-active="canSendMessage"
             class="min-h-0 flex-1"
             @send-message="(text: string) => emit('send-message', text, 'operator')"
           />
