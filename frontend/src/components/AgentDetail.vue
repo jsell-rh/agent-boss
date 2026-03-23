@@ -650,7 +650,7 @@ watch(() => props.agentName, loadAgentDocuments)
                     Restart
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Kill existing session and spawn a new one</TooltipContent>
+                <TooltipContent>Kill existing session and spawn a new one (preserves agent record)</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger as-child>
@@ -680,7 +680,7 @@ watch(() => props.agentName, loadAgentDocuments)
                     Kill
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Kill the agent's tmux session</TooltipContent>
+                <TooltipContent>Kill the agent's session (agent record preserved, can restart)</TooltipContent>
               </Tooltip>
             </div>
 
@@ -1088,7 +1088,7 @@ watch(() => props.agentName, loadAgentDocuments)
           <AlertDialogHeader>
             <AlertDialogTitle>Delete agent?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove <span class="font-semibold text-foreground">{{ agentName }}</span>. This cannot be undone.
+              This will permanently remove <span class="font-semibold text-foreground">{{ agentName }}</span> from the coordinator database. All history, messages, and metadata will be deleted. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

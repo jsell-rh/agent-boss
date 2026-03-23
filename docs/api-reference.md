@@ -147,7 +147,7 @@ Returns the agent's current state as JSON.
 DELETE /spaces/{space}/agent/{name}
 ```
 
-Removes the agent from the space.
+Permanently removes the agent record from the coordinator database. All history, messages, tasks, and metadata are deleted. This operation cannot be undone. The agent cannot be restarted after deletion.
 
 **Response** `200 text/plain`
 
@@ -413,13 +413,19 @@ data: {"space":"...","agent":"...","sender":"...","message":"..."}
 
 Spawn, stop, and restart agents in their tmux sessions.
 
+**Lifecycle Operations Summary:**
+- **Spawn** — Create and start a new agent session
+- **Stop** — Kill the session but preserve agent record (can restart)
+- **Restart** — Kill and re-spawn with same config (preserves history)
+- **Delete** — Permanently remove agent and all data from coordinator
+
 ### Spawn Agent
 
 ```
 POST /spaces/{space}/agent/{name}/spawn
 ```
 
-Starts a new tmux session for the agent and runs `claude --dangerously-skip-permissions`.
+Creates a new tmux/ACP session for the agent and runs `claude --dangerously-skip-permissions`.
 
 **Required headers:** `X-Agent-Name: {name}`
 
@@ -436,7 +442,7 @@ Starts a new tmux session for the agent and runs `claude --dangerously-skip-perm
 POST /spaces/{space}/agent/{name}/stop
 ```
 
-Kills the agent's tmux session.
+Kills the agent's session and marks it as `done`. The agent record is preserved in the coordinator database and can be restarted later.
 
 **Required headers:** `X-Agent-Name: {name}`
 
@@ -446,7 +452,7 @@ Kills the agent's tmux session.
 POST /spaces/{space}/agent/{name}/restart
 ```
 
-Stops and restarts the agent's tmux session.
+Kills the current session (if running) and spawns a new one with the same configuration. Preserves agent record, message history, and metadata.
 
 **Required headers:** `X-Agent-Name: {name}`
 

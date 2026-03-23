@@ -61,6 +61,23 @@ An HTTP REST API is available at `{COORDINATOR_URL}` for non-MCP clients (webhoo
 - Use `send_message(to: "parent")` to message your manager when blocked
 - Continue working on what you can while waiting for decisions
 
+### Agent Lifecycle Operations
+
+Understanding the differences between agent session operations:
+
+**Interrupt** — Pause the current task without ending the session. Sends Escape key to the agent's terminal, allowing it to cancel the current operation and return to the prompt. The agent remains running and can continue working.
+
+**Stop** — End the agent's session cleanly and mark the agent as `done`. Kills the tmux/ACP session process but keeps the agent record in the coordinator. The agent can be restarted later with `restart_agent`.
+
+**Kill** — Synonym for "stop" in this system — forcefully terminates the session process. Use `stop_agent` tool or the stop endpoint.
+
+**Delete** — Completely remove the agent record from the coordinator database. All history, messages, and metadata are deleted. The agent cannot be restarted — you must spawn a new agent with the same name.
+
+**Summary:**
+- **Interrupt** = pause (agent keeps running)
+- **Stop/Kill** = end session (agent record remains, can restart)
+- **Delete** = remove agent entirely (cannot restart)
+
 ### Message Polling
 
 Use `check_messages` with the `since` cursor for efficient polling:

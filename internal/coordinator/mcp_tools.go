@@ -1055,7 +1055,7 @@ func pruneReadMessages(ag *AgentUpdate) {
 func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "spawn_agent",
-		Description: "Spawn a new agent in a space.",
+		Description: "Create and start a new agent session. Creates a new tmux/ACP session, launches the agent, and sends the ignition prompt.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space":           prop("string", "The workspace name"),
 			"name":            prop("string", "The agent name to spawn"),
@@ -1124,7 +1124,7 @@ func (s *Server) addToolSpawnAgent(srv *mcp.Server) {
 func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "restart_agent",
-		Description: "Restart an agent using the same config.",
+		Description: "Restart an existing agent. Kills the current session (if running) and spawns a new one with the same configuration. Preserves agent record and history.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to restart"),
@@ -1159,7 +1159,7 @@ func (s *Server) addToolRestartAgent(srv *mcp.Server) {
 func (s *Server) addToolStopAgent(srv *mcp.Server) {
 	srv.AddTool(&mcp.Tool{
 		Name:        "stop_agent",
-		Description: "Stop an agent and mark it as done.",
+		Description: "Stop an agent by killing its session and marking it as done. The agent record is preserved and can be restarted. Does not delete the agent from the system.",
 		InputSchema: jsonSchema([]string{"space", "name"}, map[string]map[string]any{
 			"space": prop("string", "The workspace name"),
 			"name":  prop("string", "The agent name to stop"),
