@@ -386,6 +386,9 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, spac
 
 	s.mu.Lock()
 	canonical := resolveAgentName(ks, agentName)
+	// Canonicalize sender name so "Cto" and "cto" resolve to the same conversation thread.
+	senderName = resolveAgentName(ks, senderName)
+	messageReq.Sender = senderName
 
 	var recipients []string
 	if scope == "subtree" {

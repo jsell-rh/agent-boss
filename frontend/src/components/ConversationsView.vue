@@ -24,11 +24,22 @@ const props = defineProps<{
   preselectAgent?: string
 }>()
 
-// Derive the operator name from agent_type — avoids hardcoding 'boss' string.
-// Fallback to 'operator' while the space loads.
+// Collect ALL human agents (spaces may have both 'boss' legacy and 'operator' canonical).
+// Using a Set lets isOperatorConversation match any of them for categorization.
+const humanAgentNames = computed(() =>
+  new Set(
+    Object.entries(props.space.agents ?? {})
+      .filter(([, a]) => a.agent_type === 'human')
+      .map(([name]) => name),
+  ),
+)
+
+// Canonical operator name used for composing messages.
+// Prefer 'operator' (the current canonical name) over legacy 'boss' if both exist.
 const operatorName = computed(() => {
-  const entry = Object.entries(props.space.agents ?? {}).find(([, a]) => a.agent_type === 'human')
-  return entry?.[0] ?? 'operator'
+  if (humanAgentNames.value.has('operator')) return 'operator'
+  const [first] = humanAgentNames.value
+  return first ?? 'operator'
 })
 
 interface ConversationMessage {
@@ -273,15 +284,15 @@ const selectedConversation = computed((): Conversation | null => {
 const readKeys = ref(new Set<string>())
 
 function isOperatorConversation(conv: Conversation): boolean {
-  return conv.participants.includes(operatorName.value)
+  return conv.participants.some(p => humanAgentNames.value.has(p))
 }
 
 function unreadCount(conv: Conversation): number {
   // Agent-to-agent conversations never show unread badges
   if (!isOperatorConversation(conv)) return 0
   if (readKeys.value.has(conv.key)) return 0
-  // Only count messages directed at the operator that haven't been acknowledged on the backend
-  return conv.messages.filter(m => m.recipient === operatorName.value && !m.read).length
+  // Count messages directed at ANY human agent that haven't been acknowledged on the backend
+  return conv.messages.filter(m => humanAgentNames.value.has(m.recipient) && !m.read).length
 }
 
 // ACK all unread messages to the operator in a conversation so the backend persists read state.
@@ -289,9 +300,9 @@ function unreadCount(conv: Conversation): number {
 // the conversation stays read after navigate-away + return.
 function ackOperatorMessages(conv: Conversation) {
   if (!isOperatorConversation(conv)) return
-  const unread = conv.messages.filter(m => m.recipient === operatorName.value && !m.read)
+  const unread = conv.messages.filter(m => humanAgentNames.value.has(m.recipient) && !m.read)
   for (const msg of unread) {
-    api.ackMessage(props.space.name, operatorName.value, msg.id, operatorName.value).catch(() => {})
+    api.ackMessage(props.space.name, msg.recipient, msg.id, msg.recipient).catch(() => {})
   }
 }
 
@@ -518,12 +529,12 @@ const inlineSending = ref(false)
 const inlineSendError = ref<string | null>(null)
 const composeRef = ref<HTMLTextAreaElement | null>(null)
 
-// Operator can compose to the other participant (only if operator is in the conversation)
+// Operator can compose to the other participant (only if a human agent is in the conversation)
 const composeRecipient = computed(() => {
   if (!selectedConversation.value) return null
   const { participants } = selectedConversation.value
-  if (!participants.includes(operatorName.value)) return null
-  return participants.find(p => p !== operatorName.value) ?? null
+  if (!participants.some(p => humanAgentNames.value.has(p))) return null
+  return participants.find(p => !humanAgentNames.value.has(p)) ?? null
 })
 
 async function sendInlineCompose() {
