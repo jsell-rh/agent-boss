@@ -407,6 +407,9 @@ func (s *Server) addToolSendMessage(srv *mcp.Server) {
 
 		s.mu.Lock()
 		canonical := resolveAgentName(ks, targetName)
+		// Canonicalize sender so "Cto" and "cto" produce the same conversation thread.
+		senderName = resolveAgentName(ks, senderName)
+		msgReq.Sender = senderName
 		ag := ks.agentStatus(canonical)
 		if ag == nil {
 			ag = &AgentUpdate{
