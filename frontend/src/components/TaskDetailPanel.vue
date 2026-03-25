@@ -86,13 +86,21 @@ const subtaskItems = computed(() => {
 })
 
 function buildPrUrl(pr: string): string | null {
-  if (pr.startsWith('http')) return pr
+  // Already a full URL
+  if (/^https?:\/\//.test(pr)) return pr
+  // URL missing protocol (e.g. github.com/org/repo/pull/42)
+  if (/^(github\.com|gitlab\.com)\//.test(pr)) return 'https://' + pr
+
+  // Extract a bare PR number from formats like #42, PR #42, PR-42, 42
+  const numMatch = pr.match(/(\d+)$|#(\d+)/)
+  const num = numMatch ? (numMatch[1] ?? numMatch[2]) : null
+  if (!num) return null
+
   // Try to build URL from the assigned agent's repo_url
   if (props.task?.assigned_to) {
     const agent = props.space.agents[props.task.assigned_to]
     if (agent?.repo_url) {
       const base = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-      const num = pr.replace(/^#/, '')
       return `${base}/pull/${num}`
     }
   }
@@ -100,7 +108,6 @@ function buildPrUrl(pr: string): string | null {
   for (const agent of Object.values(props.space.agents ?? {})) {
     if (agent.repo_url) {
       const base = agent.repo_url.replace(/\.git$/, '').replace(/\/$/, '')
-      const num = pr.replace(/^#/, '')
       return `${base}/pull/${num}`
     }
   }
@@ -217,7 +224,7 @@ async function setDueDate(value: string) {
 
 <template>
   <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="w-full sm:w-[480px] md:w-[540px] overflow-y-auto flex flex-col gap-0 p-0">
+    <SheetContent class="w-full sm:w-[560px] md:w-[680px] flex flex-col gap-0 p-0 overflow-hidden">
       <div v-if="task" class="flex flex-col h-full">
         <!-- Header -->
         <SheetHeader class="px-6 pt-6 pb-4 border-b border-border">
@@ -389,7 +396,7 @@ async function setDueDate(value: string) {
           <!-- Description -->
           <div v-if="task.description" class="flex flex-col gap-1.5">
             <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Description</span>
-            <div class="text-sm text-foreground/80 md-content" v-html="renderMarkdown(task.description)" />
+            <div class="text-sm text-foreground/80 md-content leading-relaxed" v-html="renderMarkdown(task.description)" />
           </div>
 
           <!-- Labels -->
@@ -417,15 +424,16 @@ async function setDueDate(value: string) {
                 rel="noopener noreferrer"
                 class="flex items-center gap-1.5 text-sm text-primary hover:underline"
               >
-                <ExternalLink class="size-3.5" />
+                <ExternalLink class="size-3.5 shrink-0" />
                 {{ task.linked_pr }}
               </a>
               <span
                 v-else-if="task.linked_pr"
-                class="flex items-center gap-1.5 text-sm text-muted-foreground"
+                class="flex items-center gap-1.5 text-sm"
+                title="No GitHub repo_url configured on agents — cannot resolve full link"
               >
-                <ExternalLink class="size-3.5" />
-                {{ task.linked_pr }}
+                <ExternalLink class="size-3.5 shrink-0 text-muted-foreground" />
+                <code class="text-xs bg-muted px-1.5 py-0.5 rounded">{{ task.linked_pr }}</code>
               </span>
             </div>
           </div>
