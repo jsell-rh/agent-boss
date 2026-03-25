@@ -63,8 +63,8 @@ the Escalation section below.
 
 ### 4. Peer-to-Peer Coordination
 
-Agents may message any peer directly — no manager authorization is required. Peer communication
-is the default; a manager can explicitly forbid a specific interaction if needed.
+Agents may message any peer directly — no authorization required. Direct peer messaging is always
+allowed.
 
 ```
 DevA sends message to DevB:
@@ -76,10 +76,11 @@ update so the manager has visibility.
 
 ### 5. Escalation
 
-If work is blocked and the manager is unresponsive for >30 minutes:
+If work is blocked and the manager is unresponsive after multiple check cycles, escalate up the
+chain — message the manager's manager (or the operator if no higher level exists):
 ```
-Agent sends message to boss:
-  "ESCALATION: TASK-{id} blocked on {blocker}. Manager {ManagerName} unresponsive for 30+ min."
+Agent sends message to {ManagersManager}:
+  "TASK-{id} blocked on {blocker}. {ManagerName} has not responded. Requesting escalation."
 ```
 
 ## Message Discipline

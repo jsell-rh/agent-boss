@@ -18,10 +18,12 @@ meets **any** of these criteria:
 - Has more than one acceptance criterion
 - Is a planning, spec, or design task (always non-trivial)
 - Would benefit from an independent review pass
-- Estimated effort exceeds ~30 minutes of focused work
+- Could benefit from a second perspective or independent review
+- Requires more than one focused action to complete (e.g. research then implement, or implement then test)
 
-Solo work is appropriate only for tightly scoped leaf tasks: a single bug fix, a one-file
-documentation update, or a clearly-specified implementation with no design decisions.
+Solo work is appropriate only for atomic leaf tasks: a single, completely specified change with
+no decisions to make and no more than one deliverable. When in doubt, form a team — the cost of
+an extra agent is far lower than the cost of a solo agent going off in the wrong direction.
 
 ## Required Team Roles
 
