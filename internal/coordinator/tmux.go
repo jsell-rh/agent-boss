@@ -405,7 +405,7 @@ func tmuxSendKeys(session, text string) error {
 	time.Sleep(tmuxSendDelay)
 	ctx2, cancel2 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
 	defer cancel2()
-	if err := exec.CommandContext(ctx2, "tmux", "send-keys", "-t", session, "C-m").Run(); err != nil {
+	if err := exec.CommandContext(ctx2, "tmux", "send-keys", "-t", session, "Enter").Run(); err != nil {
 		return err
 	}
 	time.Sleep(tmuxSendDelay)
@@ -444,7 +444,7 @@ func tmuxPasteInput(session, text string) error {
 	// Submit with Enter.
 	ctx3, cancel3 := context.WithTimeout(context.Background(), tmuxCmdTimeout)
 	defer cancel3()
-	if err := exec.CommandContext(ctx3, "tmux", "send-keys", "-t", session, "C-m").Run(); err != nil {
+	if err := exec.CommandContext(ctx3, "tmux", "send-keys", "-t", session, "Enter").Run(); err != nil {
 		return fmt.Errorf("send Enter: %w", err)
 	}
 	time.Sleep(tmuxSendDelay)
