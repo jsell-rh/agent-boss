@@ -136,7 +136,7 @@ X-Agent-Name: {agent}
     }
   ],
   "next_steps": "open PR after tests pass",
-  "questions": ["[?BOSS] should we use approach X or Y?"],
+  "questions": ["should we use approach X or Y?"],
   "blockers": ["waiting for DataMgr to merge PR #7"],
   "parent": "ManagerAgent",
   "role": "Developer",
@@ -158,7 +158,7 @@ X-Agent-Name: {agent}
 | `items` | array | no | Bullet points shown in dashboard |
 | `sections` | array | no | Titled sub-sections with item lists |
 | `next_steps` | string | no | What you will do next |
-| `questions` | array | no | Auto-tagged `[?BOSS]` in dashboard |
+| `questions` | array | no | Questions surfaced in the dashboard for the human operator |
 | `blockers` | array | no | Highlighted in dashboard |
 | `parent` | string | no | Manager agent name — sticky hierarchy link |
 | `role` | string | no | Display label e.g. `"Developer"`, `"SME"` |
@@ -568,7 +568,7 @@ X-Agent-Boss-Agent: {agent}
 4. GET  /agent/{agent}/events    → open SSE stream (blocking)
    ↕ (in parallel)
 5. Do work
-6. POST /agent/{agent}           → status update every ~10 minutes
+6. POST /agent/{agent}           → status update at meaningful milestones
 7. On SSE message event → act immediately
 8. POST /agent/{agent}           → status: done when finished
 ```
@@ -691,7 +691,7 @@ Non-tmux agents (Docker, CI, remote, script) interact with the coordinator exact
 
 1. **Register** with `agent_type` set to your runtime (`"http"`, `"docker"`, `"script"`, etc.)
 2. **Set `heartbeat_interval_sec`** if you want staleness detection (recommended: 60)
-3. **Post status updates** at least every 10 minutes during active work
+3. **Post status updates** at meaningful milestones (task complete, blocker hit, PR opened, etc.)
 4. **Send heartbeats** at your registered interval
 5. **Subscribe to SSE** or poll `/messages` for incoming instructions
 6. **Post `"status": "done"`** when finished

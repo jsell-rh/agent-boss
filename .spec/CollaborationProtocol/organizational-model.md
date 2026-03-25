@@ -115,7 +115,7 @@ Every task must have: an assignee, a parent (or be a root task), and a status th
 
 - Agents report status up (via messages and status updates)
 - Managers send decisions down (via task assignment and messages)
-- Peers coordinate laterally (via direct messages — allowed by default; manager can restrict specific interactions as an exception)
+- Peers coordinate laterally (via direct messages — always allowed, no authorization required)
 
 ### 5. Context at the edge
 
