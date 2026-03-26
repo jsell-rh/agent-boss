@@ -1,8 +1,8 @@
 # Human-in-the-Loop (HITL) Gates
 
-**Status:** Draft — seeking reviewer feedback
+**Status:** Draft v2 — updated per PR #296 review feedback
 **Author:** croche
-**Date:** 2025-03-25
+**Date:** 2025-03-25 (v2: 2026-03-26)
 
 ---
 
@@ -36,7 +36,7 @@ Questions from agents create both an `Interrupt` record (in `interrupts.go`) and
 
 1. **Opt-in by default.** Gates are never active unless explicitly configured via HITL policy. Agents without policies behave exactly as today. Zero breaking changes.
 
-2. **Non-blocking MCP tools.** MCP tools always return immediately with a gate ID. Agents poll for resolution. This avoids tying up MCP connections and works across tmux and ambient backends.
+2. **Non-blocking MCP tools.** MCP tools always return immediately with a gate ID. Resolution is delivered via message + nudge (the established pattern). `check_gate` is available as a fallback for restart recovery and explicit state queries.
 
 3. **Backend-agnostic.** All HITL interactions flow through MCP tools and the HTTP API. The system works identically whether agents run in tmux or ambient sessions.
 
@@ -87,10 +87,10 @@ Require operator approval before an agent lifecycle operation executes.
 **Why this matters:** Without lifecycle gates, any agent can self-replicate by spawning children, or take down peers by calling `stop_agent`. In production deployments, operators need to approve topology changes.
 
 **Behavior when gate fires:**
-1. MCP tool returns immediately: `{ gate_id: "gate_...", status: "pending_approval", message: "Spawn of agent X requires operator approval. Poll check_gate to check status." }`
+1. MCP tool returns immediately: `{ gate_id: "gate_...", status: "pending_approval", message: "Spawn of agent X requires operator approval. You will receive a message when resolved." }`
 2. The lifecycle action is NOT executed.
-3. When the operator approves, the action is executed server-side (spawn/restart/stop proceeds).
-4. When the operator denies, the action is cancelled. Agent receives denial reason via `check_gate`.
+3. When the operator approves, the action is executed server-side (spawn/restart/stop proceeds). A message is delivered to the requesting agent's inbox and a nudge is fired.
+4. When the operator denies, the action is cancelled. A message with the denial reason is delivered to the requesting agent's inbox and a nudge is fired.
 
 ### 4.2 Task Transition Gates
 
@@ -101,38 +101,48 @@ Configured as rules: `{ from: "review", to: "done", require: "approval" }`. When
 **Why this matters:** Tasks moving to `done` may represent deployments, releases, or completed deliverables. Operators need sign-off before work is considered finished.
 
 **Behavior when gate fires:**
-1. `move_task` returns: `{ gate_id: "gate_...", status: "pending_approval", task_id: "TASK-42", message: "Moving TASK-42 from review to done requires approval." }`
+1. `move_task` returns: `{ gate_id: "gate_...", status: "pending_approval", task_id: "TASK-42", message: "Moving TASK-42 from review to done requires approval. You will receive a message when resolved." }`
 2. The task remains in its current status.
-3. On approval, the task is moved server-side.
-4. On denial, the task stays put. Agent receives the denial reason.
+3. On approval, the task is moved server-side. A message is delivered to the requesting agent: `"Gate gate_abc resolved: TASK-42 has been moved to done (approved by operator)."` A nudge is fired.
+4. On denial, the task stays put. A message with the denial reason is delivered to the requesting agent and a nudge is fired.
 
 ### 4.3 Decision Gates
 
-Structured request→poll→receive flow replacing the fragile `request_decision` → tmux paste loop.
+Structured request→resolve→deliver flow replacing the fragile `request_decision` → tmux paste loop.
 
-An agent calls `request_gate` with a question. The operator answers via the dashboard. The agent polls `check_gate` and receives the structured response.
+An agent calls `request_gate` with a question. The operator answers via the dashboard. The resolution is delivered as a message to the agent's inbox with a nudge, so the agent picks it up in its next check-in cycle.
 
-**Why this matters:** The current decision flow pastes raw text into a tmux pane. The agent has no reliable way to receive the answer. Decision gates give agents a structured JSON response they can act on programmatically.
+**Why this matters:** The current decision flow pastes raw text into a tmux pane. The agent has no reliable way to receive the answer. Decision gates give agents structured resolution delivered through the proven message + nudge system.
 
 **Behavior:**
 1. Agent calls `request_gate(question: "Should we use PostgreSQL or MySQL?", context: "...")`
 2. Returns: `{ gate_id: "gate_...", status: "pending" }`
 3. Agent continues working on other tasks.
 4. Operator answers in dashboard with resolution text.
-5. Agent polls `check_gate(gate_id)` → `{ status: "approved", resolution: "Use PostgreSQL — we have existing infrastructure.", resolved_by: "operator" }`
+5. Server delivers a message to the agent's inbox: `"Gate gate_abc resolved (approved): Use PostgreSQL — we have existing infrastructure."` A nudge is fired.
+6. Agent reads the resolution in its next `check_messages` cycle (triggered by nudge).
+7. Optionally, agent can call `check_gate(gate_id)` for the full structured response (useful after restart or for explicit state queries).
 
 ### 4.4 Tool Approval Gates (Upgrade)
 
 The existing tool approval system (tmux pane parsing → approve button) is modeled as a gate to gain:
-- **Deny path** — operator can reject a tool call (sends Escape to cancel)
+- **Deny path** — operator can reject a tool call with a rationale
 - **Reason capture** — operator can explain why they approved or denied
 - **Audit trail** — every tool approval/denial is a gate record in SQLite
 
 **Behavior change from current system:**
 - Liveness loop still detects `NeedsApproval` via `parseApprovalFromLines` (no change to detection)
 - Instead of only recording an `Interrupt`, also creates a `Gate` with `type: "tool_approval"`
-- Dashboard shows approve AND deny buttons (deny sends Escape to session)
+- Dashboard shows approve AND deny buttons with reason textarea
 - Resolution reason is captured on both approve and deny
+
+**Deny behavior:**
+- On deny, the denial rationale is delivered as a message to the agent's inbox: `"Tool [Bash] denied by operator. Reason: [rationale]."` A nudge is fired so the agent picks up the message promptly.
+- The dashboard includes an optional **"Also interrupt agent"** checkbox. When checked, the server sends Escape to the session after delivering the message, cancelling the pending tool call.
+- Default (checkbox unchecked): the agent receives the rationale and decides how to proceed. The tmux tool prompt remains pending — the agent can cancel it or take another action.
+- On the ambient backend, Escape is not applicable — the message-based path is the only option.
+
+This approach keeps the agent operational and informed rather than stopping it without context.
 
 ---
 
@@ -161,7 +171,7 @@ const (
 )
 
 type Gate struct {
-    ID        string            `json:"id"`          // "gate_<timestamp>"
+    ID        string            `json:"id"`          // "gate_<ulid>" (ULID avoids collision under concurrent requests)
     Space     string            `json:"space"`
     Agent     string            `json:"agent"`       // requesting agent
     Type      GateType          `json:"type"`
@@ -275,12 +285,14 @@ ALTER TABLE spaces ADD COLUMN hitl_policy TEXT DEFAULT '';
 
 Agent-level `HITLPolicy` lives inside the existing `agents.config` JSON column (extending the `AgentConfig` struct). No schema change needed.
 
+**Space deletion:** When a space is deleted, pending gates must be cascade-deleted or explicitly cancelled. The `space_name` column should reference the `spaces` table with `ON DELETE CASCADE`, or the space delete handler must cancel all pending gates before teardown.
+
 ### 5.4 Relationship to Existing Interrupt Ledger
 
 The `gates` table coexists with the `interrupts` table. Existing code paths that record interrupts continue to work unchanged. New HITL flows use gates exclusively.
 
 Migration path:
-- **Phase 1 (this spec):** Both tables operate in parallel. `request_decision` creates a gate AND an interrupt for backward compat.
+- **Phase 1 (this spec):** Both tables operate in parallel. `request_decision` creates a gate AND an interrupt for backward compat. When a gate supersedes an interrupt record (e.g., a decision gate resolves), the corresponding interrupt is marked resolved server-side so `InterruptTracker.vue` doesn't show duplicate pending items.
 - **Phase 2 (future):** Deprecate interrupt ledger. Migrate historical data. Remove `InterruptTracker.vue` in favor of unified gates panel.
 
 ---
@@ -300,14 +312,17 @@ Parameters:
   timeout_sec:  number  (optional)  — override default timeout (0 = no timeout)
 
 Returns:
-  gate_id:  string  — unique gate ID for polling
-  status:   string  — always "pending"
-  message:  string  — instructions for the agent
+  gate_id:           string  — unique gate ID
+  status:            string  — always "pending"
+  poll_interval_sec: number  — suggested poll cadence (default: 15)
+  message:           string  — instructions for the agent
 ```
+
+The `poll_interval_sec` hint tells agents the right cadence without requiring them to read the spec. The primary resolution path is message + nudge; `check_gate` is a fallback.
 
 ### 6.2 New: `check_gate`
 
-Agent polls for gate resolution.
+Query tool for gate state. Primarily used for restart recovery and explicit state verification — resolution is delivered via message + nudge.
 
 ```
 Parameters:
@@ -352,10 +367,10 @@ New behavior (gate configured):
     status:   "pending_approval"
     task_id:  string
     message:  "Task TASK-42 transition review→done requires operator approval.
-               Poll check_gate with this gate_id."
+               You will receive a message when resolved."
 ```
 
-The task remains in its current status until the gate is resolved. On approval, the server moves the task. On denial, the task stays and the agent is informed via `check_gate`.
+The task remains in its current status until the gate is resolved. On approval, the server moves the task and delivers a message to the agent. On denial, the task stays and the denial reason is delivered as a message. Both trigger a nudge.
 
 ### 6.5 Modified: `spawn_agent` / `restart_agent` / `stop_agent`
 
@@ -368,10 +383,10 @@ Returns:
   target:   string  — target agent name
   action:   string  — "spawn", "restart", or "stop"
   message:  "Spawning agent X requires operator approval.
-             Poll check_gate with this gate_id."
+             You will receive a message when resolved."
 ```
 
-The lifecycle action is NOT executed until the gate is approved. On approval, the server executes the action (spawn/restart/stop). On denial, the action is cancelled.
+The lifecycle action is NOT executed until the gate is approved. On approval, the server executes the action (spawn/restart/stop) and delivers a confirmation message to the requesting agent with a nudge. On denial, the action is cancelled and the denial reason is delivered as a message with a nudge.
 
 ### 6.6 Preserved: `request_decision`
 
@@ -469,18 +484,19 @@ Agent                          Coordinator                    Operator
   │                                │── SSE gate_created ────────>│
   │   (continue other work)        │                             │
   │                                │                             │
-  │── check_gate(gate_id) ────────>│                             │
-  │<─ { status: pending } ────────│                             │
-  │                                │                             │
   │                                │<── POST resolve(approve) ──│
   │                                │── SSE gate_resolved ──────>│
+  │                                │── deliver message to agent  │
+  │                                │── nudge agent session       │
   │                                │                             │
-  │── check_gate(gate_id) ────────>│                             │
-  │<─ { status: approved,         │                             │
-  │     resolution: "Go ahead" } ─│                             │
+  │   (nudge triggers check-in)    │                             │
+  │── check_messages ─────────────>│                             │
+  │<─ "Gate resolved: Go ahead" ──│                             │
   │                                │                             │
   │   (act on resolution)          │                             │
 ```
+
+After restart, the agent can call `check_gate(gate_id)` to recover the full structured response.
 
 ### 8.2 Task Gate Sequence
 
@@ -496,10 +512,13 @@ Agent                          Coordinator                    Operator
   │   (continue other work)        │                             │
   │                                │<── POST resolve(approve) ──│
   │                                │── move task server-side     │
+  │                                │── deliver message to agent  │
+  │                                │── nudge agent session       │
   │                                │── SSE gate_resolved ──────>│
   │                                │                             │
-  │── check_gate(gate_id) ────────>│                             │
-  │<─ { status: approved } ───────│                             │
+  │   (nudge triggers check-in)    │                             │
+  │── check_messages ─────────────>│                             │
+  │<─ "TASK-42 moved to done" ────│                             │
 ```
 
 ### 8.3 Lifecycle Gate Sequence
@@ -516,26 +535,30 @@ Agent                          Coordinator                    Operator
   │                                │                             │
   │                                │<── POST resolve(approve) ──│
   │                                │── execute spawn             │
+  │                                │── deliver message to agent  │
+  │                                │── nudge agent session       │
   │                                │── SSE gate_resolved ──────>│
   │                                │                             │
-  │── check_gate(gate_id) ────────>│                             │
-  │<─ { status: approved,         │                             │
-  │     session_id: "..." } ──────│                             │
+  │   (nudge triggers check-in)    │                             │
+  │── check_messages ─────────────>│                             │
+  │<─ "worker-3 spawned (approved)"│                             │
 ```
 
 ### 8.4 Blocking Behavior
 
 MCP tools **never block**. They always return immediately. When a gate is created:
 
-- **Decision gates:** `request_gate` returns `gate_id`. Agent continues working and polls `check_gate` periodically.
-- **Task transition gates:** `move_task` returns `gate_id` instead of moving the task. Agent continues working.
-- **Lifecycle gates:** `spawn_agent`/`restart_agent`/`stop_agent` return `gate_id` instead of executing. Agent continues working.
+- **Decision gates:** `request_gate` returns `gate_id`. Agent continues working on other tasks. Resolution arrives as a message via the existing nudge system.
+- **Task transition gates:** `move_task` returns `gate_id` instead of moving the task. Agent continues working. Confirmation arrives as a message.
+- **Lifecycle gates:** `spawn_agent`/`restart_agent`/`stop_agent` return `gate_id` instead of executing. Agent continues working. Confirmation arrives as a message.
 
-Agents are responsible for polling `check_gate`. A 10–30 second poll interval is reasonable for human-response-time gates.
+**Resolution delivery is push, not pull.** When a gate resolves, the coordinator delivers a message to the requesting agent's inbox and fires a nudge. The agent reads the resolution in its next `check_messages` cycle (triggered by the nudge). This follows the same established pattern used for all other inter-agent communication.
+
+`check_gate` remains available as a query tool for agents that want to explicitly verify gate state, but it is not the primary resolution mechanism.
 
 ### 8.5 Post-Restart Recovery
 
-When an agent restarts, it can call `list_gates(status="pending")` to discover gates it created before the restart. If a gate was resolved while the agent was down, it gets the resolution immediately. If still pending, it can resume polling.
+When an agent restarts, it can call `list_gates(status="all")` to discover gates it created before the restart. If a gate was resolved while the agent was down, it gets the resolution immediately. If still pending, the agent will receive the resolution via message + nudge when the operator acts.
 
 ---
 
@@ -676,7 +699,7 @@ func (s *Server) gateTimeoutLoop() {
     ticker := time.NewTicker(30 * time.Second)
     for {
         select {
-        case <-s.stopLiveness:
+        case <-s.stopGateLoop:  // dedicated channel — gate timeouts and liveness are separate concerns
             return
         case <-ticker.C:
             s.checkGateTimeouts()
@@ -727,19 +750,24 @@ This workspace has human-in-the-loop gates configured:
 - Spawning new agents requires operator approval
 
 When an action requires approval, the MCP tool returns a `gate_id` with
-status `pending_approval`. Use `check_gate` to poll for the resolution.
-Continue working on other tasks while waiting.
+status `pending_approval`. **Do not poll for the resolution.** Continue
+working on other tasks. When the gate resolves, you will receive a
+message with the outcome — treat it like any other inbound message and
+act accordingly. Use `check_gate` only to verify state after a restart.
 ```
+
+Auto-inject this section only when `HITLPolicy` is non-empty to avoid noisy ignition prompts for unconfigured spaces.
 
 ---
 
 ## 13. Implementation Phases
 
 ### Phase 1a: Gate Infrastructure
-- `Gate` type and `GateStatus` enum in `types.go`
-- `GateRecord` GORM model in `db/models.go`
+- `Gate` type and `GateStatus` enum in `types.go`; gate IDs use ULID format
+- `GateRecord` GORM model in `db/models.go` with space cascade handling
 - Gate repository methods (save, load, resolve, list, metrics) — follow `interrupts.go` pattern
 - Gate HTTP endpoints (CRUD + resolve + batch-resolve + metrics)
+- On resolve: deliver message to requesting agent's inbox + fire nudge
 - SSE events for gates
 - Journal event types
 
@@ -761,8 +789,9 @@ Continue working on other tasks while waiting.
 
 ### Phase 1e: Tool Approval Upgrade
 - Liveness loop creates `GateToolApproval` gates alongside interrupts
-- Deny path: sends Escape to session on denial
+- Deny path: deliver rationale as message + nudge; optional "interrupt agent" sends Escape
 - Reason capture on approve/deny
+- Mark corresponding interrupt as resolved when gate resolves (dedup)
 
 ### Phase 1f: Dashboard + Fleet YAML
 - Approvals tab in frontend (follow `InterruptTracker.vue` patterns)
@@ -779,19 +808,21 @@ Continue working on other tasks while waiting.
 
 ## 14. Open Questions
 
-These are explicitly left open for reviewer discussion:
+### Resolved (per PR #296 review)
 
-1. **Should gate resolution nudge the agent?** Currently, message delivery triggers a nudge (sends check-in prompt to tmux). Should gate resolution do the same? Nudging reintroduces tmux-paste fragility. Recommendation: no — agents should poll `check_gate`.
+1. **~~Should gate resolution nudge the agent?~~** **Yes.** On gate resolution, deliver a message to the requesting agent's inbox and fire the existing nudge mechanism. This makes resolution push-based (reliable) rather than poll-based (fragile). `check_gate` remains as a fallback for restart recovery and explicit state queries. *(Resolved based on reviewer feedback that polling is unreliable — agents get busy, restart, lose polling loops.)*
 
-2. **Should gates support multiple approvers?** (e.g., 2-of-3 designated approvers required). Recommendation: not in Phase 1. Start with single-approver.
+2. **~~Should tool approval deny send Escape or just record the denial?~~** **Message by default, optional interrupt.** On deny, deliver the rationale as a message to the agent. The dashboard includes an optional "Also interrupt agent" checkbox that sends Escape when checked. This keeps the agent informed and operational. On the ambient backend, Escape is not applicable — message is the only path. *(Resolved based on reviewer feedback that Escape stops the agent without context.)*
 
-3. **Should tool approval deny send Escape or just record the denial?** Sending Escape cancels the pending tool call in Claude Code. But the agent might retry. Recommendation: send Escape on deny, and include the denial reason in the gate so the agent can see it via `check_gate`.
+### Still Open
 
-4. **How should the ignition prompt reference HITL?** Should it list every active gate rule, or just mention that gates are active and point to a resource? Recommendation: brief summary in ignition (as shown in section 12.2), with full details available via `boss://protocol` MCP resource.
+3. **Should gates support multiple approvers?** (e.g., 2-of-3 designated approvers required). Recommendation: not in Phase 1. Start with single-approver. The data model supports adding an `approvals []GateApproval` relation later without breaking `resolved_by`.
 
-5. **Should denied lifecycle gates be retryable?** If an operator denies a spawn, can the agent request it again? Recommendation: yes — a new gate is created on each request. The denied gate remains in the audit trail.
+4. **How should the ignition prompt reference HITL?** Brief summary (as shown in §12.2) auto-injected only when `HITLPolicy` is non-empty. Full details available via `boss://protocol` MCP resource or a new `boss://hitl-policy/{space}` resource.
 
-6. **Should the Approvals tab replace InterruptTracker.vue?** Recommendation: not immediately. Run both in parallel during Phase 1. Unify in Phase 2 after validating the gates model.
+5. **Should denied lifecycle gates be retryable?** Recommendation: yes — a new gate is created on each request. The denied gate remains in the audit trail.
+
+6. **Should the Approvals tab replace InterruptTracker.vue?** Recommendation: not immediately. Run both in parallel during Phase 1. When gates supersede an interrupt, mark the interrupt resolved server-side to avoid duplicates. Unify in Phase 2.
 
 ---
 
