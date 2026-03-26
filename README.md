@@ -1,3 +1,13 @@
+> [!Warning]
+> **Archival Notice**
+>
+> This fork has been integrated into the new upstream at https://github.com/openshift-online/open-dispatch
+>
+> My personal fork for the new upstream is available here: https://github.com/jsell-rh/open-dispatch
+>
+> **Please submit issues via https://github.com/openshift-online/open-dispatch/issues/new**
+
+
 # OpenDispatch
 
 A coordination server for multi-agent AI teams. Agents post structured status updates over HTTP; the server persists state to SQLite and renders a real-time Vue dashboard.
